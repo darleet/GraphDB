@@ -4,18 +4,14 @@ from typing import Any, Callable, Generic, Optional, TypeVar
 
 
 VertexPropsT = TypeVar("VertexPropsT")
-VertexHashIndex = dict["VertexID[VertexPropsT]", "Vertex[VertexPropsT]"]
+# На каждый тип вершин он свой
+VertexHashIndex = dict["VertexID", "Vertex[VertexPropsT]"]
 
 SurogateID = str
-
-
-class EdgeID[SrcVertexPropsT, EdgePropsT, DstVertexPropsT]: ...
-
-
-class VertexID[VertexPropsT]: ...
-
-
-class DirectoryID[VertexPropsT](str): ...
+# За пользовательские ID отвечает индекс
+EdgeID = SurogateID
+VertexID = SurogateID
+EdgeBlockID = SurogateID
 
 
 # =====================================================
@@ -27,8 +23,8 @@ VertexPropsT = TypeVar("VertexPropsT")
 
 
 class Vertex(Generic[VertexPropsT]):
-    vertex_id: VertexID[VertexPropsT]
-    edge_block_id: DirectoryID[VertexPropsT]
+    vertex_id: VertexID
+    edge_block_id: EdgeBlockID
     props: VertexPropsT
 
 
@@ -51,8 +47,8 @@ class VertexTypeTag(enum.IntEnum):
 
 
 VERTEX_TABLE_RESOLVER = {
-    VertexTypeTag.SomeVertexTag: VertexHashIndex[SomeVertexProps],
-    VertexTypeTag.OtherVertexTag: VertexHashIndex[OtherVertexProps],
+    VertexTypeTag.SomeVertexTag: VertexHashIndex[SomeVertexProps]({}),
+    VertexTypeTag.OtherVertexTag: VertexHashIndex[OtherVertexProps]({}),
     # ...
 }
 
@@ -71,10 +67,10 @@ EdgePropsT = TypeVar("EdgePropsT")
 IncidentVertexPropsT = TypeVar("IncidentVertexPropsT")
 
 
-class Edge[SrcVertexPropsT, EdgePropsT, DstVertexPropsT]:
-    id: EdgeID[SrcVertexPropsT, EdgePropsT, DstVertexPropsT]
-    next_id: Optional[EdgeID[SrcVertexPropsT, EdgePropsT, DstVertexPropsT]]
-    incident_vert_id: VertexID[DstVertexPropsT]
+class Edge[EdgePropsT]:
+    id: EdgeID
+    next_id: Optional[EdgeID]
+    incident_vert_id: VertexID
     props: EdgePropsT
 
 
@@ -86,17 +82,12 @@ class SomeEdgeProps: ...
 class OtherEdgeProps: ...
 
 
-SomeEdge = Edge[SomeVertexProps, SomeEdgeProps, SomeVertexProps]
-OtherEdge = Edge[SomeVertexProps, OtherEdgeProps, OtherVertexProps]
+SomeEdge = Edge[SomeEdgeProps]
+OtherEdge = Edge[OtherEdgeProps]
 
-SrcVertexPropsT = TypeVar("SrcVertexPropsT")
 EdgePropsT = TypeVar("EdgePropsT")
-DstVertexPropsT = TypeVar("DstVertexPropsT")
 
-EdgeHashIndex = dict[
-    EdgeID[SrcVertexPropsT, EdgePropsT, DstVertexPropsT],
-    Edge[SrcVertexPropsT, EdgePropsT, DstVertexPropsT],
-]
+EdgeHashIndex = dict[EdgeID, Edge[EdgePropsT]]
 
 
 class EdgeTypeTag(enum.IntEnum):
@@ -106,12 +97,8 @@ class EdgeTypeTag(enum.IntEnum):
 
 
 EDGE_TABLE_RESOLVER = {
-    EdgeTypeTag.SomeEdgeTag: EdgeHashIndex[
-        SomeVertexProps, SomeEdgeProps, SomeVertexProps
-    ],
-    EdgeTypeTag.OtherEdgeTag: EdgeHashIndex[
-        SomeVertexProps, OtherEdgeProps, OtherVertexProps
-    ],
+    EdgeTypeTag.SomeEdgeTag: EdgeHashIndex[SomeEdgeProps]({}),
+    EdgeTypeTag.OtherEdgeTag: EdgeHashIndex[OtherEdgeProps]({}),
     # ...
 }
 
@@ -123,15 +110,13 @@ EDGE_TABLE_RESOLVER = {
 # директория у каждой вершины своя. Поэтому параметризируем соответствующим типом вершины
 @dataclass
 class DirectoryEntry[VertexPropsT]:
-    _DependentOn_edge_type_tag = Any
-
     edge_type_tag: EdgeTypeTag
-    edge_id: EdgeID[VertexPropsT, _DependentOn_edge_type_tag, Any]  # зависимый тип :(
-    next_block_id: Optional[DirectoryID[VertexPropsT]]
+    edge_id: EdgeID
+    next_block_id: Optional[EdgeBlockID]
 
 
 VertexPropsT = TypeVar("VertexPropsT")
-DirectoryHashIndex = dict[DirectoryID[VertexPropsT], DirectoryEntry[VertexPropsT]]
+DirectoryHashIndex = dict[EdgeBlockID, DirectoryEntry[VertexPropsT]]
 
 
 DIRECTORY_INDEX_RESOLVER = {
@@ -139,15 +124,86 @@ DIRECTORY_INDEX_RESOLVER = {
     VertexTypeTag.OtherVertexTag: DirectoryHashIndex[OtherVertexProps]({}),
 }
 
+EDGE_CHECKER = {
+    VertexTypeTag.SomeVertexTag: [
+        EdgeTypeTag.SomeEdgeTag,
+        EdgeTypeTag.OtherEdgeTag,
+    ],
+    VertexTypeTag.OtherVertexTag: [],
+}
 
-class Traverser[VertexPropsT]:
-    def __init__(self):
-        self._seen_vs: dict[VertexID[VertexPropsT], bool] = {}
 
-    def traverse(
+# проверит, что заданное есть ребро у типа Vertex и то, что
+# тип ребра назначения также равен Vertex. Будет механизм уведомления
+# о нарушении
+def check_edge_tag_is_valid(v_tag: VertexTypeTag, e_tag: EdgeTypeTag): ...
+
+
+class Traverser:
+    def __init__(
         self,
-        v: Vertex[VertexPropsT],
-        filter: Callable[[VertexPropsT], bool],
-        cur_depth: int,
+        vertex_tag: VertexTypeTag,
+        vertex_filter: Callable[[Any], bool],
+        edge_tag: EdgeTypeTag,
+        edge_filter: Callable[[Any], bool],
         max_depth: int,
-    ) -> list[Vertex[VertexPropsT]]: ...
+    ):
+        self._seen_vs: set[VertexID] = set()
+        self.vertex_tag = vertex_tag
+        self.vertex_filter = vertex_filter
+        self.edge_tag = edge_tag
+        self.edge_filter = edge_filter
+        self.max_depth = max_depth
+
+    @staticmethod
+    # ЗАПРОС 1
+    def DFS(
+        vertex_id: VertexID,
+        vertex_tag: VertexTypeTag,
+        vertex_filter: Callable[[Any], bool],
+        edge_tag: EdgeTypeTag,
+        edge_filter: Callable[[Any], bool],
+        max_depth: int,
+    ):
+        t = Traverser(vertex_tag, vertex_filter, edge_tag, edge_filter, max_depth)
+
+        check_edge_tag_is_valid(t.vertex_tag, edge_tag)
+        return t.dfs_traverse(vertex_id)
+
+    def dfs_traverse(self, vertex_id: VertexID) -> list[VertexID]:
+        self._seen_vs.clear()
+        return self._dfs_traverse_helper(vertex_id, 0)
+
+    def _dfs_traverse_helper(
+        self, vertex_id: VertexID, cur_depth: int
+    ) -> list[VertexID]:
+        if cur_depth == self.max_depth:
+            return []
+
+        if vertex_id in self._seen_vs:
+            return []
+
+        self._seen_vs.add(vertex_id)
+        vert_table = VERTEX_TABLE_RESOLVER[self.vertex_tag]
+        v = vert_table[vertex_id]
+        if self.vertex_filter(v):
+            return []
+
+        director_table = DIRECTORY_INDEX_RESOLVER[self.vertex_tag]
+        block = director_table[v.edge_block_id]
+        while block.edge_type_tag != self.edge_tag:
+            if block.next_block_id is None:
+                return []
+            block = director_table[block.next_block_id]
+
+        edges_table = EDGE_TABLE_RESOLVER[self.edge_tag]
+
+        next_edge_id = block.edge_id
+        res: list[VertexID] = [vertex_id]
+        while next_edge_id is not None:
+            edge = edges_table[next_edge_id]
+            next_edge_id = edge.next_id
+            if not self.edge_filter(edge):
+                continue
+            res.extend(self._dfs_traverse_helper(edge.incident_vert_id, cur_depth + 1))
+        return res
