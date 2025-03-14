@@ -244,6 +244,9 @@ TreeIndex = dict[T, list[BaseVertex]]
 
 
 # запрос 2/3
+# O(log V) - сложность спуска по индексу до нужного элема
+# пусть m - число элемов со значением val
+# тогда O(log V + m * MaxDegree(G))
 def select_where[T](
     v_tag: VertexTypeTag,
     index: TreeIndex[T],
@@ -264,6 +267,7 @@ def select_where[T](
 
 
 # запрос 4
+# O(V + E)
 def aggregate(
     v_tag: VertexTypeTag,
     e_tag: EdgeTypeTag,
@@ -286,6 +290,8 @@ def aggregate(
 
 
 # запрос 5
+# O(V * E)
+# https://docs.tigergraph.com/graph-ml/3.10/community-algorithms/triangle-counting#_specifications
 def count_triangles(v_tag: VertexTypeTag, e_tag: EdgeTypeTag) -> float:
     assert_edge_T_T(v_tag, e_tag)
     vertex_table = VERTEX_TABLE_RESOLVER[v_tag]
