@@ -225,7 +225,7 @@ class Traverser:
 
         self._seen_vs.add(v_id)
         v = self.v_table[v_id]
-        if self.vertex_filter(v):
+        if not self.vertex_filter(v):
             return
 
         edges = vertex_edges(self.v_tag, v_id, self.e_tag)
@@ -241,7 +241,7 @@ TreeIndex = dict[T, list[BaseVertex]]
 
 # запрос 2/3
 # O(log V) - сложность спуска по индексу до нужного элема
-# пусть m - число элемов со значением val
+# пусть m - число элемов со значением val,
 # тогда O(log V + m * MaxDegree(G))
 def select_where[T](
     v_tag: VertexTypeTag,
