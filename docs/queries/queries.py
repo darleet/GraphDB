@@ -5,11 +5,9 @@ from typing import Callable, Deque, Generator, Optional, TypeVar
 
 
 VertexPropsT = TypeVar("VertexPropsT")
-# На каждый тип вершин он свой
 VertexHashIndex = dict["VertexID", "BaseVertex"]
 
 SurogateID = str
-# За пользовательские ID отвечает индекс
 EdgeID = SurogateID
 VertexID = SurogateID
 EdgeBlockID = SurogateID
@@ -96,7 +94,6 @@ EDGE_TABLE_RESOLVER = {
 # =====================================================
 
 
-# директория у каждой вершины своя. Поэтому параметризируем соответствующим типом вершины
 @dataclass
 class DirectoryEntry:
     edge_type_tag: EdgeTypeTag
