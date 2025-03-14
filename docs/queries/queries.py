@@ -1,6 +1,7 @@
+from collections import deque
 from dataclasses import dataclass
 import enum
-from typing import Any, Callable, Generator, Generic, Optional, TypeVar
+from typing import Callable, Deque, Generator, Optional, TypeVar
 
 
 VertexPropsT = TypeVar("VertexPropsT")
@@ -21,7 +22,7 @@ EdgeBlockID = SurogateID
 
 @dataclass
 class BaseVertex:
-    vertex_id: VertexID
+    id: VertexID
     edge_block_id: EdgeBlockID
 
 
@@ -133,7 +134,7 @@ def assert_edge_T_T(v_tag: VertexTypeTag, e_tag: EdgeTypeTag):
     pass
 
 
-def vertex_neighborhood(
+def vertex_edges(
     v_tag: VertexTypeTag, v_id: VertexID, e_tag: EdgeTypeTag
 ) -> Generator[BaseEdge]:
     d = TYPED_DIRECTORY_INDEX_RESOLVER[v_tag]
@@ -150,9 +151,9 @@ class Traverser:
     def __init__(
         self,
         vertex_tag: VertexTypeTag,
-        vertex_filter: Callable[[Any], bool],
+        vertex_filter: Callable[[BaseVertex], bool],
         edge_tag: EdgeTypeTag,
-        edge_filter: Callable[[Any], bool],
+        edge_filter: Callable[[BaseEdge], bool],
         max_depth: int,
     ):
         self._seen_vs: set[VertexID] = set()
@@ -162,9 +163,10 @@ class Traverser:
         self.edge_filter = edge_filter
         self.max_depth = max_depth
         self._result: list[VertexID] = []
+        self.v_table = VERTEX_TABLE_RESOLVER[self.v_tag]
+        assert_edge_T_T(self.v_tag, self.e_tag)
 
     @staticmethod
-    # ЗАПРОС 1
     def DFS(
         vertex_id: VertexID,
         vertex_tag: VertexTypeTag,
@@ -172,16 +174,49 @@ class Traverser:
         edge_tag: EdgeTypeTag,
         edge_filter: Callable[[BaseEdge], bool],
         max_depth: int,
-    ):
+    ) -> list[VertexID]:
         t = Traverser(vertex_tag, vertex_filter, edge_tag, edge_filter, max_depth)
 
-        assert_edge_T_T(t.v_tag, edge_tag)
         return t.dfs_traverse(vertex_id)
+
+    @staticmethod
+    def BFS(
+        vertex_id: VertexID,
+        vertex_tag: VertexTypeTag,
+        vertex_filter: Callable[[BaseVertex], bool],
+        edge_tag: EdgeTypeTag,
+        edge_filter: Callable[[BaseEdge], bool],
+        max_depth: int,
+    ) -> list[VertexID]:
+        t = Traverser(vertex_tag, vertex_filter, edge_tag, edge_filter, max_depth)
+
+        return t.bfs_traverse(vertex_id)
 
     def dfs_traverse(self, vertex_id: VertexID) -> list[VertexID]:
         self._seen_vs.clear()
         self._result.clear()
         self._dfs_traverse_helper(vertex_id, 1)
+        return self._result
+
+    def bfs_traverse(self, v_id: VertexID) -> list[VertexID]:
+        self._seen_vs.clear()
+        self._result.clear()
+
+        d: Deque[tuple[VertexID, int]] = deque()
+        d.append((v_id, 0))
+        while len(d) > 0:
+            (v_id, depth) = d.popleft()
+            next_depth = depth + 1
+            edges: Generator[BaseEdge] = vertex_edges(self.v_tag, v_id, self.e_tag)
+            for edge in filter(self.edge_filter, edges):
+                v = self.v_table[edge.incident_v_id]
+                if not self.vertex_filter(v):
+                    continue
+                if next_depth == self.max_depth:
+                    self._result.append(edge.id)
+                elif v_id not in self._seen_vs:
+                    d.append((v_id, next_depth))
+                    self._seen_vs.add(v_id)
         return self._result
 
     def _dfs_traverse_helper(self, v_id: VertexID, cur_depth: int):
@@ -193,27 +228,74 @@ class Traverser:
             return
 
         self._seen_vs.add(v_id)
-        vert_table = VERTEX_TABLE_RESOLVER[self.v_tag]
-        v = vert_table[v_id]
+        v = self.v_table[v_id]
         if self.vertex_filter(v):
             return
 
-        for edge in vertex_neighborhood(self.v_tag, v_id, self.e_tag):
+        edges = vertex_edges(self.v_tag, v_id, self.e_tag)
+        for edge in filter(self.edge_filter, edges):
             if not self.edge_filter(edge):
                 continue
             self._dfs_traverse_helper(edge.incident_v_id, cur_depth + 1)
 
 
-def count_triangles(v_tag: VertexTypeTag, e_tag: EdgeTypeTag):
+T = TypeVar("T")
+TreeIndex = dict[T, list[BaseVertex]]
+
+
+# запрос 2/3
+def select_where[T](
+    v_tag: VertexTypeTag,
+    index: TreeIndex[T],
+    val: T,
+    e_tag: EdgeTypeTag,
+    edge_filter: Callable[[BaseEdge], bool],
+    cutoff_degree: int,
+) -> list[str]:
+    res: list[VertexID] = []
+    vv = index[val]
+    for v in vv:
+        edges = vertex_edges(v_tag, v.id, e_tag)
+        count = sum(1 for _ in filter(edge_filter, edges))
+        if cutoff_degree > count:
+            continue
+        res.append(v.id)
+    return res
+
+
+# запрос 4
+def aggregate(
+    v_tag: VertexTypeTag,
+    e_tag: EdgeTypeTag,
+    edge_filter: Callable[[BaseEdge], bool],
+    param_extractor: Callable[[BaseVertex], float],
+    pred: Callable[[float], bool],
+) -> dict[VertexID, float]:
+    info: dict[VertexID, float] = {}
+    v_table = VERTEX_TABLE_RESOLVER[v_tag]
+    for v in v_table.values():
+        edges = vertex_edges(v_tag, v.id, e_tag)
+        s = 0
+        for edge in filter(edge_filter, edges):
+            n = v_table[edge.incident_v_id]
+            param = param_extractor(n)
+            s += param
+        if pred(s):
+            info[v.id] = s
+    return info
+
+
+# запрос 5
+def count_triangles(v_tag: VertexTypeTag, e_tag: EdgeTypeTag) -> float:
     assert_edge_T_T(v_tag, e_tag)
     vertex_table = VERTEX_TABLE_RESOLVER[v_tag]
 
     c = 0
     for v_id in vertex_table:
-        left_neighbourhood = set(e.id for e in vertex_neighborhood(v_tag, v_id, e_tag))
-        for edge in vertex_neighborhood(v_tag, v_id, e_tag):
+        left_neighbourhood = set(e.id for e in vertex_edges(v_tag, v_id, e_tag))
+        for edge in vertex_edges(v_tag, v_id, e_tag):
             right_neighbourhood = set(
-                e.id for e in vertex_neighborhood(v_tag, edge.incident_v_id, e_tag)
+                e.id for e in vertex_edges(v_tag, edge.incident_v_id, e_tag)
             )
 
             c += len(left_neighbourhood.intersection(right_neighbourhood))
