@@ -101,6 +101,5 @@ Neo4j компакцию делаю через копию базы, убирая
 
 Подсчёт всех «треугольников» в графе (без учёта ориентации).
 
-```pseudo
+https://docs.tigergraph.com/graph-ml/3.10/community-algorithms/triangle-counting#_specifications
 
-```
