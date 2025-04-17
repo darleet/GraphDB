@@ -167,7 +167,11 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	defer deletingNode.mu.Unlock()
 
 	prev := deletingNode.prev
-	if !prev.mu.TryLock() { // This is very problematic
+	// TODO: rework this into something NOT using retries
+	// Potential solution: tombstone marker.
+	// deleted nodes then would be cleaned up during the 
+	// next insert operation
+	if !prev.mu.TryLock() {
 		return false
 	}
 	delete(q.txnNodes, r.txnId)
