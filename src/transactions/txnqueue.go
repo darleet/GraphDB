@@ -107,18 +107,16 @@ func newTxnQueue() *txnQueue {
 func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	
+
 	q.head.mu.Lock()
 	cur := q.head
-	defer func(c **txnQueueEntry) {
-		(*c).mu.Unlock()
-	}(&cur)
+	defer func(c **txnQueueEntry) { (*c).mu.Unlock() }(&cur)
 
 	locksAreCompatible := true
 	for {
-		Assert(cur.r.txnId != r.txnId, "trying to lock already locked transaction. %v", r)
-		locksAreCompatible = locksAreCompatible && compatibleLockModes(r.lockMode, cur.r.lockMode)
+		Assert(cur.r.txnId != r.txnId, "trying to lock already locked transaction. %+v", r)
 
+		locksAreCompatible = locksAreCompatible && compatibleLockModes(r.lockMode, cur.r.lockMode)
 		if !locksAreCompatible && cur.r.txnId < r.txnId {
 			// Deadlock prevention policy
 			// Only an older transaction transactions can wait for a younger one.
@@ -159,12 +157,13 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
 	deletingNode, present := q.txnNodes[r.txnId]
 
-	Assert(present, "node not found. %v", r)
-	Assert(deletingNode.isLocked, "can't unlock an unlocked node. %v", r)
+	Assert(present, "node not found. %+v", r)
+	Assert(deletingNode.isLocked, "can't unlock an unlocked node. %+v", r)
 
-	deletingNode.mu.Lock() // <====================
+	deletingNode.mu.Lock()
 	defer deletingNode.mu.Unlock()
 
 	prev := deletingNode.prev
