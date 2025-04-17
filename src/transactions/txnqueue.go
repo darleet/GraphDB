@@ -45,7 +45,12 @@ type txnQueue struct {
 func (q *txnQueue) processBatch(lockedHead *txnQueueEntry) {
 	seenLockModes := make(map[LockMode]struct{})
 
-	cur := lockedHead
+	cur := lockedHead.SafeNext()
+	if cur == q.tail {
+		cur.mu.Unlock()
+		return
+	}
+
 	for {
 		Assert(!cur.isLocked, "only list prefix is allowed to be in the locked state")
 
@@ -63,24 +68,23 @@ func (q *txnQueue) processBatch(lockedHead *txnQueueEntry) {
 		if cur.next == q.tail {
 			break
 		}
-
 		cur = cur.SafeNext()
 	}
 
 	cur.mu.Unlock()
 }
 
-func New() *txnQueue {
+func newTxnQueue() *txnQueue {
 	head := &txnQueueEntry{
 		r: txnLockRequest{
 			txnId:    math.MaxUint64, // Needed for the deadlock prevention policy
-			lockMode: ALLOW_ALL,
+			lockMode: helper_ALLOW_ALL,
 		},
 	}
 	tail := &txnQueueEntry{
 		r: txnLockRequest{
 			txnId:    0, // Needed for the deadlock prevention policy
-			lockMode: FORBID_ALL,
+			lockMode: helper_FORBID_ALL,
 		},
 	}
 	head.next = tail
@@ -102,28 +106,38 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 
 	locksAreCompatible := true
 	cur := q.head
-	for ; cur.next != q.tail; cur = cur.SafeNext() {
+	for {
+		Assert(cur.r.txnId != r.txnId, "trying to lock already locked transaction. %v", r)
 		locksAreCompatible = locksAreCompatible && compatibleLockModes(r.lockMode, cur.r.lockMode)
 
-		if cur.r.txnId < r.txnId {
+		if !locksAreCompatible && cur.r.txnId < r.txnId {
 			// Deadlock prevention policy
 			// Only an older transaction transactions can wait for a younger one.
 			// Ohterwise, the younger transaction is aborted
 			cur.mu.Unlock()
 			return nil
 		}
+
+		if cur.next == q.tail {
+			break
+		}
+		cur = cur.SafeNext()
 	}
 	defer cur.mu.Unlock()
 
 	notifier := make(chan struct{})
 	if locksAreCompatible {
-		close(notifier)
+		close(notifier) // Grant the lock immediately if the requested mode is compatible with the others
 		newNode := &txnQueueEntry{
 			r:        r,
 			notifier: nil,
 			isLocked: true,
 		}
 		cur.SafeInsert(newNode)
+
+		q.mu.Lock()
+		q.txnNodes[r.txnId] = newNode
+		q.mu.Unlock()
 		return notifier
 	}
 	newNode := &txnQueueEntry{
@@ -132,6 +146,10 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 		isLocked: false,
 	}
 	cur.SafeInsert(newNode)
+
+	q.mu.Lock()
+	q.txnNodes[r.txnId] = newNode
+	q.mu.Unlock()
 	return notifier
 }
 
@@ -139,8 +157,8 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	node := q.txnNodes[r.txnId]
-	Assert(node != nil, "node not found. %v", r)
+	node, present := q.txnNodes[r.txnId]
+	Assert(present, "node not found. %v", r)
 	Assert(node.isLocked, "can't unlock an unlocked node. %v", r)
 
 	delete(q.txnNodes, r.txnId)
@@ -158,12 +176,12 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 
 	prev.next = next
 	next.prev = prev
-	
+
 	if prev == q.head && !next.isLocked {
 		next.mu.Unlock()
-		q.processBatch(prev) 
+		q.processBatch(prev)
 		return true
-	} 
+	}
 
 	next.mu.Unlock()
 	prev.mu.Unlock()

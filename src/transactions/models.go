@@ -2,22 +2,25 @@ package transactions
 
 type RecordID uint64
 
+/* a monotonically increasing counter. It is guaranteed to be unique between transactions
+ * WARN: there might be problems with synchronization
+ *       in distributed systems that use this kind of transaction IDs */
 type TransactionID uint64
 
 type LockMode int
 
 const (
-	ALLOW_ALL LockMode = iota
+	helper_ALLOW_ALL LockMode = iota
 	SHARED
 	EXCLUSIVE
-	FORBID_ALL
+	helper_FORBID_ALL
 )
 
 func compatibleLockModes(l LockMode, r LockMode) bool {
-	if l == FORBID_ALL || r == FORBID_ALL {
+	if l == helper_FORBID_ALL || r == helper_FORBID_ALL {
 		return false
 	}
-	if l == ALLOW_ALL || r == ALLOW_ALL {
+	if l == helper_ALLOW_ALL || r == helper_ALLOW_ALL {
 		return true
 	}
 	if l == SHARED && r == SHARED {
@@ -27,9 +30,6 @@ func compatibleLockModes(l LockMode, r LockMode) bool {
 }
 
 type txnLockRequest struct {
-	/* a monotonically increasing counter.
-	 * WARN: there might be problems with synchronization
-	 * in distributed systems that use this kind of transaction IDs */
 	txnId    TransactionID
 	recordId RecordID
 	lockMode LockMode
