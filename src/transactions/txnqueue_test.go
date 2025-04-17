@@ -1,6 +1,7 @@
 package transactions
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -71,21 +72,29 @@ func TestConcurrentAccess(t *testing.T) {
 	q := newTxnQueue()
 	var wg sync.WaitGroup
 
-	for i := TransactionID(1); i <= 5; i++ {
+	for i := 1; i <= 10; i++ {
 		wg.Add(1)
-		go func(id TransactionID) {
+		go func(id int) {
 			defer wg.Done()
 			req := txnLockRequest{
-				txnId:    id,
+				txnId:    TransactionID(id),
 				recordId: 1,
 				lockMode: SHARED,
 			}
+			fmt.Printf("before lock %d\n", id)
 			notifier := q.Lock(req)
+			fmt.Printf("after lock %d\n", id)
+
 			expectClosedChannel(t, notifier, "shared lock request should have been granted")
+
+			fmt.Printf("before unlock %d\n", id)
+			q.Unlock(txnUnlockRequest{txnId: TransactionID(id), recordId: 1})
+			fmt.Printf("after unlock %d\n", id)
 		}(i)
 	}
 
 	wg.Wait()
+	println(123)
 }
 
 // TestExclusiveOrdering validates exclusive locks ordering
@@ -100,7 +109,10 @@ func TestExclusiveOrdering(t *testing.T) {
 	expectClosedChannel(t, notifier1, "empty queue -> grant the lock")
 	expectOpenChannel(t, notifier2, "shouldn't have granted the lock in presence of concurrent exclusive lock")
 
-	q.Unlock(txnUnlockRequest{txnId: 9, recordId: 1})
+	if !q.Unlock(txnUnlockRequest{txnId: 9, recordId: 1}) {
+		t.Errorf("no concurrent deleted -> couldn't have failed")
+	}
+
 	expectClosedChannel(t, notifier2, "empty queue -> grant the lock")
 }
 
@@ -121,4 +133,3 @@ func TestLockFairness(t *testing.T) {
 	expectOpenChannel(t, notifier2, "incompatible lock -> wait")
 	expectOpenChannel(t, notifier3, "waiting imcompatible lock -> can't grant the lock immediately")
 }
-

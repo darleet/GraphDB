@@ -1,7 +1,7 @@
 package transactions
 
 import (
-	"runtime"
+	"fmt"
 	"sync"
 )
 
@@ -24,12 +24,12 @@ func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
 
 func (m *Manager) Unlock(r txnUnlockRequest) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	q, present := m.qs[r.recordId]
+	m.mu.Unlock()
 	Assert(present, "trying to unlock a transaction on an unlocked tuple")
 
 	for !q.Unlock(r) {
-		runtime.Gosched() // TODO: rething the retries
+		fmt.Println("FAIL")
+		// runtime.Gosched() // TODO: rething the retries
 	}
 }
