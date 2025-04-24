@@ -1,11 +1,12 @@
 package bufferpool_test
 
 import (
+	"testing"
+
 	"github.com/Blackdeer1524/GraphDB/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/bufferpool/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestGetPage_CacheMissAndLoad(t *testing.T) {
