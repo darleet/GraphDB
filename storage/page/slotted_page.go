@@ -1,0 +1,108 @@
+package page
+
+import (
+	"encoding/binary"
+	"errors"
+)
+
+var (
+	ErrNoEnoughSpace = errors.New("not enough space")
+	ErrInvalidSlotID = errors.New("invalid slot ID")
+)
+
+// TODO добавить рисунок - иллюстрацию
+
+const (
+	Size       = 4096
+	HeaderSize = 12 // numSlots (4) + freeStart (4) + freeEnd (4)
+	SlotSize   = 4  // offset (2) + length (2)
+)
+
+type SlottedPage struct {
+	data []byte
+}
+
+func NewSlottedPage() *SlottedPage {
+	p := &SlottedPage{
+		data: make([]byte, Size),
+	}
+
+	p.setNumSlots(0)
+	p.setFreeStart(HeaderSize)
+	p.setFreeEnd(Size)
+
+	return p
+}
+
+func (p *SlottedPage) numSlots() int {
+	return int(binary.LittleEndian.Uint32(p.data[0:4]))
+}
+
+func (p *SlottedPage) setNumSlots(n int) {
+	binary.LittleEndian.PutUint32(p.data[0:4], uint32(n))
+}
+
+func (p *SlottedPage) freeStart() int {
+	return int(binary.LittleEndian.Uint32(p.data[4:8]))
+}
+
+func (p *SlottedPage) setFreeStart(n int) {
+	binary.LittleEndian.PutUint32(p.data[4:8], uint32(n))
+}
+
+func (p *SlottedPage) freeEnd() int {
+	return int(binary.LittleEndian.Uint32(p.data[8:12]))
+}
+
+func (p *SlottedPage) setFreeEnd(n int) {
+	binary.LittleEndian.PutUint32(p.data[8:12], uint32(n))
+}
+
+func (p *SlottedPage) getSlot(i int) (offset, length int) {
+	base := HeaderSize + i*SlotSize
+
+	offset = int(binary.LittleEndian.Uint16(p.data[base : base+2]))
+	length = int(binary.LittleEndian.Uint16(p.data[base+2 : base+4]))
+
+	return
+}
+
+func (p *SlottedPage) setSlot(i, offset, length int) {
+	base := HeaderSize + i*SlotSize
+	binary.LittleEndian.PutUint16(p.data[base:base+2], uint16(offset))
+	binary.LittleEndian.PutUint16(p.data[base+2:base+4], uint16(length))
+}
+
+func (p *SlottedPage) Insert(record []byte) (int, error) {
+	recLen := len(record)
+	freeSpace := p.freeEnd() - p.freeStart()
+
+	if freeSpace < recLen+SlotSize {
+		return -1, ErrNoEnoughSpace
+	}
+
+	// Allocate space for the record
+	newOffset := p.freeEnd() - recLen
+	copy(p.data[newOffset:], record)
+
+	// Create slot
+	slotID := p.numSlots()
+	p.setSlot(slotID, newOffset, recLen)
+
+	// Update header
+	p.setNumSlots(slotID + 1)
+	p.setFreeEnd(newOffset)
+	p.setFreeStart(HeaderSize + (slotID+1)*SlotSize)
+
+	return slotID, nil
+}
+
+func (p *SlottedPage) Get(slotID int) ([]byte, error) {
+	if slotID < 0 || slotID >= p.numSlots() {
+		return nil, ErrInvalidSlotID
+	}
+
+	offset, length := p.getSlot(slotID)
+
+	return p.data[offset : offset+length], nil
+}
