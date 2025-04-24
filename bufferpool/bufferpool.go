@@ -10,6 +10,7 @@ const noFrame = ^uint64(0)
 
 var ErrNoSuchPage = errors.New("no such page")
 
+// Replacer manages what page is next for eviction from RAM to disk.
 type Replacer interface {
 	Pin(frameID uint64)
 	Unpin(frameID uint64)

@@ -20,7 +20,9 @@ func TestGetPage_CacheMissAndLoad(t *testing.T) {
 	require.NoError(t, err)
 
 	p, err := mgr.GetPage(1, 1)
+
 	require.NoError(t, err)
+
 	require.NotNil(t, p)
 	assert.Equal(t, "hello", string(p.GetData()))
 }
