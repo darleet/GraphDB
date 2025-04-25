@@ -94,7 +94,6 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-	println(123)
 }
 
 // TestExclusiveOrdering validates exclusive locks ordering
