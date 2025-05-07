@@ -37,11 +37,11 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 	m := NewManager()
 	var wg sync.WaitGroup
 
-	for i := range 5 {
+	for i := range 50 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			recordID := RecordID(id % 1) // Two distinct records
+			recordID := RecordID(id & 1) // Two distinct records
 			req := txnLockRequest{
 				txnId:    TransactionID(id),
 				recordId: recordID,
