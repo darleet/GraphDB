@@ -8,7 +8,7 @@ import (
 )
 
 func TestManagerBasicOperation(t *testing.T) {
-	m := &Manager{qs: make(map[RecordID]*txnQueue)}
+	m := NewManager()
 
 	// Test queue creation on first lock
 	req := txnLockRequest{txnId: 1, recordId: 100, lockMode: SHARED}
@@ -16,25 +16,25 @@ func TestManagerBasicOperation(t *testing.T) {
 	expectClosedChannel(t, notifier, "Initial lock should be granted")
 
 	// Verify queue exists
-	m.mu.Lock()
+	m.qsGuard.Lock()
 	if _, exists := m.qs[100]; !exists {
 		t.Error("Manager should create queue for new record ID")
 	}
-	m.mu.Unlock()
+	m.qsGuard.Unlock()
 
 	// Successful unlock
 	m.Unlock(txnUnlockRequest{txnId: 1, recordId: 100})
 
 	// Verify queue persists after unlock
-	m.mu.Lock()
+	m.qsGuard.Lock()
 	if _, exists := m.qs[100]; !exists {
 		t.Error("Queue should remain after unlock")
 	}
-	m.mu.Unlock()
+	m.qsGuard.Unlock()
 }
 
 func TestManagerConcurrentRecordAccess(t *testing.T) {
-	m := &Manager{qs: make(map[RecordID]*txnQueue)}
+	m := NewManager()
 	var wg sync.WaitGroup
 
 	for i := range 5 {
@@ -62,7 +62,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 }
 
 func TestManagerUnlockPanicScenarios(t *testing.T) {
-	m := &Manager{qs: make(map[RecordID]*txnQueue)}
+	m := NewManager()
 
 	// Test non-existent record panic
 	t.Run("NonExistentRecord", func(t *testing.T) {
@@ -91,7 +91,7 @@ func TestManagerUnlockPanicScenarios(t *testing.T) {
 }
 
 func TestManagerLockContention(t *testing.T) {
-	m := &Manager{qs: make(map[RecordID]*txnQueue)}
+	m := NewManager()
 	recordID := RecordID(300)
 
 	// First exclusive lock
@@ -117,7 +117,7 @@ func TestManagerLockContention(t *testing.T) {
 }
 
 func TestManagerUnlockRetry(t *testing.T) {
-	m := &Manager{qs: make(map[RecordID]*txnQueue)}
+	m := NewManager()
 	recordID := RecordID(400)
 
 	// Setup lock
@@ -139,4 +139,28 @@ func TestManagerUnlockRetry(t *testing.T) {
 	// This should retry until successful
 	m.Unlock(txnUnlockRequest{txnId: 1, recordId: recordID})
 	wg.Wait()
+}
+
+func TestManagerUnlockAll(t *testing.T) {
+	m := NewManager()
+
+	waitingTxn := TransactionID(0)
+	runningTxn := TransactionID(1)
+
+	notifier1x := m.Lock(txnLockRequest{
+		txnId:    runningTxn,
+		recordId: 1,
+		lockMode: EXCLUSIVE,
+	})
+	expectClosedChannel(t, notifier1x, "Txn 1 should have been granted the Exclusive Lock on 1")
+
+	notifier0s := m.Lock(txnLockRequest{
+		txnId:    waitingTxn,
+		recordId: 1,
+		lockMode: SHARED,
+	})
+	expectOpenChannel(t, notifier0s, "Txn 0 should be enqueued on record 1")
+
+	m.UnlockAll(runningTxn)
+	expectClosedChannel(t, notifier0s, "Txn 0 should have been granted the lock after the running transaction has finished")
 }

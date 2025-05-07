@@ -159,9 +159,7 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	defer q.mu.Unlock()
 
 	deletingNode, present := q.txnNodes[r.txnId]
-
 	Assert(present, "node not found. %+v", r)
-	Assert(deletingNode.isLocked, "can't unlock an unlocked node. %+v", r)
 
 	deletingNode.mu.Lock()
 	defer deletingNode.mu.Unlock()
@@ -182,7 +180,7 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	next.mu.Unlock()
 
 	prev.next = next
-	if prev == q.head && !next.isLocked {
+	if deletingNode.isLocked && prev == q.head && !next.isLocked {
 		q.processBatch(prev)
 		return true
 	}
