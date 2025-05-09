@@ -15,6 +15,22 @@ func (p *MockPage) GetData() []byte {
 	return p.Data
 }
 
+func (p *MockPage) Lock() {
+
+}
+
+func (p *MockPage) Unlock() {
+
+}
+
+func (p *MockPage) RLock() {
+
+}
+
+func (p *MockPage) RUnlock() {
+
+}
+
 func (p *MockPage) Insert(record []byte) (int, error) {
 	p.Data = append(p.Data, record...)
 

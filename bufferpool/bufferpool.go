@@ -4,13 +4,24 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/Blackdeer1524/GraphDB/pkg/assert"
 )
 
 const noFrame = ^uint64(0)
 
 var ErrNoSuchPage = errors.New("no such page")
 
-// Replacer manages what page is next for eviction from RAM to disk.
+type Page interface {
+	GetData() []byte
+
+	// latch methods
+	Lock()
+	Unlock()
+	RLock()
+	RUnlock()
+}
+
 type Replacer interface {
 	Pin(frameID uint64)
 	Unpin(frameID uint64)
@@ -18,31 +29,18 @@ type Replacer interface {
 	GetSize() uint64
 }
 
-type Page interface {
-	GetData() []byte
-	Insert(record []byte) (int, error)
+type DiskManager[T Page] interface {
+	ReadPage(fileID, pageID uint64) (T, error)
+	WritePage(page T) error
 }
 
-type DiskManager interface {
-	ReadPage(fileID uint64, pageID uint64) (Page, error)
-	WritePage(page Page) error
-}
-
-// Frame is a "container" for one page in buffer pool with some metadata.
-// Frame is stored in physical memory (RAM)
-type Frame struct {
-	page Page
-
-	idx uint64
-
-	pinCount int
-
-	dirty bool
-
-	latch sync.RWMutex
-
-	fileID uint64
-	pageID uint64
+type Frame[T Page] struct {
+	Page     T
+	Idx      uint64
+	PinCount int
+	Dirty    bool
+	FileID   uint64
+	PageID   uint64
 }
 
 type pageIdentity struct {
@@ -50,48 +48,41 @@ type pageIdentity struct {
 	pageID uint64
 }
 
-type Manager struct {
-	poolSize int
-
+type Manager[T Page] struct {
+	poolSize    int
 	pageToFrame map[pageIdentity]uint64
-	frames      []*Frame
+	frames      []Frame[T]
 	emptyFrames []uint64
 
 	replacer Replacer
 
-	diskManager DiskManager
+	diskManager DiskManager[T]
 
 	fastPath sync.Mutex
 	slowPath sync.Mutex
 }
 
-// New creates buffer pool (or page cache) object with specified poolSize.
-// poolSize is a count of pages, that can be stored in physical memory (RAM)
-// at the same time
-func New(poolSize int, replacer Replacer, diskManager DiskManager) (*Manager, error) {
-	if poolSize <= 0 {
-		return nil, errors.New("pool size must be greater than zero")
-	}
+func New[T Page](poolSize int, replacer Replacer, diskManager DiskManager[T]) (*Manager[T], error) {
+	assert.Assert(poolSize > 0, "pool size must be greater than zero")
 
 	emptyFrames := make([]uint64, poolSize)
 	for i := 0; i < poolSize; i++ {
 		emptyFrames[i] = uint64(i)
 	}
 
-	return &Manager{
+	frames := make([]Frame[T], poolSize)
+
+	return &Manager[T]{
 		poolSize:    poolSize,
 		pageToFrame: make(map[pageIdentity]uint64),
-		frames:      make([]*Frame, poolSize),
+		frames:      frames,
 		emptyFrames: emptyFrames,
 		replacer:    replacer,
 		diskManager: diskManager,
 	}, nil
 }
 
-// Unpin decreases the pin count of the page identified by fileID and pageID.
-// If the pin count drops to zero, the page becomes a candidate for eviction
-// and is passed to the replacer.
-func (m *Manager) Unpin(fileID, pageID uint64) error {
+func (m *Manager[T]) Unpin(fileID, pageID uint64) error {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
@@ -100,55 +91,41 @@ func (m *Manager) Unpin(fileID, pageID uint64) error {
 		return ErrNoSuchPage
 	}
 
-	return m.unpinFrame(frameID)
+	m.unpinFrame(frameID)
+
+	return nil
 }
 
-func (m *Manager) unpinFrame(frameID uint64) error {
-	frame := m.frames[frameID]
-	if frame.pinCount <= 0 {
-		return errors.New("invalid pin count")
-	}
+func (m *Manager[T]) unpinFrame(frameID uint64) {
+	frame := &m.frames[frameID]
 
-	frame.pinCount--
-	if frame.pinCount == 0 {
+	assert.Assert(frame.PinCount > 0, "invalid pin count")
+
+	frame.PinCount--
+	if frame.PinCount == 0 {
 		m.replacer.Unpin(frameID)
 	}
-
-	return nil
 }
 
-func (m *Manager) pin(fileID, pageID uint64) error {
+func (m *Manager[T]) pin(fileID, pageID uint64) {
 	frameID, ok := m.pageToFrame[pageIdentity{fileID, pageID}]
-	if !ok {
-		return fmt.Errorf("no frame for such page: %d", pageID)
-	}
 
-	frame := m.frames[frameID]
-	frame.pinCount++
+	assert.Assert(ok, "no frame for page: %d", pageID)
+
+	m.frames[frameID].PinCount++
 	m.replacer.Pin(frameID)
-
-	return nil
 }
 
-// GetPage returns the page identified by fileID and pageID from the buffer pool.
-// If the page is already cached, it increments the pin count and returns it.
-// Otherwise, it tries to:
-//   - allocate a free frame if available, or
-//   - evict a victim frame using the replacer (writing it back to disk if dirty),
-//
-// then loads the requested page from disk into that frame.
-func (m *Manager) GetPage(fileID, pageID uint64) (Page, error) {
+func (m *Manager[T]) GetPage(fileID, pageID uint64) (*T, error) {
 	m.fastPath.Lock()
 
 	pIdent := pageIdentity{fileID, pageID}
 
 	if frameID, ok := m.pageToFrame[pIdent]; ok {
-		err := m.pin(fileID, pageID)
+		m.pin(fileID, pageID)
 		m.fastPath.Unlock()
-		if err != nil {
-			return nil, err
-		}
-		return m.frames[frameID].page, nil
+
+		return &m.frames[frameID].Page, nil
 	}
 
 	m.fastPath.Unlock()
@@ -157,17 +134,12 @@ func (m *Manager) GetPage(fileID, pageID uint64) (Page, error) {
 	defer m.slowPath.Unlock()
 
 	m.fastPath.Lock()
-
 	if frameID, ok := m.pageToFrame[pIdent]; ok {
-		err := m.pin(fileID, pageID)
+		m.pin(fileID, pageID)
 		m.fastPath.Unlock()
-		if err != nil {
-			return nil, err
-		}
 
-		return m.frames[frameID].page, nil
+		return &m.frames[frameID].Page, nil
 	}
-
 	m.fastPath.Unlock()
 
 	frameID := m.reserveFrame()
@@ -176,16 +148,14 @@ func (m *Manager) GetPage(fileID, pageID uint64) (Page, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		m.frames[frameID] = &Frame{
-			page:     page,
-			pinCount: 1,
-			fileID:   fileID,
-			pageID:   pageID,
+		m.frames[frameID] = Frame[T]{
+			Page:     page,
+			PinCount: 1,
+			FileID:   fileID,
+			PageID:   pageID,
 		}
-
 		m.pageToFrame[pIdent] = frameID
-		return page, nil
+		return &page, nil
 	}
 
 	victimFrameID, err := m.replacer.ChooseVictim()
@@ -193,61 +163,55 @@ func (m *Manager) GetPage(fileID, pageID uint64) (Page, error) {
 		return nil, err
 	}
 
-	victimFrame := m.frames[victimFrameID]
-	if victimFrame == nil {
-		return nil, errors.New("victim frame is nil")
-	}
-
-	if victimFrame.dirty {
-		err = m.diskManager.WritePage(victimFrame.page)
+	victimFrame := &m.frames[victimFrameID]
+	if victimFrame.Dirty {
+		err = m.diskManager.WritePage(victimFrame.Page)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// Remove old page mapping
-	oldIdent := pageIdentity{fileID: victimFrame.fileID, pageID: victimFrame.pageID}
+	oldIdent := pageIdentity{
+		fileID: victimFrame.FileID,
+		pageID: victimFrame.PageID,
+	}
+
 	delete(m.pageToFrame, oldIdent)
 
-	// Load new page
 	page, err := m.diskManager.ReadPage(fileID, pageID)
 	if err != nil {
 		return nil, err
 	}
 
-	m.frames[victimFrameID] = &Frame{
-		page:     page,
-		pinCount: 1,
-		fileID:   fileID,
-		pageID:   pageID,
+	m.frames[victimFrameID] = Frame[T]{
+		Page:     page,
+		PinCount: 1,
+		FileID:   fileID,
+		PageID:   pageID,
 	}
 
 	m.pageToFrame[pIdent] = victimFrameID
 
-	return page, nil
+	return &page, nil
 }
 
-func (m *Manager) reserveFrame() uint64 {
+func (m *Manager[T]) reserveFrame() uint64 {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
 	if len(m.emptyFrames) > 0 {
 		id := m.emptyFrames[0]
 		m.emptyFrames = m.emptyFrames[1:]
-
-		if m.frames[id] == nil {
-			m.frames[id] = &Frame{}
-		}
-
-		m.frames[id].pinCount++
+		m.frames[id].PinCount = 1
 		m.replacer.Pin(id)
+
 		return id
 	}
 
 	return noFrame
 }
 
-func (m *Manager) MarkDirty(fileID, pageID uint64) error {
+func (m *Manager[T]) MarkDirty(fileID, pageID uint64) error {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
@@ -256,15 +220,12 @@ func (m *Manager) MarkDirty(fileID, pageID uint64) error {
 		return ErrNoSuchPage
 	}
 
-	m.frames[frameID].dirty = true
-
+	m.frames[frameID].Dirty = true
 	return nil
 }
 
-// FlushPage writes the page to disk if and only if it is marked as dirty.
-func (m *Manager) FlushPage(fileID, pageID uint64) error {
+func (m *Manager[T]) FlushPage(fileID, pageID uint64) error {
 	pIdent := pageIdentity{fileID, pageID}
-
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
@@ -273,34 +234,32 @@ func (m *Manager) FlushPage(fileID, pageID uint64) error {
 		return fmt.Errorf("no frame for such page: %d", pageID)
 	}
 
-	frame := m.frames[frameID]
-	if !frame.dirty {
+	frame := &m.frames[frameID]
+	if !frame.Dirty {
 		return nil
 	}
 
-	err := m.diskManager.WritePage(frame.page)
+	err := m.diskManager.WritePage(frame.Page)
 	if err != nil {
 		return fmt.Errorf("failed to write page to disk: %w", err)
+
 	}
 
-	frame.dirty = false
+	frame.Dirty = false
 
 	return nil
 }
 
-// FlushAllPages flushes all dirty pages to disk
-func (m *Manager) FlushAllPages() error {
+func (m *Manager[T]) FlushAllPages() error {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
-	for _, frame := range m.frames {
-		if frame != nil && frame.dirty {
-			err := m.diskManager.WritePage(frame.page)
-			if err != nil {
-				return err
-			}
+	for i := range m.frames {
+		frame := &m.frames[i]
+		if frame.Dirty {
+			_ = m.diskManager.WritePage(frame.Page)
 
-			frame.dirty = false
+			frame.Dirty = false
 		}
 	}
 

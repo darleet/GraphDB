@@ -3,6 +3,10 @@ package page
 import (
 	"encoding/binary"
 	"errors"
+	"sync"
+	"sync/atomic"
+
+	"github.com/Blackdeer1524/GraphDB/pkg/assert"
 )
 
 var (
@@ -20,6 +24,9 @@ const (
 
 type SlottedPage struct {
 	data []byte
+
+	locked atomic.Bool
+	latch  sync.RWMutex
 }
 
 func NewSlottedPage() *SlottedPage {
@@ -105,4 +112,34 @@ func (p *SlottedPage) Get(slotID int) ([]byte, error) {
 	offset, length := p.getSlot(slotID)
 
 	return p.data[offset : offset+length], nil
+}
+
+func (p *SlottedPage) GetData() []byte {
+	assert.Assert(!p.locked.Load(), "GetData contract is violated")
+
+	return p.data
+}
+
+func (p *SlottedPage) Lock() {
+	p.latch.Lock()
+
+	p.locked.Store(true)
+}
+
+func (p *SlottedPage) Unlock() {
+	p.locked.Store(false)
+
+	p.latch.Unlock()
+}
+
+func (p *SlottedPage) RLock() {
+	p.latch.RLock()
+
+	p.locked.Store(true)
+}
+
+func (p *SlottedPage) RUnlock() {
+	p.locked.Store(false)
+
+	p.latch.RUnlock()
 }

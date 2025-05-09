@@ -25,7 +25,7 @@ func TestGetPage_CacheMissAndLoad(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, p)
-	assert.Equal(t, "hello", string(p.GetData()))
+	assert.Equal(t, "hello", string((*p).GetData()))
 }
 
 func TestUnpin(t *testing.T) {
