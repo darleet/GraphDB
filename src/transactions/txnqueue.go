@@ -46,9 +46,9 @@ func (q *txnQueue) processBatch(lockedHead *txnQueueEntry) {
 	seenLockModes := make(map[LockMode]struct{})
 
 	cur := lockedHead.SafeNext()
-	defer func(c **txnQueueEntry) {
-		(*c).mu.Unlock()
-	}(&cur)
+	defer func() {
+		cur.mu.Unlock()
+	}()
 
 	if cur == q.tail {
 		return
@@ -167,7 +167,7 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	prev := deletingNode.prev
 	// TODO: rework this into something NOT using retries
 	// Potential solution: tombstone marker.
-	// deleted nodes then would be cleaned up during the 
+	// deleted nodes then would be cleaned up during the
 	// next insert operation
 	if !prev.mu.TryLock() {
 		return false

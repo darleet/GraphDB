@@ -50,8 +50,8 @@ func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
 			m.lockedRecords[r.txnId] = alreadyLockedRecords
 		}
 
-		_, isAlraedyLocked := alreadyLockedRecords[r.recordId]
-		Assert(!isAlraedyLocked,
+		_, isAleadyLocked := alreadyLockedRecords[r.recordId]
+		Assert(!isAleadyLocked,
 			"Didn't expect the record %+v to be locked by a transaction %+v",
 			r.recordId,
 			r.txnId)
