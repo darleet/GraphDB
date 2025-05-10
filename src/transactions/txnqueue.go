@@ -119,8 +119,8 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 		locksAreCompatible = locksAreCompatible && compatibleLockModes(r.lockMode, cur.r.lockMode)
 		if !locksAreCompatible && cur.r.txnId < r.txnId {
 			// Deadlock prevention policy
-			// Only an older transaction transactions can wait for a younger one.
-			// Ohterwise, the younger transaction is aborted
+			// Only an older transaction can wait for a younger one.
+			// Ohterwise, a younger transaction is aborted
 			return nil
 		}
 
