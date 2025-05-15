@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
 // Type tags for each log record type.
@@ -404,4 +407,126 @@ func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
 	c.afterValue = make([]byte, afterLen)
 	_, err := io.ReadFull(reader, c.afterValue)
 	return err
+}
+
+func (c *CheckpointBegin) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(TypeCheckpointBegin)
+	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (c *CheckpointBegin) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != TypeCheckpointBegin {
+		return errors.New("invalid type tag for CompensationLogRecord")
+	}
+	reader := bytes.NewReader(data[1:])
+	if err := binary.Read(reader, binary.BigEndian, &c.lsn); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *CheckpointEnd) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(TypeCheckpointEnd)
+
+	// Write LSN
+	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
+		return nil, err
+	}
+
+	// Write active transactions
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.activeTransactions))); err != nil {
+		return nil, err
+	}
+	for _, txnID := range c.activeTransactions {
+		if err := binary.Write(buf, binary.BigEndian, txnID); err != nil {
+			return nil, err
+		}
+	}
+
+	// Write dirty page table
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.dirtyPageTable))); err != nil {
+		return nil, err
+	}
+	for pageID, pageLSN := range c.dirtyPageTable {
+		pageData, err := pageID.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		// Write page identity length and data
+		if err := binary.Write(buf, binary.BigEndian, uint32(len(pageData))); err != nil {
+			return nil, err
+		}
+		buf.Write(pageData)
+		// Write associated LSN
+		if err := binary.Write(buf, binary.BigEndian, pageLSN); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (c *CheckpointEnd) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 {
+		return errors.New("insufficient data for type tag")
+	}
+	if data[0] != TypeCheckpointEnd {
+		return errors.New("invalid type tag for CheckpointEnd")
+	}
+
+	reader := bytes.NewReader(data[1:])
+
+	// Read LSN
+	if err := binary.Read(reader, binary.BigEndian, &c.lsn); err != nil {
+		return err
+	}
+
+	// Read active transactions
+	var activeTxnsLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &activeTxnsLen); err != nil {
+		return err
+	}
+	c.activeTransactions = make([]transactions.TxnID, activeTxnsLen)
+	for i := range c.activeTransactions {
+		if err := binary.Read(reader, binary.BigEndian, &c.activeTransactions[i]); err != nil {
+			return err
+		}
+	}
+
+	// Read dirty page table
+	var dirtyPagesLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &dirtyPagesLen); err != nil {
+		return err
+	}
+	c.dirtyPageTable = make(map[bufferpool.PageIdentity]LSN, dirtyPagesLen)
+	for i := 0; i < int(dirtyPagesLen); i++ {
+		// Read page identity
+		var pageDataLen uint32
+		if err := binary.Read(reader, binary.BigEndian, &pageDataLen); err != nil {
+			return err
+		}
+		pageData := make([]byte, pageDataLen)
+		if _, err := io.ReadFull(reader, pageData); err != nil {
+			return err
+		}
+		var pageID bufferpool.PageIdentity
+		if err := pageID.UnmarshalBinary(pageData); err != nil {
+			return err
+		}
+
+		// Read associated LSN
+		var pageLSN LSN
+		if err := binary.Read(reader, binary.BigEndian, &pageLSN); err != nil {
+			return err
+		}
+
+		c.dirtyPageTable[pageID] = pageLSN
+	}
+
+	return nil
 }

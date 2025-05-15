@@ -291,3 +291,138 @@ func TestPartialData(t *testing.T) {
 		t.Fatal("Expected error for truncated data, got nil")
 	}
 }
+
+func TestCheckpointBegin_MarshalUnmarshal(t *testing.T) {
+	original := NewCheckpointBegin(123456789)
+
+	data, err := original.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+
+	var recovered CheckpointBegin
+	if err := recovered.UnmarshalBinary(data); err != nil {
+		t.Fatalf("UnmarshalBinary failed: %v", err)
+	}
+
+	if original.lsn != recovered.lsn {
+		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
+	}
+}
+
+func TestCheckpointBegin_EmptyData(t *testing.T) {
+	var recovered CheckpointBegin
+	if err := recovered.UnmarshalBinary([]byte{}); err == nil {
+		t.Fatal("Expected error for empty data, got nil")
+	}
+}
+
+func TestCheckpointBegin_InvalidTypeTag(t *testing.T) {
+	// Create a valid record first
+	original := NewCheckpointBegin(123456789)
+	data, err := original.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+
+	// Corrupt the type tag
+	data[0] = 0xFF
+
+	var recovered CheckpointBegin
+	if err := recovered.UnmarshalBinary(data); err == nil {
+		t.Fatal("Expected error for invalid type tag, got nil")
+	}
+}
+
+func TestCheckpointBegin_TruncatedData(t *testing.T) {
+	// Create a valid record first
+	original := NewCheckpointBegin(123456789)
+	data, err := original.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+
+	// Truncate the data (remove last byte)
+	data = data[:len(data)-1]
+
+	var recovered CheckpointBegin
+	if err := recovered.UnmarshalBinary(data); err == nil {
+		t.Fatal("Expected error for truncated data, got nil")
+	}
+}
+
+func TestCheckpointEnd_MarshalUnmarshal(t *testing.T) {
+	activeTxns := []transactions.TxnID{123, 456, 789}
+	dirtyPages := map[bufferpool.PageIdentity]LSN{
+		bufferpool.PageIdentity{PageID: 1, FileID: 1}: 100,
+		bufferpool.PageIdentity{PageID: 2, FileID: 1}: 200,
+	}
+
+	original := NewCheckpointEnd(999, activeTxns, dirtyPages)
+
+	data, err := original.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+
+	var recovered CheckpointEnd
+	if err := recovered.UnmarshalBinary(data); err != nil {
+		t.Fatalf("UnmarshalBinary failed: %v", err)
+	}
+
+	// Compare all fields
+	if original.lsn != recovered.lsn {
+		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
+	}
+
+	if len(original.activeTransactions) != len(recovered.activeTransactions) {
+		t.Fatalf("activeTransactions length mismatch: got %d, want %d",
+			len(recovered.activeTransactions), len(original.activeTransactions))
+	}
+	for i := range original.activeTransactions {
+		if original.activeTransactions[i] != recovered.activeTransactions[i] {
+			t.Errorf("activeTransactions[%d] mismatch: got %v, want %v",
+				i, recovered.activeTransactions[i], original.activeTransactions[i])
+		}
+	}
+
+	if len(original.dirtyPageTable) != len(recovered.dirtyPageTable) {
+		t.Fatalf("dirtyPageTable length mismatch: got %d, want %d",
+			len(recovered.dirtyPageTable), len(original.dirtyPageTable))
+	}
+	for pageID, lsn := range original.dirtyPageTable {
+		recoveredLSN, exists := recovered.dirtyPageTable[pageID]
+		if !exists {
+			t.Errorf("missing pageID in recovered dirtyPageTable: %v", pageID)
+			continue
+		}
+		if lsn != recoveredLSN {
+			t.Errorf("LSN mismatch for pageID %v: got %v, want %v",
+				pageID, recoveredLSN, lsn)
+		}
+	}
+}
+
+func TestCheckpointEnd_EmptyData(t *testing.T) {
+	var recovered CheckpointEnd
+	if err := recovered.UnmarshalBinary([]byte{}); err == nil {
+		t.Fatal("Expected error for empty data, got nil")
+	}
+}
+
+func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
+	// Create a valid record first
+	original := NewCheckpointEnd(999, []transactions.TxnID{123}, make(map[bufferpool.PageIdentity]LSN))
+	data, err := original.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+
+	// Corrupt the type tag
+	data[0] = 0xFF
+
+	var recovered CheckpointEnd
+	if err := recovered.UnmarshalBinary(data); err == nil {
+		t.Fatal("Expected error for invalid type tag, got nil")
+	}
+}

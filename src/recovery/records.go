@@ -171,8 +171,25 @@ type CheckpointBegin struct {
 	lsn LSN
 }
 
+func NewCheckpointBegin(lsn LSN) CheckpointBegin {
+	return CheckpointBegin{lsn: lsn}
+}
+
 type CheckpointEnd struct {
 	lsn                LSN
-	activeTransacitons []transactions.TxnID
+	activeTransactions []transactions.TxnID
 	dirtyPageTable     map[bufferpool.PageIdentity]LSN
+}
+
+func NewCheckpointEnd(
+	lsn LSN,
+	activeTransacitons []transactions.TxnID,
+	dirtyPageTable map[bufferpool.PageIdentity]LSN,
+) CheckpointEnd {
+	return CheckpointEnd{
+		lsn:                lsn,
+		activeTransactions: activeTransacitons,
+		dirtyPageTable:     dirtyPageTable,
+	}
+
 }
