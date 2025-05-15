@@ -8,12 +8,15 @@ import (
 	"io"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
+type LogRecordTypeTag byte
+
 // Type tags for each log record type.
 const (
-	TypeBegin byte = iota + 1
+	TypeBegin LogRecordTypeTag = iota + 1
 	TypeUpdate
 	TypeInsert
 	TypeCommit
@@ -22,6 +25,7 @@ const (
 	TypeCompensation
 	TypeCheckpointBegin
 	TypeCheckpointEnd
+	TypeUnknown
 )
 
 func (l *LogRecordLocation) MarshalBinary() ([]byte, error) {
@@ -55,7 +59,7 @@ func (l *LogRecordLocation) UnmarshalBinary(data []byte) error {
 // MarshalBinary for BeginLogRecord.
 func (b *BeginLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeBegin)
+	buf.WriteByte(byte(TypeBegin))
 	if err := binary.Write(buf, binary.BigEndian, b.lsn); err != nil {
 		return nil, err
 	}
@@ -69,7 +73,7 @@ func (b *BeginLogRecord) UnmarshalBinary(data []byte) error {
 	if len(data) < 1 {
 		return errors.New("insufficient data for type tag")
 	}
-	if data[0] != TypeBegin {
+	if data[0] != byte(TypeBegin) {
 		return fmt.Errorf("invalid type tag for BeginLogRecord: %x", data[0])
 	}
 	reader := bytes.NewReader(data[1:])
@@ -82,7 +86,7 @@ func (b *BeginLogRecord) UnmarshalBinary(data []byte) error {
 // MarshalBinary for UpdateLogRecord.
 func (u *UpdateLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeUpdate)
+	buf.WriteByte(byte(TypeUpdate))
 	if err := binary.Write(buf, binary.BigEndian, u.lsn); err != nil {
 		return nil, err
 	}
@@ -117,7 +121,7 @@ func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
 	if len(data) < 1 {
 		return errors.New("insufficient data")
 	}
-	if data[0] != TypeUpdate {
+	if data[0] != byte(TypeUpdate) {
 		return fmt.Errorf("invalid type tag for UpdateLogRecord: %x", data[0])
 	}
 	reader := bytes.NewReader(data[1:])
@@ -161,7 +165,7 @@ func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
 // MarshalBinary for InsertLogRecord.
 func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeInsert)
+	buf.WriteByte(byte(TypeInsert))
 	if err := binary.Write(buf, binary.BigEndian, i.lsn); err != nil {
 		return nil, err
 	}
@@ -190,7 +194,7 @@ func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
 }
 
 func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
-	if len(data) < 1 || data[0] != TypeInsert {
+	if len(data) < 1 || data[0] != byte(TypeInsert) {
 		return errors.New("invalid type tag for InsertLogRecord")
 	}
 	reader := bytes.NewReader(data[1:])
@@ -222,7 +226,7 @@ func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
 // MarshalBinary for CommitLogRecord.
 func (c *CommitLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeCommit)
+	buf.WriteByte(byte(TypeCommit))
 	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
 		return nil, err
 	}
@@ -238,7 +242,7 @@ func (c *CommitLogRecord) MarshalBinary() ([]byte, error) {
 }
 
 func (c *CommitLogRecord) UnmarshalBinary(data []byte) error {
-	if len(data) < 1 || data[0] != TypeCommit {
+	if len(data) < 1 || data[0] != byte(TypeCommit) {
 		return errors.New("invalid type tag for CommitLogRecord")
 	}
 	reader := bytes.NewReader(data[1:])
@@ -258,7 +262,7 @@ func (c *CommitLogRecord) UnmarshalBinary(data []byte) error {
 // MarshalBinary for AbortLogRecord.
 func (a *AbortLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeAbort)
+	buf.WriteByte(byte(TypeAbort))
 	if err := binary.Write(buf, binary.BigEndian, a.lsn); err != nil {
 		return nil, err
 	}
@@ -274,7 +278,7 @@ func (a *AbortLogRecord) MarshalBinary() ([]byte, error) {
 }
 
 func (a *AbortLogRecord) UnmarshalBinary(data []byte) error {
-	if len(data) < 1 || data[0] != TypeAbort {
+	if len(data) < 1 || data[0] != byte(TypeAbort) {
 		return errors.New("invalid type tag for AbortLogRecord")
 	}
 	reader := bytes.NewReader(data[1:])
@@ -294,7 +298,7 @@ func (a *AbortLogRecord) UnmarshalBinary(data []byte) error {
 // MarshalBinary for TxnEndLogRecord.
 func (t *TxnEndLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeTxnEnd)
+	buf.WriteByte(byte(TypeTxnEnd))
 	if err := binary.Write(buf, binary.BigEndian, t.lsn); err != nil {
 		return nil, err
 	}
@@ -310,7 +314,7 @@ func (t *TxnEndLogRecord) MarshalBinary() ([]byte, error) {
 }
 
 func (t *TxnEndLogRecord) UnmarshalBinary(data []byte) error {
-	if len(data) < 1 || data[0] != TypeTxnEnd {
+	if len(data) < 1 || data[0] != byte(TypeTxnEnd) {
 		return errors.New("invalid type tag for TxnEndLogRecord")
 	}
 	reader := bytes.NewReader(data[1:])
@@ -330,7 +334,7 @@ func (t *TxnEndLogRecord) UnmarshalBinary(data []byte) error {
 // MarshalBinary for CompensationLogRecord.
 func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeCompensation)
+	buf.WriteByte(byte(TypeCompensation))
 	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
 		return nil, err
 	}
@@ -365,7 +369,7 @@ func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 }
 
 func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
-	if len(data) < 1 || data[0] != TypeCompensation {
+	if len(data) < 1 || data[0] != byte(TypeCompensation) {
 		return errors.New("invalid type tag for CompensationLogRecord")
 	}
 	reader := bytes.NewReader(data[1:])
@@ -409,17 +413,17 @@ func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
 	return err
 }
 
-func (c *CheckpointBegin) MarshalBinary() ([]byte, error) {
+func (c *CheckpointBeginLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeCheckpointBegin)
+	buf.WriteByte(byte(TypeCheckpointBegin))
 	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-func (c *CheckpointBegin) UnmarshalBinary(data []byte) error {
-	if len(data) < 1 || data[0] != TypeCheckpointBegin {
+func (c *CheckpointBeginLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != byte(TypeCheckpointBegin) {
 		return errors.New("invalid type tag for CompensationLogRecord")
 	}
 	reader := bytes.NewReader(data[1:])
@@ -429,9 +433,9 @@ func (c *CheckpointBegin) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (c *CheckpointEnd) MarshalBinary() ([]byte, error) {
+func (c *CheckpointEndLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(TypeCheckpointEnd)
+	buf.WriteByte(byte(TypeCheckpointEnd))
 
 	// Write LSN
 	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
@@ -471,11 +475,11 @@ func (c *CheckpointEnd) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (c *CheckpointEnd) UnmarshalBinary(data []byte) error {
+func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 	if len(data) < 1 {
 		return errors.New("insufficient data for type tag")
 	}
-	if data[0] != TypeCheckpointEnd {
+	if data[0] != byte(TypeCheckpointEnd) {
 		return errors.New("invalid type tag for CheckpointEnd")
 	}
 
@@ -529,4 +533,48 @@ func (c *CheckpointEnd) UnmarshalBinary(data []byte) error {
 	}
 
 	return nil
+}
+
+func ReadLogRecord(data []byte) (LogRecordTypeTag, any, error) {
+	switch LogRecordTypeTag(data[0]) {
+	case TypeBegin:
+		r := BeginLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeBegin, r, err
+	case TypeUpdate:
+		r := UpdateLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeUpdate, r, err
+	case TypeInsert:
+		r := InsertLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeInsert, r, err
+	case TypeCommit:
+		r := CommitLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeCommit, r, err
+	case TypeAbort:
+		r := AbortLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeAbort, r, err
+	case TypeTxnEnd:
+		r := TxnEndLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeTxnEnd, r, err
+	case TypeCompensation:
+		r := CompensationLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeCompensation, r, err
+	case TypeCheckpointBegin:
+		r := CheckpointBeginLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeCheckpointBegin, r, err
+	case TypeCheckpointEnd:
+		r := CheckpointEndLogRecord{}
+		err := r.UnmarshalBinary(data)
+		return TypeCheckpointEnd, r, err
+	default:
+		assert.Assert(data[0] < byte(TypeUnknown), "unknow log type: %d", data[0])
+	}
+	panic("unreachable")
 }

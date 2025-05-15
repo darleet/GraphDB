@@ -300,7 +300,7 @@ func TestCheckpointBegin_MarshalUnmarshal(t *testing.T) {
 		t.Fatalf("MarshalBinary failed: %v", err)
 	}
 
-	var recovered CheckpointBegin
+	var recovered CheckpointBeginLogRecord
 	if err := recovered.UnmarshalBinary(data); err != nil {
 		t.Fatalf("UnmarshalBinary failed: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestCheckpointBegin_MarshalUnmarshal(t *testing.T) {
 }
 
 func TestCheckpointBegin_EmptyData(t *testing.T) {
-	var recovered CheckpointBegin
+	var recovered CheckpointBeginLogRecord
 	if err := recovered.UnmarshalBinary([]byte{}); err == nil {
 		t.Fatal("Expected error for empty data, got nil")
 	}
@@ -328,7 +328,7 @@ func TestCheckpointBegin_InvalidTypeTag(t *testing.T) {
 	// Corrupt the type tag
 	data[0] = 0xFF
 
-	var recovered CheckpointBegin
+	var recovered CheckpointBeginLogRecord
 	if err := recovered.UnmarshalBinary(data); err == nil {
 		t.Fatal("Expected error for invalid type tag, got nil")
 	}
@@ -345,7 +345,7 @@ func TestCheckpointBegin_TruncatedData(t *testing.T) {
 	// Truncate the data (remove last byte)
 	data = data[:len(data)-1]
 
-	var recovered CheckpointBegin
+	var recovered CheckpointBeginLogRecord
 	if err := recovered.UnmarshalBinary(data); err == nil {
 		t.Fatal("Expected error for truncated data, got nil")
 	}
@@ -365,7 +365,7 @@ func TestCheckpointEnd_MarshalUnmarshal(t *testing.T) {
 		t.Fatalf("MarshalBinary failed: %v", err)
 	}
 
-	var recovered CheckpointEnd
+	var recovered CheckpointEndLogRecord
 	if err := recovered.UnmarshalBinary(data); err != nil {
 		t.Fatalf("UnmarshalBinary failed: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestCheckpointEnd_MarshalUnmarshal(t *testing.T) {
 }
 
 func TestCheckpointEnd_EmptyData(t *testing.T) {
-	var recovered CheckpointEnd
+	var recovered CheckpointEndLogRecord
 	if err := recovered.UnmarshalBinary([]byte{}); err == nil {
 		t.Fatal("Expected error for empty data, got nil")
 	}
@@ -421,7 +421,7 @@ func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
 	// Corrupt the type tag
 	data[0] = 0xFF
 
-	var recovered CheckpointEnd
+	var recovered CheckpointEndLogRecord
 	if err := recovered.UnmarshalBinary(data); err == nil {
 		t.Fatal("Expected error for invalid type tag, got nil")
 	}

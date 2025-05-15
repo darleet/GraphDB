@@ -167,15 +167,15 @@ func NewCompensationLogRecord(
 	}
 }
 
-type CheckpointBegin struct {
+type CheckpointBeginLogRecord struct {
 	lsn LSN
 }
 
-func NewCheckpointBegin(lsn LSN) CheckpointBegin {
-	return CheckpointBegin{lsn: lsn}
+func NewCheckpointBegin(lsn LSN) CheckpointBeginLogRecord {
+	return CheckpointBeginLogRecord{lsn: lsn}
 }
 
-type CheckpointEnd struct {
+type CheckpointEndLogRecord struct {
 	lsn                LSN
 	activeTransactions []transactions.TxnID
 	dirtyPageTable     map[bufferpool.PageIdentity]LSN
@@ -185,8 +185,8 @@ func NewCheckpointEnd(
 	lsn LSN,
 	activeTransacitons []transactions.TxnID,
 	dirtyPageTable map[bufferpool.PageIdentity]LSN,
-) CheckpointEnd {
-	return CheckpointEnd{
+) CheckpointEndLogRecord {
+	return CheckpointEndLogRecord{
 		lsn:                lsn,
 		activeTransactions: activeTransacitons,
 		dirtyPageTable:     dirtyPageTable,

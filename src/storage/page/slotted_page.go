@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	assert "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
@@ -18,8 +19,8 @@ var (
 
 const (
 	Size       = 4096
-	HeaderSize = 12 // numSlots (4) + freeStart (4) + freeEnd (4)
-	SlotSize   = 4  // offset (2) + length (2)
+	HeaderSize = uint32(unsafe.Sizeof(uint32(0)) * 3) // numSlots (4) + freeStart (4) + freeEnd (4)
+	SlotSize   = uint32(unsafe.Sizeof(uint16(0)) * 2) // offset (2) + length (2)
 )
 
 type SlottedPage struct {
@@ -41,7 +42,7 @@ func NewSlottedPage() *SlottedPage {
 	return p
 }
 
-func (p *SlottedPage) numSlots() uint32 {
+func (p *SlottedPage) NumSlots() uint32 {
 	return uint32(binary.LittleEndian.Uint32(p.data[0:4]))
 }
 
@@ -93,7 +94,7 @@ func (p *SlottedPage) Insert(record []byte) (uint32, error) {
 	copy(p.data[newOffset:], record)
 
 	// Create slot
-	slotID := p.numSlots()
+	slotID := p.NumSlots()
 	p.setSlot(slotID, newOffset, recLen)
 
 	// Update header
@@ -105,7 +106,7 @@ func (p *SlottedPage) Insert(record []byte) (uint32, error) {
 }
 
 func (p *SlottedPage) Get(slotID uint32) ([]byte, error) {
-	if slotID >= p.numSlots() {
+	if slotID >= p.NumSlots() {
 		return nil, ErrInvalidSlotID
 	}
 
