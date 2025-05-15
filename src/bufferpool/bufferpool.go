@@ -44,23 +44,19 @@ type PageIdentity struct {
 	PageID uint64
 }
 
-// -----------------------------------------------------------------------------
-// PageIdentity – embedded, so no type byte
-// -----------------------------------------------------------------------------
-func MarshalPageIdentity(p PageIdentity) ([]byte, error) {
+func (p PageIdentity) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.BigEndian, p.FileID)
 	_ = binary.Write(buf, binary.BigEndian, p.PageID)
 	return buf.Bytes(), nil
 }
 
-func UnmarshalPageIdentity(data []byte) (PageIdentity, error) {
-	p := PageIdentity{}
+func (p *PageIdentity) UnmarshalBinary(data []byte) error {
 	rd := bytes.NewReader(data)
 	if err := binary.Read(rd, binary.BigEndian, &p.FileID); err != nil {
-		return p, err
+		return err
 	}
-	return p, binary.Read(rd, binary.BigEndian, &p.PageID)
+	return binary.Read(rd, binary.BigEndian, &p.PageID)
 }
 
 type BufferPool[T Page] interface {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
 type TxnLogger struct {
@@ -16,6 +17,8 @@ type TxnLogger struct {
 	currentPageID atomic.Uint64
 
 	logRecordsCount atomic.Uint64 // "где-то" лежит на диске
+
+	getActiveTransactions func() []transactions.TxnID  // Придет из лок менеджера
 }
 
 /*
@@ -59,13 +62,13 @@ func (l *TxnLogger) writeRecord(r encoding.BinaryMarshaler) error {
 
 }
 
-func (l *TxnLogger) WriteBegin(txnId TransactionID) (LSN, error) {
+func (l *TxnLogger) WriteBegin(txnId transactions.TxnID) (LSN, error) {
 	lsn := LSN(l.logRecordsCount.Add(1))
 	r := BeginLogRecord{
 		lsn:   lsn,
 		txnId: txnId,
 	}
-	err := l.writeRecord(r)
+	err := l.writeRecord(&r)
 	if err != nil {
 		return NIL_LSN, err
 	}
@@ -73,15 +76,15 @@ func (l *TxnLogger) WriteBegin(txnId TransactionID) (LSN, error) {
 }
 
 func (l *TxnLogger) WriteUpdate(
-	txnId TransactionID,
-	prevLSN LSN,
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
 	pageInfo bufferpool.PageIdentity,
-	slotNumber int,
+	slotNumber uint32,
 	beforeValue []byte,
 	afterValue []byte) (LSN, error) {
 	lsn := LSN(l.logRecordsCount.Add(1))
-	r := NewUpdateLogRecord(lsn, txnId, prevLSN, pageInfo, slotNumber, beforeValue, afterValue)
-	err := l.writeRecord(r)
+	r := NewUpdateLogRecord(lsn, txnId, prevLog, pageInfo, slotNumber, beforeValue, afterValue)
+	err := l.writeRecord(&r)
 	if err != nil {
 		return NIL_LSN, err
 	}
@@ -89,14 +92,14 @@ func (l *TxnLogger) WriteUpdate(
 }
 
 func (l *TxnLogger) WriteInsert(
-	txnId TransactionID,
-	prevLSN LSN,
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
 	pageInfo bufferpool.PageIdentity,
-	slotNumber int,
+	slotNumber uint32,
 	value []byte) (LSN, error) {
 	lsn := LSN(l.logRecordsCount.Add(1))
-	r := NewInsertLogRecord(lsn, txnId, prevLSN, pageInfo, slotNumber, value)
-	err := l.writeRecord(r)
+	r := NewInsertLogRecord(lsn, txnId, prevLog, pageInfo, slotNumber, value)
+	err := l.writeRecord(&r)
 	if err != nil {
 		return NIL_LSN, err
 	}
@@ -104,11 +107,12 @@ func (l *TxnLogger) WriteInsert(
 }
 
 func (l *TxnLogger) WriteCommit(
-	txnId TransactionID,
-	prevLSN LSN) (LSN, error) {
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
+	) (LSN, error) {
 	lsn := LSN(l.logRecordsCount.Add(1))
-	r := NewCommitLogRecord(lsn, txnId, prevLSN)
-	err := l.writeRecord(r)
+	r := NewCommitLogRecord(lsn, txnId, prevLog)
+	err := l.writeRecord(&r)
 	if err != nil {
 		return NIL_LSN, err
 	}
@@ -116,11 +120,12 @@ func (l *TxnLogger) WriteCommit(
 }
 
 func (l *TxnLogger) WriteAbort(
-	txnId TransactionID,
-	prevLSN LSN) (LSN, error) {
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
+	) (LSN, error) {
 	lsn := LSN(l.logRecordsCount.Add(1))
-	r := NewAbortLogRecord(lsn, txnId, prevLSN)
-	err := l.writeRecord(r)
+	r := NewAbortLogRecord(lsn, txnId, prevLog)
+	err := l.writeRecord(&r)
 	if err != nil {
 		return NIL_LSN, err
 	}
@@ -128,11 +133,12 @@ func (l *TxnLogger) WriteAbort(
 }
 
 func (l *TxnLogger) WriteTxnEnd(
-	txnId TransactionID,
-	prevLSN LSN) (LSN, error) {
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
+	) (LSN, error) {
 	lsn := LSN(l.logRecordsCount.Add(1))
-	r := NewTxnEndLogRecord(lsn, txnId, prevLSN)
-	err := l.writeRecord(r)
+	r := NewTxnEndLogRecord(lsn, txnId, prevLog)
+	err := l.writeRecord(&r)
 	if err != nil {
 		return NIL_LSN, err
 	}
@@ -140,16 +146,16 @@ func (l *TxnLogger) WriteTxnEnd(
 }
 
 func (l *TxnLogger) WriteCLR(
-	txnId TransactionID,
-	prevLSN LSN,
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
 	pageInfo bufferpool.PageIdentity,
+	slotNumber uint32,
 	nextUndoLSN LSN,
-	slotNumber int,
 	beforeValue []byte,
 	afterValue []byte) (LSN, error) {
 	lsn := LSN(l.logRecordsCount.Add(1))
-	r := NewCompensationLogRecord(lsn, txnId, prevLSN, pageInfo, nextUndoLSN, slotNumber, beforeValue, afterValue)
-	err := l.writeRecord(r)
+	r := NewCompensationLogRecord(lsn, txnId, prevLog, pageInfo, slotNumber, nextUndoLSN, beforeValue, afterValue)
+	err := l.writeRecord(&r)
 	if err != nil {
 		return NIL_LSN, err
 	}

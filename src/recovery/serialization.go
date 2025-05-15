@@ -3,311 +3,405 @@ package recovery
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
-
-	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+	"io"
 )
 
-type LogRecordType byte
-
+// Type tags for each log record type.
 const (
-	recordTypeBegin LogRecordType = iota + 1
-	recordTypeUpdate
-	recordTypeInsert
-	recordTypeCommit
-	recordTypeAbort
-	recordTypeTxnEnd
-	recordTypeCompensation
-	unreachableType
+	TypeBegin byte = iota + 1
+	TypeUpdate
+	TypeInsert
+	TypeCommit
+	TypeAbort
+	TypeTxnEnd
+	TypeCompensation
+	TypeCheckpointBegin
+	TypeCheckpointEnd
 )
 
-func writeBytes(buf *bytes.Buffer, data []byte) error {
-	if err := binary.Write(buf, binary.BigEndian, uint32(len(data))); err != nil {
+func (l *LogRecordLocation) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.BigEndian, l.Lsn); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, l.PageID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, l.SlotID); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (l *LogRecordLocation) UnmarshalBinary(data []byte) error {
+	rd := bytes.NewReader(data)
+	if err := binary.Read(rd, binary.BigEndian, &l.Lsn); err != nil {
 		return err
 	}
-	_, err := buf.Write(data)
+	if err := binary.Read(rd, binary.BigEndian, &l.PageID); err != nil {
+		return err
+	}
+	if err := binary.Read(rd, binary.BigEndian, &l.SlotID); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalBinary for BeginLogRecord.
+func (b *BeginLogRecord) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(TypeBegin)
+	if err := binary.Write(buf, binary.BigEndian, b.lsn); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, b.txnId); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (b *BeginLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 {
+		return errors.New("insufficient data for type tag")
+	}
+	if data[0] != TypeBegin {
+		return fmt.Errorf("invalid type tag for BeginLogRecord: %x", data[0])
+	}
+	reader := bytes.NewReader(data[1:])
+	if err := binary.Read(reader, binary.BigEndian, &b.lsn); err != nil {
+		return err
+	}
+	return binary.Read(reader, binary.BigEndian, &b.txnId)
+}
+
+// MarshalBinary for UpdateLogRecord.
+func (u *UpdateLogRecord) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(TypeUpdate)
+	if err := binary.Write(buf, binary.BigEndian, u.lsn); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, u.txnId); err != nil {
+		return nil, err
+	}
+	locationBytes, err := u.prevLog.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(locationBytes)
+	pageData, err := u.pageInfo.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(pageData)
+	if err := binary.Write(buf, binary.BigEndian, u.slotNumber); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(u.beforeValue))); err != nil {
+		return nil, err
+	}
+	buf.Write(u.beforeValue)
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(u.afterValue))); err != nil {
+		return nil, err
+	}
+	buf.Write(u.afterValue)
+	return buf.Bytes(), nil
+}
+
+func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 {
+		return errors.New("insufficient data")
+	}
+	if data[0] != TypeUpdate {
+		return fmt.Errorf("invalid type tag for UpdateLogRecord: %x", data[0])
+	}
+	reader := bytes.NewReader(data[1:])
+
+	if err := binary.Read(reader, binary.BigEndian, &u.lsn); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &u.txnId); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &u.prevLog); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &u.pageInfo); err != nil {
+		return err
+	}
+	var slotNum uint32
+	if err := binary.Read(reader, binary.BigEndian, &slotNum); err != nil {
+		return err
+	}
+	u.slotNumber = slotNum
+
+	var beforeLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &beforeLen); err != nil {
+		return err
+	}
+	u.beforeValue = make([]byte, beforeLen)
+	if _, err := io.ReadFull(reader, u.beforeValue); err != nil {
+		return err
+	}
+
+	var afterLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &afterLen); err != nil {
+		return err
+	}
+	u.afterValue = make([]byte, afterLen)
+	_, err := io.ReadFull(reader, u.afterValue)
 	return err
 }
 
-func readBytes(r *bytes.Reader) ([]byte, error) {
-	var n uint32
-	if err := binary.Read(r, binary.BigEndian, &n); err != nil {
+// MarshalBinary for InsertLogRecord.
+func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(TypeInsert)
+	if err := binary.Write(buf, binary.BigEndian, i.lsn); err != nil {
 		return nil, err
 	}
-	b := make([]byte, n)
-	_, err := r.Read(b)
-	return b, err
-}
+	if err := binary.Write(buf, binary.BigEndian, i.txnId); err != nil {
+		return nil, err
+	}
+	d, err := i.prevLog.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(d)
 
-func marshalTxnHeader(buf *bytes.Buffer, typ byte, cur LSN, txnId TransactionID, prev LSN) {
-	buf.WriteByte(typ)
-	_ = binary.Write(buf, binary.BigEndian, uint64(cur))
-	_ = binary.Write(buf, binary.BigEndian, uint64(txnId))
-	_ = binary.Write(buf, binary.BigEndian, uint64(prev))
-}
-
-func unmarshalTxnHeader(r *bytes.Reader, want byte) (LSN, TransactionID, LSN, error) {
-	typ, _ := r.ReadByte()
-	if typ != want {
-		return NIL_LSN, 0, NIL_LSN, fmt.Errorf("recovery: expected %d got %d", want, typ)
+	pageData, err := i.pageInfo.MarshalBinary()
+	if err != nil {
+		return nil, err
 	}
-	var cur, txn, prev uint64
-	if err := binary.Read(r, binary.BigEndian, &cur); err != nil {
-		return NIL_LSN, 0, NIL_LSN, err
+	buf.Write(pageData)
+	if err := binary.Write(buf, binary.BigEndian, i.slotNumber); err != nil {
+		return nil, err
 	}
-	if err := binary.Read(r, binary.BigEndian, &txn); err != nil {
-		return NIL_LSN, 0, NIL_LSN, err
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(i.value))); err != nil {
+		return nil, err
 	}
-	if err := binary.Read(r, binary.BigEndian, &prev); err != nil {
-		return NIL_LSN, 0, NIL_LSN, err
-	}
-	return LSN(cur), TransactionID(txn), LSN(prev), nil
-}
-
-func (r BeginLogRecord) MarshalBinary() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	buf.WriteByte(byte(recordTypeBegin))
-	_ = binary.Write(buf, binary.BigEndian, uint64(r.lsn))
-	_ = binary.Write(buf, binary.BigEndian, uint64(r.txnId))
+	buf.Write(i.value)
 	return buf.Bytes(), nil
 }
 
-func (r *BeginLogRecord) UnmarshalBinary(data []byte) error {
-	rd := bytes.NewReader(data)
-	if typ, _ := rd.ReadByte(); typ != byte(recordTypeBegin) {
-		return fmt.Errorf("recovery: expected begin (%d) got %d", recordTypeBegin, typ)
+func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != TypeInsert {
+		return errors.New("invalid type tag for InsertLogRecord")
 	}
-	var tid uint64
-	if err := binary.Read(rd, binary.BigEndian, &tid); err != nil {
-		return err
-	}
-	r.txnId = TransactionID(tid)
-	return nil
-}
+	reader := bytes.NewReader(data[1:])
 
-func (r UpdateLogRecord) MarshalBinary() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	marshalTxnHeader(buf, byte(recordTypeUpdate), r.lsn, r.txnId, r.prevLSN)
-	page, err := bufferpool.MarshalPageIdentity(r.pageInfo)
-	if err != nil {
-		return nil, err
-	}
-	if err := writeBytes(buf, page); err != nil {
-		return nil, err
-	}
-	_ = binary.Write(buf, binary.BigEndian, int64(r.slotNumber))
-	if err := writeBytes(buf, r.beforeValue); err != nil {
-		return nil, err
-	}
-	if err := writeBytes(buf, r.afterValue); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func (r *UpdateLogRecord) UnmarshalBinary(data []byte) error {
-	rd := bytes.NewReader(data)
-	cur, txn, prev, err := unmarshalTxnHeader(rd, byte(recordTypeUpdate))
-	if err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.lsn); err != nil {
 		return err
 	}
-	r.lsn, r.txnId, r.prevLSN = cur, txn, prev
-	pageBytes, err := readBytes(rd)
-	if err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.txnId); err != nil {
 		return err
 	}
-	if r.pageInfo, err = bufferpool.UnmarshalPageIdentity(pageBytes); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.prevLog); err != nil {
 		return err
 	}
-	var slot int64
-	if err := binary.Read(rd, binary.BigEndian, &slot); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.pageInfo); err != nil {
 		return err
 	}
-	r.slotNumber = int(slot)
-	if r.beforeValue, err = readBytes(rd); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.slotNumber); err != nil {
 		return err
 	}
-	if r.afterValue, err = readBytes(rd); err != nil {
+	var valueLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &valueLen); err != nil {
 		return err
 	}
-	return nil
-}
-
-func (r InsertLogRecord) MarshalBinary() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	marshalTxnHeader(buf, byte(recordTypeInsert), r.lsn, r.txnId, r.prevLSN)
-	page, err := bufferpool.MarshalPageIdentity(r.pageInfo)
-	if err != nil {
-		return nil, err
-	}
-	if err := writeBytes(buf, page); err != nil {
-		return nil, err
-	}
-	_ = binary.Write(buf, binary.BigEndian, int64(r.slotNumber))
-	if err := writeBytes(buf, r.value); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func (r *InsertLogRecord) UnmarshalBinary(data []byte) error {
-	rd := bytes.NewReader(data)
-	cur, txn, prev, err := unmarshalTxnHeader(rd, byte(recordTypeInsert))
-	if err != nil {
-		return err
-	}
-	r.lsn, r.txnId, r.prevLSN = cur, txn, prev
-	pageBytes, err := readBytes(rd)
-	if err != nil {
-		return err
-	}
-	if r.pageInfo, err = bufferpool.UnmarshalPageIdentity(pageBytes); err != nil {
-		return err
-	}
-	var slot int64
-	if err := binary.Read(rd, binary.BigEndian, &slot); err != nil {
-		return err
-	}
-	r.slotNumber = int(slot)
-	r.value, err = readBytes(rd)
+	i.value = make([]byte, valueLen)
+	_, err := io.ReadFull(reader, i.value)
 	return err
 }
 
-func marshalHeaderOnly(typ byte, cur LSN, txn TransactionID, prev LSN) ([]byte, error) {
+// MarshalBinary for CommitLogRecord.
+func (c *CommitLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	marshalTxnHeader(buf, typ, cur, txn, prev)
+	buf.WriteByte(TypeCommit)
+	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, c.txnId); err != nil {
+		return nil, err
+	}
+	d, err := c.prevLog.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(d)
 	return buf.Bytes(), nil
 }
 
-func unmarshalHeaderOnly(data []byte, typ byte) (LSN, TransactionID, LSN, error) {
-	rd := bytes.NewReader(data)
-	return unmarshalTxnHeader(rd, typ)
-}
+func (c *CommitLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != TypeCommit {
+		return errors.New("invalid type tag for CommitLogRecord")
+	}
+	reader := bytes.NewReader(data[1:])
 
-func (r CommitLogRecord) MarshalBinary() ([]byte, error) {
-	return marshalHeaderOnly(byte(recordTypeCommit), r.lsn, r.txnId, r.prevLSN)
-}
-func (r AbortLogRecord) MarshalBinary() ([]byte, error) {
-	return marshalHeaderOnly(byte(recordTypeAbort), r.lsn, r.txnId, r.prevLSN)
-}
-func (r TxnEndLogRecord) MarshalBinary() ([]byte, error) {
-	return marshalHeaderOnly(byte(recordTypeTxnEnd), r.lsn, r.txnId, r.prevLSN)
-}
-
-func (r *CommitLogRecord) UnmarshalBinary(d []byte) error {
-	cur, txn, prev, err := unmarshalHeaderOnly(d, byte(recordTypeCommit))
-	if err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.lsn); err != nil {
 		return err
 	}
-	r.lsn, r.txnId, r.prevLSN = cur, txn, prev
-	return nil
-}
-func (r *AbortLogRecord) UnmarshalBinary(d []byte) error {
-	cur, txn, prev, err := unmarshalHeaderOnly(d, byte(recordTypeAbort))
-	if err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.txnId); err != nil {
 		return err
 	}
-	r.lsn, r.txnId, r.prevLSN = cur, txn, prev
-	return nil
-}
-func (r *TxnEndLogRecord) UnmarshalBinary(d []byte) error {
-	cur, txn, prev, err := unmarshalHeaderOnly(d, byte(recordTypeTxnEnd))
-	if err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.prevLog); err != nil {
 		return err
 	}
-	r.lsn, r.txnId, r.prevLSN = cur, txn, prev
 	return nil
 }
 
-func (r CompensationLogRecord) MarshalBinary() ([]byte, error) {
+// MarshalBinary for AbortLogRecord.
+func (a *AbortLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	marshalTxnHeader(buf, byte(recordTypeCompensation), r.lsn, r.txnId, r.prevLSN)
-	_ = binary.Write(buf, binary.BigEndian, uint64(r.nextUndoLSN))
-	page, err := bufferpool.MarshalPageIdentity(r.pageInfo)
+	buf.WriteByte(TypeAbort)
+	if err := binary.Write(buf, binary.BigEndian, a.lsn); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, a.txnId); err != nil {
+		return nil, err
+	}
+	d, err := a.prevLog.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	if err := writeBytes(buf, page); err != nil {
-		return nil, err
-	}
-	_ = binary.Write(buf, binary.BigEndian, int64(r.slotNumber))
-	if err := writeBytes(buf, r.beforeValue); err != nil {
-		return nil, err
-	}
-	if err := writeBytes(buf, r.afterValue); err != nil {
-		return nil, err
-	}
+	buf.Write(d)
 	return buf.Bytes(), nil
 }
 
-func (r *CompensationLogRecord) UnmarshalBinary(data []byte) error {
-	rd := bytes.NewReader(data)
-	cur, txn, prev, err := unmarshalTxnHeader(rd, byte(recordTypeCompensation))
-	if err != nil {
+func (a *AbortLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != TypeAbort {
+		return errors.New("invalid type tag for AbortLogRecord")
+	}
+	reader := bytes.NewReader(data[1:])
+
+	if err := binary.Read(reader, binary.BigEndian, &a.lsn); err != nil {
 		return err
 	}
-	r.lsn, r.txnId, r.prevLSN = cur, txn, prev
-	var nextUndo uint64
-	if err := binary.Read(rd, binary.BigEndian, &nextUndo); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &a.txnId); err != nil {
 		return err
 	}
-	r.nextUndoLSN = LSN(nextUndo)
-	pageBytes, err := readBytes(rd)
-	if err != nil {
-		return err
-	}
-	if r.pageInfo, err = bufferpool.UnmarshalPageIdentity(pageBytes); err != nil {
-		return err
-	}
-	var slot int64
-	if err := binary.Read(rd, binary.BigEndian, &slot); err != nil {
-		return err
-	}
-	r.slotNumber = int(slot)
-	if r.beforeValue, err = readBytes(rd); err != nil {
-		return err
-	}
-	if r.afterValue, err = readBytes(rd); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &a.prevLog); err != nil {
 		return err
 	}
 	return nil
 }
 
-func UnmarshalLogRecord(data []byte) (LogRecordType, any, error) {
-	rd := bytes.NewReader(data)
-	typ, _ := rd.ReadByte()
-	switch LogRecordType(typ) {
-	case recordTypeBegin:
-		record := &BeginLogRecord{}
-		err := record.UnmarshalBinary(data)
-		return recordTypeBegin, record, err
-	case recordTypeUpdate:
-		record := &UpdateLogRecord{}
-		err := record.UnmarshalBinary(data)
-		return recordTypeUpdate, record, err
-	case recordTypeInsert:
-		record := &InsertLogRecord{}
-		err := record.UnmarshalBinary(data)
-		return recordTypeInsert, record, err
-	case recordTypeCommit:
-		record := &CommitLogRecord{}
-		err := record.UnmarshalBinary(data)
-		return recordTypeCommit, record, err
-	case recordTypeAbort:
-		record := &AbortLogRecord{}
-		err := record.UnmarshalBinary(data)
-		return recordTypeAbort, record, err
-	case recordTypeTxnEnd:
-		record := &TxnEndLogRecord{}
-		err := record.UnmarshalBinary(data)
-		return recordTypeTxnEnd, record, err
-	case recordTypeCompensation:
-		record := &CompensationLogRecord{}
-		err := record.UnmarshalBinary(data)
-		return recordTypeCommit, record, err
+// MarshalBinary for TxnEndLogRecord.
+func (t *TxnEndLogRecord) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(TypeTxnEnd)
+	if err := binary.Write(buf, binary.BigEndian, t.lsn); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, t.txnId); err != nil {
+		return nil, err
+	}
+	d, err := t.prevLog.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(d)
+	return buf.Bytes(), nil
+}
+
+func (t *TxnEndLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != TypeTxnEnd {
+		return errors.New("invalid type tag for TxnEndLogRecord")
+	}
+	reader := bytes.NewReader(data[1:])
+
+	if err := binary.Read(reader, binary.BigEndian, &t.lsn); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &t.txnId); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &t.prevLog); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalBinary for CompensationLogRecord.
+func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(TypeCompensation)
+	if err := binary.Write(buf, binary.BigEndian, c.lsn); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, c.txnId); err != nil {
+		return nil, err
+	}
+	d, err := c.prevLog.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(d)
+	if err := binary.Write(buf, binary.BigEndian, c.nextUndoLSN); err != nil {
+		return nil, err
+	}
+	pageData, err := c.pageInfo.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(pageData)
+	if err := binary.Write(buf, binary.BigEndian, (c.slotNumber)); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.beforeValue))); err != nil {
+		return nil, err
+	}
+	buf.Write(c.beforeValue)
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.afterValue))); err != nil {
+		return nil, err
+	}
+	buf.Write(c.afterValue)
+	return buf.Bytes(), nil
+}
+
+func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != TypeCompensation {
+		return errors.New("invalid type tag for CompensationLogRecord")
+	}
+	reader := bytes.NewReader(data[1:])
+
+	if err := binary.Read(reader, binary.BigEndian, &c.lsn); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &c.txnId); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &c.prevLog); err != nil {
+		return err
+	}
+	if err := binary.Read(reader, binary.BigEndian, &c.nextUndoLSN); err != nil {
+		return err
 	}
 
-	assert.Assert(typ < byte(unreachableType), "unknown log record type: %d", typ)
-	return unreachableType, nil, nil
+	if err := binary.Read(reader, binary.BigEndian, &c.pageInfo); err != nil {
+		return err
+	}
+
+	if err := binary.Read(reader, binary.BigEndian, &c.slotNumber); err != nil {
+		return err
+	}
+
+	var beforeLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &beforeLen); err != nil {
+		return err
+	}
+	c.beforeValue = make([]byte, beforeLen)
+	if _, err := io.ReadFull(reader, c.beforeValue); err != nil {
+		return err
+	}
+
+	var afterLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &afterLen); err != nil {
+		return err
+	}
+	c.afterValue = make([]byte, afterLen)
+	_, err := io.ReadFull(reader, c.afterValue)
+	return err
 }

@@ -1,47 +1,60 @@
 package recovery
 
-import "github.com/Blackdeer1524/GraphDB/src/bufferpool"
+import (
+	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
+)
 
-type TransactionID uint64
 type LSN uint64
 
 var NIL_LSN LSN = LSN(0)
 
 type BeginLogRecord struct {
 	lsn   LSN
-	txnId TransactionID
+	txnId transactions.TxnID
 }
 
-func NewBeginLogRecord(lsn LSN, txnId TransactionID) BeginLogRecord {
+func NewBeginLogRecord(lsn LSN, txnId transactions.TxnID) BeginLogRecord {
 	return BeginLogRecord{
 		lsn:   lsn,
 		txnId: txnId,
 	}
 }
 
+// is considered NIL iff lsn is NIL_LSN
+type LogRecordLocation struct {
+	Lsn    LSN
+	PageID uint64
+	SlotID uint32
+}
+
+func (p *LogRecordLocation) isNil() bool {
+	return p.Lsn == NIL_LSN
+}
+
 type UpdateLogRecord struct {
 	lsn         LSN
-	txnId       TransactionID
-	prevLSN     LSN
+	txnId       transactions.TxnID
+	prevLog     LogRecordLocation
 	pageInfo    bufferpool.PageIdentity
-	slotNumber  int
+	slotNumber  uint32
 	beforeValue []byte
 	afterValue  []byte
 }
 
 func NewUpdateLogRecord(
 	lsn LSN,
-	txnId TransactionID,
-	prevLSN LSN,
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
 	pageInfo bufferpool.PageIdentity,
-	slotNumber int,
+	slotNumber uint32,
 	beforeValue []byte,
 	afterValue []byte,
 ) UpdateLogRecord {
 	return UpdateLogRecord{
 		lsn:         lsn,
 		txnId:       txnId,
-		prevLSN:     prevLSN,
+		prevLog:     prevLog,
 		pageInfo:    pageInfo,
 		slotNumber:  slotNumber,
 		beforeValue: beforeValue,
@@ -51,25 +64,25 @@ func NewUpdateLogRecord(
 
 type InsertLogRecord struct {
 	lsn        LSN
-	txnId      TransactionID
-	prevLSN    LSN
+	txnId      transactions.TxnID
+	prevLog    LogRecordLocation
 	pageInfo   bufferpool.PageIdentity
-	slotNumber int
+	slotNumber uint32
 	value      []byte
 }
 
 func NewInsertLogRecord(
 	lsn LSN,
-	txnId TransactionID,
-	prevLSN LSN,
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
 	pageInfo bufferpool.PageIdentity,
-	slotNumber int,
+	slotNumber uint32,
 	value []byte,
 ) InsertLogRecord {
 	return InsertLogRecord{
 		lsn:        lsn,
 		txnId:      txnId,
-		prevLSN:    prevLSN,
+		prevLog:    prevLog,
 		pageInfo:   pageInfo,
 		slotNumber: slotNumber,
 		value:      value,
@@ -78,75 +91,88 @@ func NewInsertLogRecord(
 
 type CommitLogRecord struct {
 	lsn     LSN
-	txnId   TransactionID
-	prevLSN LSN
+	txnId   transactions.TxnID
+	prevLog LogRecordLocation
 }
 
-func NewCommitLogRecord(lsn LSN, txnId TransactionID, prevLSN LSN) CommitLogRecord {
+func NewCommitLogRecord(lsn LSN, txnId transactions.TxnID, prevLog LogRecordLocation) CommitLogRecord {
 	return CommitLogRecord{
 		lsn:     lsn,
 		txnId:   txnId,
-		prevLSN: prevLSN,
+		prevLog: prevLog,
 	}
 }
 
 type AbortLogRecord struct {
 	lsn     LSN
-	txnId   TransactionID
-	prevLSN LSN
+	txnId   transactions.TxnID
+	prevLog LogRecordLocation
 }
 
-func NewAbortLogRecord(lsn LSN, txnId TransactionID, prevLSN LSN) AbortLogRecord {
+func NewAbortLogRecord(lsn LSN, txnId transactions.TxnID,
+	prevLog LogRecordLocation,
+) AbortLogRecord {
 	return AbortLogRecord{
 		lsn:     lsn,
 		txnId:   txnId,
-		prevLSN: prevLSN,
+		prevLog: prevLog,
 	}
 }
 
 type TxnEndLogRecord struct {
 	lsn     LSN
-	txnId   TransactionID
-	prevLSN LSN
+	txnId   transactions.TxnID
+	prevLog LogRecordLocation
 }
 
-func NewTxnEndLogRecord(lsn LSN, txnId TransactionID, prevLSN LSN) TxnEndLogRecord {
+func NewTxnEndLogRecord(lsn LSN, txnId transactions.TxnID,
+	prevLog LogRecordLocation) TxnEndLogRecord {
 	return TxnEndLogRecord{
 		lsn:     lsn,
 		txnId:   txnId,
-		prevLSN: prevLSN,
+		prevLog: prevLog,
 	}
 }
 
 type CompensationLogRecord struct {
 	lsn         LSN
-	txnId       TransactionID
-	prevLSN     LSN
-	pageInfo    bufferpool.PageIdentity
+	txnId       transactions.TxnID
+	prevLog     LogRecordLocation
 	nextUndoLSN LSN
-	slotNumber  int
+	pageInfo    bufferpool.PageIdentity
+	slotNumber  uint32
 	beforeValue []byte
 	afterValue  []byte
 }
 
 func NewCompensationLogRecord(
 	lsn LSN,
-	txnId TransactionID,
-	prevLSN LSN,
+	txnId transactions.TxnID,
+	prevLog LogRecordLocation,
 	pageInfo bufferpool.PageIdentity,
+	slotNumber uint32,
 	nextUndoLSN LSN,
-	slotNumber int,
 	beforeValue []byte,
 	afterValue []byte,
 ) CompensationLogRecord {
 	return CompensationLogRecord{
 		lsn:         lsn,
 		txnId:       txnId,
-		prevLSN:     prevLSN,
+		prevLog:     prevLog,
 		pageInfo:    pageInfo,
 		nextUndoLSN: nextUndoLSN,
 		slotNumber:  slotNumber,
 		beforeValue: beforeValue,
 		afterValue:  afterValue,
 	}
+}
+
+type CheckpointBegin struct {
+	lsn LSN
+}
+
+type CheckpointEnd struct {
+	lsn                LSN
+	activeTransacitons []transactions.TxnID
+	dirtyPageTable     map[bufferpool.PageIdentity]LSN
 }
