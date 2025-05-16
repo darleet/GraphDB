@@ -33,10 +33,10 @@ func (l *LogRecordLocation) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, l.Lsn); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, l.PageID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, l.PageLoc.PageID); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, l.SlotID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, l.PageLoc.SlotNum); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -47,10 +47,10 @@ func (l *LogRecordLocation) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(rd, binary.BigEndian, &l.Lsn); err != nil {
 		return err
 	}
-	if err := binary.Read(rd, binary.BigEndian, &l.PageID); err != nil {
+	if err := binary.Read(rd, binary.BigEndian, &l.PageLoc.PageID); err != nil {
 		return err
 	}
-	if err := binary.Read(rd, binary.BigEndian, &l.SlotID); err != nil {
+	if err := binary.Read(rd, binary.BigEndian, &l.PageLoc.SlotNum); err != nil {
 		return err
 	}
 	return nil

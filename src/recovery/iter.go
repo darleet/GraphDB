@@ -1,0 +1,83 @@
+package recovery
+
+import (
+	"errors"
+
+	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+	"github.com/Blackdeer1524/GraphDB/src/storage/page"
+)
+
+type LogRecordIter struct {
+	logfileID uint64
+	curLoc    PageLocation
+
+	pool       bufferpool.BufferPool[*page.SlottedPage]
+	lockedPage *page.SlottedPage
+}
+
+func NewLogRecordIter(
+	logfileID uint64,
+	curLoc PageLocation,
+	pool bufferpool.BufferPool[*page.SlottedPage],
+	lockedPage *page.SlottedPage,
+) *LogRecordIter {
+	return &LogRecordIter{
+		logfileID:  logfileID,
+		curLoc:     curLoc,
+		pool:       pool,
+		lockedPage: lockedPage,
+	}
+}
+
+var ErrInvalidIterator = errors.New("iterator is invalid")
+
+// Returns an error only if couldn't read the next page
+func (iter *LogRecordIter) MoveForward() (bool, error) {
+	if iter.curLoc.SlotNum+1 < iter.lockedPage.NumSlots() {
+		iter.curLoc.SlotNum++
+		return true, nil
+	}
+
+	defer iter.pool.Unpin(bufferpool.PageIdentity{
+		FileID: iter.logfileID,
+		PageID: iter.curLoc.PageID,
+	})
+	defer iter.lockedPage.RUnlock()
+
+	newPage, err := iter.pool.GetPageNoCreate(
+		bufferpool.PageIdentity{
+			FileID: iter.logfileID,
+			PageID: iter.curLoc.PageID + 1,
+		})
+
+	if errors.Is(err, bufferpool.ErrNoSuchPage) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+
+	iter.curLoc.PageID++
+	iter.curLoc.SlotNum = 0
+	newPage.RLock()
+	iter.lockedPage = newPage
+	return true, nil
+}
+
+func (iter *LogRecordIter) Get() (LogRecordTypeTag, any, error) {
+	d, err := iter.lockedPage.Get(iter.curLoc.SlotNum)
+	assert.Assert(err != nil, "LogIter invariant violated. err: %+v", err)
+	return ReadLogRecord(d)
+}
+
+func (iter *LogRecordIter) Location() PageLocation {
+	return iter.curLoc
+}
+
+func (iter *LogRecordIter) Invalidate() {
+	iter.lockedPage.RUnlock()
+	iter.pool.Unpin(bufferpool.PageIdentity{
+		FileID: iter.logfileID,
+		PageID: iter.curLoc.PageID,
+	})
+}

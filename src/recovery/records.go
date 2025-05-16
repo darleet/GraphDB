@@ -21,11 +21,22 @@ func NewBeginLogRecord(lsn LSN, txnId transactions.TxnID) BeginLogRecord {
 	}
 }
 
+type PageLocation struct {
+	PageID  uint64
+	SlotNum uint32
+}
+
 // is considered NIL iff lsn is NIL_LSN
 type LogRecordLocation struct {
-	Lsn    LSN
-	PageID uint64
-	SlotID uint32
+	Lsn     LSN
+	PageLoc PageLocation
+}
+
+func NewNilLogRecordLocation() LogRecordLocation {
+	return LogRecordLocation{
+		Lsn:     NIL_LSN,
+		PageLoc: PageLocation{},
+	}
 }
 
 func (p *LogRecordLocation) isNil() bool {

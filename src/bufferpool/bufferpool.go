@@ -60,8 +60,9 @@ func (p *PageIdentity) UnmarshalBinary(data []byte) error {
 }
 
 type BufferPool[T Page] interface {
-	Unpin(fileID, pageID uint64)
-	GetPage(fileID, pageID uint64) (T, error)
-	MarkDirty(fileID, pageID uint64) error
-	FlushPage(fileID, pageID uint64) error
+	Unpin(PageIdentity)
+	GetPage(PageIdentity) (T, error)
+	GetPageNoCreate(PageIdentity) (T, error)
+	MarkDirty(PageIdentity) error
+	FlushPage(PageIdentity) error
 }

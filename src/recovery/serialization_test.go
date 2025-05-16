@@ -33,7 +33,7 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewUpdateLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, 101112, 131415},
+		LogRecordLocation{789, PageLocation{101112, 131415}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
 		222324,
 		[]byte("before value"),
@@ -78,7 +78,7 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewInsertLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, 101112, 131415},
+		LogRecordLocation{789, PageLocation{101112, 131415}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
 		222324,
 		[]byte("test value"),
@@ -119,7 +119,7 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCommitLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, 101112, 131415},
+		LogRecordLocation{789, PageLocation{101112, 131415}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -148,7 +148,7 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewAbortLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, 101112, 131415},
+		LogRecordLocation{789, PageLocation{101112, 131415}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -177,7 +177,7 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewTxnEndLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, 101112, 131415},
+		LogRecordLocation{789, PageLocation{101112, 131415}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -206,7 +206,7 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCompensationLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, 101112, 131415},
+		LogRecordLocation{789, PageLocation{101112, 131415}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
 		222324,
 		252627,
