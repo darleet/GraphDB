@@ -27,11 +27,18 @@ type SlottedPage struct {
 
 	locked atomic.Bool
 	latch  sync.RWMutex
+
+	dirty atomic.Bool
+
+	fileID uint64
+	pageID uint64
 }
 
-func NewSlottedPage() *SlottedPage {
+func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
 	p := &SlottedPage{
-		data: make([]byte, Size),
+		data:   make([]byte, Size),
+		fileID: fileID,
+		pageID: pageID,
 	}
 
 	p.setNumSlots(0)
@@ -142,4 +149,8 @@ func (p *SlottedPage) RUnlock() {
 	p.locked.Store(false)
 
 	p.latch.RUnlock()
+}
+
+func (p *SlottedPage) SetDirtiness(val bool) {
+	p.dirty.Store(val)
 }

@@ -1,98 +1,71 @@
 package mocks
 
 import (
-	"errors"
-
-	"github.com/Blackdeer1524/GraphDB/bufferpool"
 	"github.com/stretchr/testify/mock"
 )
 
-type MockPage struct {
-	Data []byte
+type SlottedPage struct {
+	data   []byte
+	fileID uint64
+	pageID uint64
+	dirty  bool
 }
 
-func (p *MockPage) GetData() []byte {
-	return p.Data
+func (p *SlottedPage) GetData() []byte       { return p.data }
+func (p *SlottedPage) SetData(d []byte)      { p.data = d }
+func (p *SlottedPage) SetDirtiness(val bool) { p.dirty = val }
+func (p *SlottedPage) IsDirty() bool         { return p.dirty }
+func (p *SlottedPage) GetFileID() uint64     { return p.fileID }
+func (p *SlottedPage) GetPageID() uint64     { return p.pageID }
+func (p *SlottedPage) Lock()                 {}
+func (p *SlottedPage) Unlock()               {}
+func (p *SlottedPage) RLock()                {}
+func (p *SlottedPage) RUnlock()              {}
+
+// Фабрика для создания SlottedPage
+func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
+	return &SlottedPage{
+		fileID: fileID,
+		pageID: pageID,
+		data:   []byte{},
+		dirty:  false,
+	}
 }
 
-func (p *MockPage) Lock() {
-
-}
-
-func (p *MockPage) Unlock() {
-
-}
-
-func (p *MockPage) RLock() {
-
-}
-
-func (p *MockPage) RUnlock() {
-
-}
-
-func (p *MockPage) Insert(record []byte) (int, error) {
-	p.Data = append(p.Data, record...)
-
-	return len(p.Data), nil
-}
-
-type mockDiskManager struct {
+// Мок DiskManager
+type MockDiskManager struct {
 	mock.Mock
-	Pages map[[2]uint64]*MockPage
 }
 
-func NewMockDiskManager() *mockDiskManager {
-	return &mockDiskManager{
-		Pages: make(map[[2]uint64]*MockPage),
-	}
+func (m *MockDiskManager) ReadPage(fileID, pageID uint64) (*SlottedPage, error) {
+	args := m.Called(fileID, pageID)
+	return args.Get(0).(*SlottedPage), args.Error(1)
 }
 
-func (d *mockDiskManager) ReadPage(fileID, pageID uint64) (bufferpool.Page, error) {
-	key := [2]uint64{fileID, pageID}
-	if page, ok := d.Pages[key]; ok {
-		return page, nil
-	}
-
-	return nil, errors.New("not found")
+func (m *MockDiskManager) WritePage(page *SlottedPage) error {
+	args := m.Called(page)
+	return args.Error(0)
 }
 
-func (d *mockDiskManager) WritePage(p bufferpool.Page) error {
-	return nil
+// Мок Replacer
+type MockReplacer struct {
+	mock.Mock
 }
 
-type mockReplacer struct {
-	Pinned  map[uint64]bool
-	victims []uint64
+func (m *MockReplacer) Pin(frameID uint64) {
+	m.Called(frameID)
 }
 
-func NewMockReplacer() *mockReplacer {
-	return &mockReplacer{
-		Pinned:  make(map[uint64]bool),
-		victims: make([]uint64, 0),
-	}
+func (m *MockReplacer) Unpin(frameID uint64) {
+	m.Called(frameID)
 }
 
-func (r *mockReplacer) Pin(frameID uint64) {
-	r.Pinned[frameID] = true
+func (m *MockReplacer) ChooseVictim() (uint64, error) {
+	args := m.Called()
+	return args.Get(0).(uint64), args.Error(1)
 }
 
-func (r *mockReplacer) Unpin(frameID uint64) {
-	r.Pinned[frameID] = false
-	r.victims = append(r.victims, frameID)
-}
-
-func (r *mockReplacer) ChooseVictim() (uint64, error) {
-	if len(r.victims) == 0 {
-		return 0, errors.New("no victim")
-	}
-
-	v := r.victims[0]
-	r.victims = r.victims[1:]
-
-	return v, nil
-}
-
-func (r *mockReplacer) GetSize() uint64 {
-	return uint64(len(r.victims))
+func (m *MockReplacer) GetSize() uint64 {
+	args := m.Called()
+	return args.Get(0).(uint64)
 }

@@ -1,102 +1,170 @@
-package bufferpool_test
+package bufferpool
 
 import (
 	"testing"
 
-	"github.com/Blackdeer1524/GraphDB/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/bufferpool/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetPage_CacheMissAndLoad(t *testing.T) {
-	replacer := mocks.NewMockReplacer()
-	disk := mocks.NewMockDiskManager()
+func TestGetPage_Cached(t *testing.T) {
+	mockDisk := new(mocks.MockDiskManager)
+	mockReplacer := new(mocks.MockReplacer)
 
-	page := &mocks.MockPage{Data: []byte("hello")}
-
-	disk.Pages[[2]uint64{1, 1}] = page
-
-	mgr, err := bufferpool.New(2, replacer, disk)
+	manager, err := New(1, mockReplacer, mockDisk)
 	require.NoError(t, err)
 
-	p, err := mgr.GetPage(1, 1)
+	fileID, pageID := uint64(1), uint64(0)
 
-	require.NoError(t, err)
+	p := mocks.NewSlottedPage(fileID, pageID)
+	p.SetData([]byte("cached data"))
 
-	require.NotNil(t, p)
-	assert.Equal(t, "hello", string((*p).GetData()))
-}
-
-func TestUnpin(t *testing.T) {
-	replacer := mocks.NewMockReplacer()
-	disk := mocks.NewMockDiskManager()
-
-	page := &mocks.MockPage{Data: []byte("page")}
-	disk.Pages[[2]uint64{2, 2}] = page
-
-	mgr, _ := bufferpool.New(2, replacer, disk)
-
-	_, err := mgr.GetPage(2, 2)
-	require.NoError(t, err)
-
-	err = mgr.Unpin(2, 2)
-	require.NoError(t, err)
-	assert.Equal(t, true, !replacer.Pinned[0])
-}
-
-func TestMarkDirtyAndFlushPage(t *testing.T) {
-	replacer := mocks.NewMockReplacer()
-	disk := mocks.NewMockDiskManager()
-	page := &mocks.MockPage{Data: []byte("dirty")}
-	disk.Pages[[2]uint64{3, 3}] = page
-
-	mgr, _ := bufferpool.New(2, replacer, disk)
-
-	_, err := mgr.GetPage(3, 3)
-	require.NoError(t, err)
-
-	err = mgr.MarkDirty(3, 3)
-	require.NoError(t, err)
-
-	err = mgr.FlushPage(3, 3)
-	require.NoError(t, err)
-}
-
-func TestFlushAllPages(t *testing.T) {
-	replacer := mocks.NewMockReplacer()
-	disk := mocks.NewMockDiskManager()
-
-	page := &mocks.MockPage{Data: []byte("dirty")}
-	disk.Pages = map[[2]uint64]*mocks.MockPage{
-		{4, 4}: page,
+	frameID := uint64(0)
+	manager.frames[frameID] = frame[*mocks.SlottedPage]{
+		Page:     p,
+		PinCount: 0,
+		FileID:   fileID,
+		PageID:   pageID,
 	}
+	manager.pageToFrame[PageIdentity{fileID: fileID, pageID: pageID}] = frameID
 
-	mgr, _ := bufferpool.New(2, replacer, disk)
+	mockReplacer.On("Pin", frameID).Return()
 
-	_, err := mgr.GetPage(4, 4)
-	require.NoError(t, err)
-	_ = mgr.MarkDirty(4, 4)
+	pIdent := PageIdentity{fileID: fileID, pageID: pageID}
 
-	err = mgr.FlushAllPages()
-	require.NoError(t, err)
+	result, err := manager.GetPage(pIdent)
+
+	assert.NoError(t, err)
+	assert.Equal(t, p, *result)
+
+	// не должно быть считывания с диска
+	mockDisk.AssertNotCalled(t, "ReadPage", fileID, pageID)
+
+	mockReplacer.AssertExpectations(t)
+	mockReplacer.AssertNotCalled(t, "Unpin", mock.Anything)
 }
 
-func TestChooseVictim(t *testing.T) {
-	replacer := mocks.NewMockReplacer()
-	disk := mocks.NewMockDiskManager()
+func TestGetPage_LoadFromDisk(t *testing.T) {
+	mockDisk := new(mocks.MockDiskManager)
+	mockReplacer := new(mocks.MockReplacer)
 
-	page := &mocks.MockPage{Data: []byte("first")}
-
-	disk.Pages = map[[2]uint64]*mocks.MockPage{
-		{5, 5}: page,
-		{5, 6}: {Data: []byte("second")},
-	}
-
-	mgr, _ := bufferpool.New(1, replacer, disk)
-
-	_, _ = mgr.GetPage(5, 5)
-	_ = mgr.Unpin(5, 5)
-	_, err := mgr.GetPage(5, 6)
+	manager, err := New(1, mockReplacer, mockDisk)
 	require.NoError(t, err)
+
+	fileID, pageID := uint64(1), uint64(0)
+
+	expectedPage := mocks.NewSlottedPage(fileID, pageID)
+	expectedPage.SetData([]byte("disk data"))
+
+	mockDisk.On("ReadPage", fileID, pageID).Return(expectedPage, nil)
+	mockReplacer.On("Pin", uint64(0)).Return()
+
+	pIdent := PageIdentity{fileID: fileID, pageID: pageID}
+	result, err := manager.GetPage(pIdent)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedPage, *result)
+
+	assert.Equal(t, uint64(0), manager.pageToFrame[pIdent])
+	assert.Equal(t, expectedPage, manager.frames[0].Page)
+
+	mockDisk.AssertExpectations(t)
+	mockReplacer.AssertExpectations(t)
+}
+
+func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
+	mockDisk := new(mocks.MockDiskManager)
+	mockReplacer := new(mocks.MockReplacer)
+
+	// Создаем пул из 2 фреймов
+	manager, err := New(2, mockReplacer, mockDisk)
+	require.NoError(t, err)
+
+	existingFileID, existingPageID := uint64(1), uint64(0)
+	existingPage := mocks.NewSlottedPage(existingFileID, existingPageID)
+	existingPage.SetData([]byte("existing data"))
+
+	frameID := uint64(0)
+	manager.frames[frameID] = frame[*mocks.SlottedPage]{
+		Page:     existingPage,
+		PinCount: 1,
+		FileID:   existingFileID,
+		PageID:   existingPageID,
+	}
+	manager.pageToFrame[PageIdentity{fileID: existingFileID, pageID: existingPageID}] = frameID
+	manager.emptyFrames = []uint64{1}
+
+	newFileID := uint64(2)
+	newPageID := uint64(1)
+	newPage := mocks.NewSlottedPage(newFileID, newPageID)
+	newPage.SetData([]byte("new data"))
+
+	mockDisk.On("ReadPage", newFileID, newPageID).Return(newPage, nil)
+	mockReplacer.On("Pin", uint64(1)).Return()
+
+	pIdent := PageIdentity{fileID: newFileID, pageID: newPageID}
+	result, err := manager.GetPage(pIdent)
+
+	assert.NoError(t, err)
+	assert.Equal(t, newPage, *result)
+
+	assert.Equal(t, uint64(1), manager.pageToFrame[pIdent])
+	assert.Equal(t, newPage, manager.frames[1].Page)
+
+	assert.Equal(t, existingPage, manager.frames[0].Page)
+	assert.Equal(t, uint64(0), manager.pageToFrame[PageIdentity{fileID: existingFileID, pageID: existingPageID}])
+
+	mockDisk.AssertExpectations(t)
+	mockReplacer.AssertExpectations(t)
+}
+
+func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
+	mockDisk := new(mocks.MockDiskManager)
+	mockReplacer := new(mocks.MockReplacer)
+
+	manager, err := New(1, mockReplacer, mockDisk)
+	require.NoError(t, err)
+
+	existingFileID, existingPageID := uint64(1), uint64(0)
+	existingPage := mocks.NewSlottedPage(existingFileID, existingPageID)
+	existingPage.SetData([]byte("old data"))
+	existingPage.SetDirtiness(true)
+
+	frameID := uint64(0)
+	manager.frames[frameID] = frame[*mocks.SlottedPage]{
+		Page:     existingPage,
+		PinCount: 0,
+		FileID:   existingFileID,
+		PageID:   existingPageID,
+	}
+	manager.pageToFrame[PageIdentity{fileID: existingFileID, pageID: existingPageID}] = frameID
+	manager.emptyFrames = nil
+
+	newFileID, newPageID := uint64(2), uint64(1)
+	newPage := mocks.NewSlottedPage(newFileID, newPageID)
+	newPage.SetData([]byte("new data"))
+
+	mockReplacer.On("ChooseVictim").Return(frameID, nil)
+	mockReplacer.On("Pin", frameID).Return()
+
+	mockDisk.On("WritePage", existingPage).Return(nil)
+	mockDisk.On("ReadPage", newFileID, newPageID).Return(newPage, nil)
+
+	pIdent := PageIdentity{fileID: newFileID, pageID: newPageID}
+	result, err := manager.GetPage(pIdent)
+
+	assert.NoError(t, err)
+	assert.Equal(t, newPage, *result)
+
+	oldIdent := PageIdentity{fileID: existingFileID, pageID: existingPageID}
+	_, exists := manager.pageToFrame[oldIdent]
+	assert.False(t, exists, "Старая страница не удалена из pageToFrame")
+
+	assert.Equal(t, frameID, manager.pageToFrame[pIdent])
+	assert.Equal(t, newPage, manager.frames[frameID].Page)
+
+	mockReplacer.AssertExpectations(t)
+	mockDisk.AssertExpectations(t)
 }
