@@ -8,7 +8,7 @@ import (
 )
 
 func TestInsertAndGet(t *testing.T) {
-	page := NewSlottedPage()
+	page := NewSlottedPage(0, 0)
 
 	records := [][]byte{
 		[]byte("alpha"),
@@ -18,14 +18,12 @@ func TestInsertAndGet(t *testing.T) {
 
 	var slotIDs []int
 
-	// Insert records
 	for _, rec := range records {
 		id, err := page.Insert(rec)
 		require.NoError(t, err, "Insert failed")
 		slotIDs = append(slotIDs, id)
 	}
 
-	// Retrieve and verify records
 	for i, id := range slotIDs {
 		got, err := page.Get(id)
 		require.NoError(t, err, "Get failed")
@@ -34,10 +32,10 @@ func TestInsertAndGet(t *testing.T) {
 }
 
 func TestFreeSpaceReduction(t *testing.T) {
-	page := NewSlottedPage()
+	page := NewSlottedPage(0, 0)
 	initialFree := page.freeEnd() - page.freeStart()
 
-	_, err := page.Insert([]byte("1234567890")) // 10 bytes
+	_, err := page.Insert([]byte("1234567890"))
 	require.NoError(t, err, "Insert failed")
 
 	used := page.freeEnd() - page.freeStart()
@@ -45,16 +43,15 @@ func TestFreeSpaceReduction(t *testing.T) {
 }
 
 func TestInsertTooLarge(t *testing.T) {
-	page := NewSlottedPage()
+	page := NewSlottedPage(0, 0)
 
-	// Try to insert a record that's too big
 	tooBig := make([]byte, Size)
 	_, err := page.Insert(tooBig)
 	assert.Error(t, err, "Expected error when inserting too large record")
 }
 
 func TestInvalidSlotID(t *testing.T) {
-	page := NewSlottedPage()
+	page := NewSlottedPage(0, 0)
 
 	_, err := page.Get(999)
 	assert.Error(t, err, "Expected error for invalid slot ID")
