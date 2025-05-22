@@ -48,60 +48,60 @@ func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
 	return p
 }
 
-func (p *SlottedPage) NumSlots() int32 {
-	return int32(binary.LittleEndian.Uint32(p.data[0:4]))
+func (p *SlottedPage) NumSlots() uint32 {
+	return uint32(binary.LittleEndian.Uint32(p.data[0:4]))
 }
 
-func (p *SlottedPage) setNumSlots(n int32) {
+func (p *SlottedPage) setNumSlots(n uint32) {
 	binary.LittleEndian.PutUint32(p.data[0:4], uint32(n))
 }
 
-func (p *SlottedPage) freeStart() int32 {
-	return int32(binary.LittleEndian.Uint32(p.data[4:8]))
+func (p *SlottedPage) freeStart() uint32 {
+	return uint32(binary.LittleEndian.Uint32(p.data[4:8]))
 }
 
-func (p *SlottedPage) setFreeStart(n int32) {
+func (p *SlottedPage) setFreeStart(n uint32) {
 	binary.LittleEndian.PutUint32(p.data[4:8], uint32(n))
 }
 
-func (p *SlottedPage) freeEnd() int32 {
-	return int32(binary.LittleEndian.Uint32(p.data[8:12]))
+func (p *SlottedPage) freeEnd() uint32 {
+	return uint32(binary.LittleEndian.Uint32(p.data[8:12]))
 }
 
-func (p *SlottedPage) setFreeEnd(n int32) {
-	binary.LittleEndian.PutUint32(p.data[8:12], uint32(n))
+func (p *SlottedPage) setFreeEnd(n uint32) {
+	binary.LittleEndian.PutUint32(p.data[8:12], n)
 }
 
-func (p *SlottedPage) getSlot(i int32) (offset, length int32) {
+func (p *SlottedPage) getSlot(i uint32) (offset, length uint32) {
 	base := HeaderSize + i*SlotSize
 
-	offset = int32(binary.LittleEndian.Uint16(p.data[base : base+2]))
-	length = int32(binary.LittleEndian.Uint16(p.data[base+2 : base+4]))
+	offset = uint32(binary.LittleEndian.Uint16(p.data[base : base+2]))
+	length = uint32(binary.LittleEndian.Uint16(p.data[base+2 : base+4]))
 
 	return
 }
 
-func (p *SlottedPage) setSlot(i, offset, length int32) {
+func (p *SlottedPage) setSlot(i, offset, length uint32) {
 	base := HeaderSize + i*SlotSize
 	binary.LittleEndian.PutUint16(p.data[base:base+2], uint16(offset))
 	binary.LittleEndian.PutUint16(p.data[base+2:base+4], uint16(length))
 }
 
-func (p *SlottedPage) Insert(record []byte) (int32, error) {
+func (p *SlottedPage) Insert(record []byte) (uint32, error) {
 	recLen := len(record)
 	freeSpace := p.freeEnd() - p.freeStart()
 
-	if freeSpace < int32(recLen)+SlotSize {
-		return -1, ErrNoEnoughSpace
+	if freeSpace < uint32(recLen)+SlotSize {
+		return 0, ErrNoEnoughSpace
 	}
 
 	// Allocate space for the record
-	newOffset := p.freeEnd() - int32(recLen)
+	newOffset := p.freeEnd() - uint32(recLen)
 	copy(p.data[newOffset:], record)
 
 	// Create slot
 	slotID := p.NumSlots()
-	p.setSlot(slotID, newOffset, int32(recLen))
+	p.setSlot(slotID, newOffset, uint32(recLen))
 
 	// Update header
 	p.setNumSlots(slotID + 1)
@@ -111,8 +111,8 @@ func (p *SlottedPage) Insert(record []byte) (int32, error) {
 	return slotID, nil
 }
 
-func (p *SlottedPage) Get(slotID int32) ([]byte, error) {
-	if slotID < 0 || slotID >= p.NumSlots() {
+func (p *SlottedPage) Get(slotID uint32) ([]byte, error) {
+	if slotID >= p.NumSlots() {
 		return nil, ErrInvalidSlotID
 	}
 
