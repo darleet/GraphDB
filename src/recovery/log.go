@@ -56,17 +56,21 @@ func NewTxnLogger() {
 func (l *TxnLogger) Recover(checkpointLocation LogRecordLocationInfo) {
 	assert.Assert(checkpointLocation.isNil(), "the caller should have passed the first page of the log file")
 
+	ATT, DPT := l.recoverAnalyze(checkpointLocation)
+	earliestLog := l.recoverPrepareCLRs(ATT, DPT)
+	l.recoverRedo(earliestLog.location)
+
+}
+
+func (l *TxnLogger) recoverAnalyze(
+	checkpointLocation LogRecordLocationInfo,
+) (ActiveTransactionsTable, map[bufferpool.PageIdentity]LogRecordLocationInfo) {
 	iter, err := l.Iter(FileLocation{
 		PageID:  checkpointLocation.location.PageID,
 		SlotNum: checkpointLocation.location.SlotNum,
 	})
 	assert.Assert(err == nil, "couldn't recover. reason: %+v", err)
 
-	ATT, DPT := l.recoverAnalyze(iter)
-	l.recoverRedo(ATT, DPT)
-}
-
-func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTable, map[bufferpool.PageIdentity]LogRecordLocationInfo) {
 	ATT := NewATT()
 	DPT := map[bufferpool.PageIdentity]LogRecordLocationInfo{}
 
@@ -219,9 +223,14 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 	return ATT, DPT
 }
 
-func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.PageIdentity]LogRecordLocationInfo) {
-	minLSN := LSN(math.MaxUint64)
-	earliestLogLocation := 
+func (l *TxnLogger) recoverPrepareCLRs(
+	ATT ActiveTransactionsTable,
+	DPT map[bufferpool.PageIdentity]LogRecordLocationInfo,
+) LogRecordLocationInfo {
+	earliestLogLocation := LogRecordLocationInfo{
+		Lsn:      LSN(math.MaxUint64),
+		location: FileLocation{},
+	}
 
 	for _, entry := range ATT.table {
 		if entry.status != TxnStatusUndo {
@@ -239,11 +248,14 @@ func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.
 				record, ok := record.(InsertLogRecord)
 				assert.Assert(ok, "todo")
 
-				if minLSN > record.lsn {
-					minLSN = record.lsn
+				if earliestLogLocation.Lsn > record.lsn {
+					earliestLogLocation.Lsn = record.lsn
+					earliestLogLocation.location = recordLocation
 				}
-
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
+
+				_, err := l.AppendTxnEnd(record.txnId, entry.logLocationInfo)
+				assert.Assert(err != nil, "todo")
 				break outer
 			case TypeInsert:
 				record, ok := record.(InsertLogRecord)
@@ -296,6 +308,82 @@ func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.
 				panic("unreachable")
 			}
 		}
+	}
+
+	return earliestLogLocation
+}
+
+func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
+	iter, err := l.Iter(earliestLog)
+	assert.Assert(err != nil, "todo")
+
+	for {
+		tag, record, err := iter.Get()
+		assert.Assert(err != nil, "todo")
+
+		if tag == TypeInsert {
+			record, ok := record.(InsertLogRecord)
+			assert.Assert(ok, "todo")
+
+			slotData, err := func() ([]byte, error) {
+				p, err := l.pool.GetPage(record.modifiedPageIdentity)
+				defer l.pool.Unpin(record.modifiedPageIdentity)
+				assert.Assert(err != nil, "todo")
+
+				p.Lock()
+				defer p.Unlock()
+
+				data, err := p.Get(record.modifiedSlotNumber)
+				return data, err
+			}()
+			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number should have been correct")
+			assert.Assert(err != nil, "todo")
+			assert.Assert(len(record.value) <= len(slotData), "length should be the same")
+
+			copy(slotData, record.value)
+		} else if tag == TypeUpdate {
+			record, ok := record.(UpdateLogRecord)
+			assert.Assert(ok, "todo")
+
+			slotData, err := func() ([]byte, error) {
+				p, err := l.pool.GetPage(record.modifiedPageIdentity)
+				defer l.pool.Unpin(record.modifiedPageIdentity)
+				assert.Assert(err != nil, "todo")
+
+				p.Lock()
+				defer p.Unlock()
+
+				data, err := p.Get(record.modifiedSlotNumber)
+				return data, err
+			}()
+			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number must be correct")
+			assert.Assert(err != nil, "todo")
+			assert.Assert(len(record.afterValue) <= len(slotData), "length should be the same")
+
+			copy(slotData, record.afterValue)
+		} else if tag == TypeCompensation {
+			record, ok := record.(CompensationLogRecord)
+			assert.Assert(ok, "todo")
+
+			slotData, err := func() ([]byte, error) {
+				p, err := l.pool.GetPage(record.modifiedPageIdentity)
+				defer l.pool.Unpin(record.modifiedPageIdentity)
+				assert.Assert(err != nil, "todo")
+
+				p.Lock()
+				defer p.Unlock()
+
+				data, err := p.Get(record.modifiedSlotNumber)
+				return data, err
+			}()
+			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number must be correct")
+			assert.Assert(err != nil, "todo")
+			assert.Assert(len(record.afterValue) <= len(slotData), "length should be the same")
+
+			copy(slotData, record.afterValue)
+		}
+
+		iter.MoveForward()
 	}
 }
 
@@ -395,7 +483,8 @@ func (l *TxnLogger) AppendUpdate(
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
 	beforeValue []byte,
-	afterValue []byte) (LSN, error) {
+	afterValue []byte,
+) (LSN, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
