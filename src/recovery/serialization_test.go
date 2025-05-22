@@ -353,9 +353,15 @@ func TestCheckpointBegin_TruncatedData(t *testing.T) {
 
 func TestCheckpointEnd_MarshalUnmarshal(t *testing.T) {
 	activeTxns := []transactions.TxnID{123, 456, 789}
-	dirtyPages := map[bufferpool.PageIdentity]LSN{
-		bufferpool.PageIdentity{PageID: 1, FileID: 1}: 100,
-		bufferpool.PageIdentity{PageID: 2, FileID: 1}: 200,
+	dirtyPages := map[bufferpool.PageIdentity]LogRecordLocation{
+		bufferpool.PageIdentity{PageID: 1, FileID: 1}: LogRecordLocation{
+			Lsn:     100,
+			PageLoc: PageLocation{},
+		},
+		bufferpool.PageIdentity{PageID: 2, FileID: 1}: LogRecordLocation{
+			Lsn:     200,
+			PageLoc: PageLocation{},
+		},
 	}
 
 	original := NewCheckpointEnd(999, activeTxns, dirtyPages)
@@ -412,7 +418,7 @@ func TestCheckpointEnd_EmptyData(t *testing.T) {
 
 func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
 	// Create a valid record first
-	original := NewCheckpointEnd(999, []transactions.TxnID{123}, make(map[bufferpool.PageIdentity]LSN))
+	original := NewCheckpointEnd(999, []transactions.TxnID{123}, make(map[bufferpool.PageIdentity]LogRecordLocation))
 	data, err := original.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary failed: %v", err)

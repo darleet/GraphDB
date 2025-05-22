@@ -189,13 +189,13 @@ func NewCheckpointBegin(lsn LSN) CheckpointBeginLogRecord {
 type CheckpointEndLogRecord struct {
 	lsn                LSN
 	activeTransactions []transactions.TxnID
-	dirtyPageTable     map[bufferpool.PageIdentity]LSN
+	dirtyPageTable     map[bufferpool.PageIdentity]LogRecordLocation
 }
 
 func NewCheckpointEnd(
 	lsn LSN,
 	activeTransacitons []transactions.TxnID,
-	dirtyPageTable map[bufferpool.PageIdentity]LSN,
+	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocation,
 ) CheckpointEndLogRecord {
 	return CheckpointEndLogRecord{
 		lsn:                lsn,

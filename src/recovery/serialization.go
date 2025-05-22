@@ -456,18 +456,13 @@ func (c *CheckpointEndLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.dirtyPageTable))); err != nil {
 		return nil, err
 	}
-	for pageID, pageLSN := range c.dirtyPageTable {
-		pageData, err := pageID.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
+	for pageID, pageInfo := range c.dirtyPageTable {
 		// Write page identity length and data
-		if err := binary.Write(buf, binary.BigEndian, uint32(len(pageData))); err != nil {
+		if err := binary.Write(buf, binary.BigEndian, pageID); err != nil {
 			return nil, err
 		}
-		buf.Write(pageData)
 		// Write associated LSN
-		if err := binary.Write(buf, binary.BigEndian, pageLSN); err != nil {
+		if err := binary.Write(buf, binary.BigEndian, pageInfo); err != nil {
 			return nil, err
 		}
 	}
@@ -507,29 +502,17 @@ func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &dirtyPagesLen); err != nil {
 		return err
 	}
-	c.dirtyPageTable = make(map[bufferpool.PageIdentity]LSN, dirtyPagesLen)
+	c.dirtyPageTable = make(map[bufferpool.PageIdentity]LogRecordLocation, dirtyPagesLen)
 	for i := 0; i < int(dirtyPagesLen); i++ {
-		// Read page identity
-		var pageDataLen uint32
-		if err := binary.Read(reader, binary.BigEndian, &pageDataLen); err != nil {
-			return err
-		}
-		pageData := make([]byte, pageDataLen)
-		if _, err := io.ReadFull(reader, pageData); err != nil {
-			return err
-		}
 		var pageID bufferpool.PageIdentity
-		if err := pageID.UnmarshalBinary(pageData); err != nil {
+		if err := binary.Read(reader, binary.BigEndian, &pageID); err != nil {
 			return err
 		}
-
-		// Read associated LSN
-		var pageLSN LSN
-		if err := binary.Read(reader, binary.BigEndian, &pageLSN); err != nil {
+		var logInfo LogRecordLocation
+		if err := binary.Read(reader, binary.BigEndian, &logInfo); err != nil {
 			return err
 		}
-
-		c.dirtyPageTable[pageID] = pageLSN
+		c.dirtyPageTable[pageID] = logInfo
 	}
 
 	return nil

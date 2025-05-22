@@ -8,7 +8,7 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 )
 
-type LogRecordIter struct {
+type LogRecordsIter struct {
 	logfileID uint64
 	curLoc    PageLocation
 
@@ -21,8 +21,8 @@ func NewLogRecordIter(
 	curLoc PageLocation,
 	pool bufferpool.BufferPool[*page.SlottedPage],
 	lockedPage *page.SlottedPage,
-) *LogRecordIter {
-	return &LogRecordIter{
+) *LogRecordsIter {
+	return &LogRecordsIter{
 		logfileID:  logfileID,
 		curLoc:     curLoc,
 		pool:       pool,
@@ -33,7 +33,7 @@ func NewLogRecordIter(
 var ErrInvalidIterator = errors.New("iterator is invalid")
 
 // Returns an error only if couldn't read the next page
-func (iter *LogRecordIter) MoveForward() (bool, error) {
+func (iter *LogRecordsIter) MoveForward() (bool, error) {
 	if iter.curLoc.SlotNum+1 < iter.lockedPage.NumSlots() {
 		iter.curLoc.SlotNum++
 		return true, nil
@@ -64,17 +64,17 @@ func (iter *LogRecordIter) MoveForward() (bool, error) {
 	return true, nil
 }
 
-func (iter *LogRecordIter) Get() (LogRecordTypeTag, any, error) {
+func (iter *LogRecordsIter) Get() (LogRecordTypeTag, any, error) {
 	d, err := iter.lockedPage.Get(iter.curLoc.SlotNum)
 	assert.Assert(err != nil, "LogIter invariant violated. err: %+v", err)
 	return ReadLogRecord(d)
 }
 
-func (iter *LogRecordIter) Location() PageLocation {
+func (iter *LogRecordsIter) Location() PageLocation {
 	return iter.curLoc
 }
 
-func (iter *LogRecordIter) Invalidate() {
+func (iter *LogRecordsIter) Invalidate() {
 	iter.lockedPage.RUnlock()
 	iter.pool.Unpin(bufferpool.PageIdentity{
 		FileID: iter.logfileID,
