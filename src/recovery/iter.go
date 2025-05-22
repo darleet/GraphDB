@@ -10,7 +10,7 @@ import (
 
 type LogRecordsIter struct {
 	logfileID uint64
-	curLoc    PageLocation
+	curLoc    FileLocation
 
 	pool       bufferpool.BufferPool[*page.SlottedPage]
 	lockedPage *page.SlottedPage
@@ -18,7 +18,7 @@ type LogRecordsIter struct {
 
 func NewLogRecordIter(
 	logfileID uint64,
-	curLoc PageLocation,
+	curLoc FileLocation,
 	pool bufferpool.BufferPool[*page.SlottedPage],
 	lockedPage *page.SlottedPage,
 ) *LogRecordsIter {
@@ -70,7 +70,7 @@ func (iter *LogRecordsIter) Get() (LogRecordTypeTag, any, error) {
 	return readLogRecord(d)
 }
 
-func (iter *LogRecordsIter) Location() PageLocation {
+func (iter *LogRecordsIter) Location() FileLocation {
 	return iter.curLoc
 }
 

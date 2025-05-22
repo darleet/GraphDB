@@ -28,29 +28,29 @@ const (
 	TypeUnknown
 )
 
-func (l *LogRecordLocation) MarshalBinary() ([]byte, error) {
+func (l *LogRecordLocationInfo) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.BigEndian, l.Lsn); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, l.PageLoc.PageID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, l.location.PageID); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, l.PageLoc.SlotNum); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, l.location.SlotNum); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-func (l *LogRecordLocation) UnmarshalBinary(data []byte) error {
+func (l *LogRecordLocationInfo) UnmarshalBinary(data []byte) error {
 	rd := bytes.NewReader(data)
 	if err := binary.Read(rd, binary.BigEndian, &l.Lsn); err != nil {
 		return err
 	}
-	if err := binary.Read(rd, binary.BigEndian, &l.PageLoc.PageID); err != nil {
+	if err := binary.Read(rd, binary.BigEndian, &l.location.PageID); err != nil {
 		return err
 	}
-	if err := binary.Read(rd, binary.BigEndian, &l.PageLoc.SlotNum); err != nil {
+	if err := binary.Read(rd, binary.BigEndian, &l.location.SlotNum); err != nil {
 		return err
 	}
 	return nil
@@ -93,7 +93,7 @@ func (u *UpdateLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, u.txnId); err != nil {
 		return nil, err
 	}
-	locationBytes, err := u.prevLogLocation.MarshalBinary()
+	locationBytes, err := u.parentLogLocation.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &u.txnId); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &u.prevLogLocation); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &u.parentLogLocation); err != nil {
 		return err
 	}
 	if err := binary.Read(reader, binary.BigEndian, &u.modifiedPageIdentity); err != nil {
@@ -172,7 +172,7 @@ func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, i.txnId); err != nil {
 		return nil, err
 	}
-	d, err := i.prevLogLocation.MarshalBinary()
+	d, err := i.parentLogLocation.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &i.txnId); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &i.prevLogLocation); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.parentLogLocation); err != nil {
 		return err
 	}
 	if err := binary.Read(reader, binary.BigEndian, &i.modifiedPageIdentity); err != nil {
@@ -233,7 +233,7 @@ func (c *CommitLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, c.txnId); err != nil {
 		return nil, err
 	}
-	d, err := c.prevLogLocation.MarshalBinary()
+	d, err := c.parentLogLocation.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +253,7 @@ func (c *CommitLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &c.txnId); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &c.prevLogLocation); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.parentLogLocation); err != nil {
 		return err
 	}
 	return nil
@@ -269,7 +269,7 @@ func (a *AbortLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, a.txnId); err != nil {
 		return nil, err
 	}
-	d, err := a.prevLogLocation.MarshalBinary()
+	d, err := a.parentLogLocation.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func (a *AbortLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &a.txnId); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &a.prevLogLocation); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &a.parentLogLocation); err != nil {
 		return err
 	}
 	return nil
@@ -305,7 +305,7 @@ func (t *TxnEndLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, t.txnId); err != nil {
 		return nil, err
 	}
-	d, err := t.prevLogLocation.MarshalBinary()
+	d, err := t.parentLogLocation.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +325,7 @@ func (t *TxnEndLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &t.txnId); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &t.prevLogLocation); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &t.parentLogLocation); err != nil {
 		return err
 	}
 	return nil
@@ -341,7 +341,7 @@ func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, c.txnId); err != nil {
 		return nil, err
 	}
-	d, err := c.prevLogLocation.MarshalBinary()
+	d, err := c.parentLogLocation.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +383,7 @@ func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &c.txnId); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &c.prevLogLocation); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.parentLogLocation); err != nil {
 		return err
 	}
 	if err := binary.Read(reader, binary.BigEndian, &c.nextUndoLSN); err != nil {
@@ -506,13 +506,13 @@ func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &dirtyPagesLen); err != nil {
 		return err
 	}
-	c.dirtyPageTable = make(map[bufferpool.PageIdentity]LogRecordLocation, dirtyPagesLen)
+	c.dirtyPageTable = make(map[bufferpool.PageIdentity]LogRecordLocationInfo, dirtyPagesLen)
 	for i := 0; i < int(dirtyPagesLen); i++ {
 		var pageID bufferpool.PageIdentity
 		if err := binary.Read(reader, binary.BigEndian, &pageID); err != nil {
 			return err
 		}
-		var logInfo LogRecordLocation
+		var logInfo LogRecordLocationInfo
 		if err := binary.Read(reader, binary.BigEndian, &logInfo); err != nil {
 			return err
 		}

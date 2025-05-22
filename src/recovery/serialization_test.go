@@ -33,7 +33,7 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewUpdateLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, PageLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
 		222324,
 		[]byte("before value"),
@@ -57,8 +57,8 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLogLocation != recovered.prevLogLocation {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
+	if original.parentLogLocation != recovered.parentLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.parentLogLocation, original.parentLogLocation)
 	}
 	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
 		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageIdentity, original.modifiedPageIdentity)
@@ -78,7 +78,7 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewInsertLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, PageLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
 		222324,
 		[]byte("test value"),
@@ -101,8 +101,8 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLogLocation != recovered.prevLogLocation {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
+	if original.parentLogLocation != recovered.parentLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.parentLogLocation, original.parentLogLocation)
 	}
 	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
 		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageIdentity, original.modifiedPageIdentity)
@@ -119,7 +119,7 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCommitLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, PageLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -139,8 +139,8 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLogLocation != recovered.prevLogLocation {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
+	if original.parentLogLocation != recovered.parentLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.parentLogLocation, original.parentLogLocation)
 	}
 }
 
@@ -148,7 +148,7 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewAbortLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, PageLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -168,8 +168,8 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLogLocation != recovered.prevLogLocation {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
+	if original.parentLogLocation != recovered.parentLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.parentLogLocation, original.parentLogLocation)
 	}
 }
 
@@ -177,7 +177,7 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewTxnEndLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, PageLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -197,8 +197,8 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLogLocation != recovered.prevLogLocation {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
+	if original.parentLogLocation != recovered.parentLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.parentLogLocation, original.parentLogLocation)
 	}
 }
 
@@ -206,7 +206,7 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCompensationLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocation{789, PageLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
 		222324,
 		true,
@@ -232,8 +232,8 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLogLocation != recovered.prevLogLocation {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
+	if original.parentLogLocation != recovered.parentLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.parentLogLocation, original.parentLogLocation)
 	}
 	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
 		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageIdentity, original.modifiedPageIdentity)
@@ -354,14 +354,14 @@ func TestCheckpointBegin_TruncatedData(t *testing.T) {
 
 func TestCheckpointEnd_MarshalUnmarshal(t *testing.T) {
 	activeTxns := []transactions.TxnID{123, 456, 789}
-	dirtyPages := map[bufferpool.PageIdentity]LogRecordLocation{
-		bufferpool.PageIdentity{PageID: 1, FileID: 1}: LogRecordLocation{
+	dirtyPages := map[bufferpool.PageIdentity]LogRecordLocationInfo{
+		bufferpool.PageIdentity{PageID: 1, FileID: 1}: LogRecordLocationInfo{
 			Lsn:     100,
-			PageLoc: PageLocation{},
+			location: FileLocation{},
 		},
-		bufferpool.PageIdentity{PageID: 2, FileID: 1}: LogRecordLocation{
+		bufferpool.PageIdentity{PageID: 2, FileID: 1}: LogRecordLocationInfo{
 			Lsn:     200,
-			PageLoc: PageLocation{},
+			location: FileLocation{},
 		},
 	}
 
@@ -419,7 +419,7 @@ func TestCheckpointEnd_EmptyData(t *testing.T) {
 
 func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
 	// Create a valid record first
-	original := NewCheckpointEnd(999, []transactions.TxnID{123}, make(map[bufferpool.PageIdentity]LogRecordLocation))
+	original := NewCheckpointEnd(999, []transactions.TxnID{123}, make(map[bufferpool.PageIdentity]LogRecordLocationInfo))
 	data, err := original.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary failed: %v", err)

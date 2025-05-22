@@ -10,17 +10,17 @@ const (
 )
 
 type ATTEntry struct {
-	status   txnStatus
-	location LogRecordLocation
+	status          txnStatus
+	logLocationInfo LogRecordLocationInfo
 }
 
 func NewATTEntry(
 	status txnStatus,
-	location LogRecordLocation,
+	location LogRecordLocationInfo,
 ) ATTEntry {
 	return ATTEntry{
-		status:   status,
-		location: location,
+		status:          status,
+		logLocationInfo: location,
 	}
 }
 
@@ -54,8 +54,8 @@ func (att *ActiveTransactionsTable) Insert(
 	if prevEntry.status == TxnStatusUndo {
 		prevEntry.status = entry.status
 	}
-	if !entry.location.isNil() {
-		prevEntry.location = entry.location
+	if !entry.logLocationInfo.isNil() {
+		prevEntry.logLocationInfo = entry.logLocationInfo
 	}
 	att.table[id] = prevEntry
 	return false

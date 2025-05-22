@@ -2,6 +2,7 @@ package recovery
 
 import (
 	"errors"
+	"math"
 	"sync"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -20,14 +21,14 @@ type TxnLogger struct {
 	// "где-то" лежит на диске
 	logRecordsCount uint64
 	logfileID       uint64
-	lastLogLocation LogRecordLocation
+	lastLogLocation LogRecordLocationInfo
 	// ================
 
 	getActiveTransactions func() []transactions.TxnID // Прийдет из лок менеджера
 
 }
 
-func (l *TxnLogger) Iter(start PageLocation) (*LogRecordsIter, error) {
+func (l *TxnLogger) Iter(start FileLocation) (*LogRecordsIter, error) {
 	p, err := l.pool.GetPageNoCreate(bufferpool.PageIdentity{
 		FileID: l.logfileID,
 		PageID: start.PageID,
@@ -52,12 +53,12 @@ func NewTxnLogger() {
 	panic("not implemented")
 }
 
-func (l *TxnLogger) Recover(checkpointLocation LogRecordLocation) {
+func (l *TxnLogger) Recover(checkpointLocation LogRecordLocationInfo) {
 	assert.Assert(checkpointLocation.isNil(), "the caller should have passed the first page of the log file")
 
-	iter, err := l.Iter(PageLocation{
-		PageID:  checkpointLocation.PageLoc.PageID,
-		SlotNum: checkpointLocation.PageLoc.SlotNum,
+	iter, err := l.Iter(FileLocation{
+		PageID:  checkpointLocation.location.PageID,
+		SlotNum: checkpointLocation.location.SlotNum,
 	})
 	assert.Assert(err == nil, "couldn't recover. reason: %+v", err)
 
@@ -65,9 +66,9 @@ func (l *TxnLogger) Recover(checkpointLocation LogRecordLocation) {
 	l.recoverRedo(ATT, DPT)
 }
 
-func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTable, map[bufferpool.PageIdentity]LogRecordLocation) {
+func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTable, map[bufferpool.PageIdentity]LogRecordLocationInfo) {
 	ATT := NewATT()
-	DPT := map[bufferpool.PageIdentity]LogRecordLocation{}
+	DPT := map[bufferpool.PageIdentity]LogRecordLocationInfo{}
 
 	for {
 		stop, err := iter.MoveForward()
@@ -88,9 +89,9 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
-					LogRecordLocation{
-						Lsn:     record.lsn,
-						PageLoc: iter.Location(),
+					LogRecordLocationInfo{
+						Lsn:      record.lsn,
+						location: iter.Location(),
 					}),
 			), "Found a `begin` record for the already running transaction. TxnID: %d", record.txnId)
 		case TypeInsert:
@@ -102,24 +103,24 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
-					LogRecordLocation{
-						Lsn:     record.lsn,
-						PageLoc: iter.Location(),
+					LogRecordLocationInfo{
+						Lsn:      record.lsn,
+						location: iter.Location(),
 					}),
 			)
 
 			_, alreadyExists := DPT[record.modifiedPageIdentity]
 			if !alreadyExists {
-				DPT[record.modifiedPageIdentity] = LogRecordLocation{
-					Lsn:     record.lsn,
-					PageLoc: iter.Location(),
+				DPT[record.modifiedPageIdentity] = LogRecordLocationInfo{
+					Lsn:      record.lsn,
+					location: iter.Location(),
 				}
 			}
 		case TypeUpdate:
 			record, ok := untypedRecord.(UpdateLogRecord)
-			recordLocation := LogRecordLocation{
-				Lsn:     record.lsn,
-				PageLoc: iter.Location(),
+			recordLocation := LogRecordLocationInfo{
+				Lsn:      record.lsn,
+				location: iter.Location(),
 			}
 			assert.Assert(ok, "couldn't type cast the record")
 
@@ -144,9 +145,9 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 				tag,
 				NewATTEntry(
 					TxnStatusCommit,
-					LogRecordLocation{
-						Lsn:     record.lsn,
-						PageLoc: iter.Location(),
+					LogRecordLocationInfo{
+						Lsn:      record.lsn,
+						location: iter.Location(),
 					}),
 			)
 		case TypeAbort:
@@ -158,9 +159,9 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
-					LogRecordLocation{
-						Lsn:     record.lsn,
-						PageLoc: iter.Location(),
+					LogRecordLocationInfo{
+						Lsn:      record.lsn,
+						location: iter.Location(),
 					}),
 			)
 		case TypeTxnEnd:
@@ -189,7 +190,7 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 			// The DPT contains all pages that are dirty in the buffer pool.
 			// It doesn’t matter if the changes were caused
 			// by a transaction that is running, committed, or aborted.
-			DPT := map[bufferpool.PageIdentity]LogRecordLocation{}
+			DPT := map[bufferpool.PageIdentity]LogRecordLocationInfo{}
 			for pageInfo, firstDirtyLSN := range record.dirtyPageTable {
 				if _, alreadyExists := DPT[pageInfo]; !alreadyExists {
 					DPT[pageInfo] = firstDirtyLSN
@@ -204,9 +205,9 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
-					LogRecordLocation{
-						Lsn:     record.lsn,
-						PageLoc: iter.Location(),
+					LogRecordLocationInfo{
+						Lsn:      record.lsn,
+						location: iter.Location(),
 					}),
 			)
 		default:
@@ -218,12 +219,15 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 	return ATT, DPT
 }
 
-func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.PageIdentity]LogRecordLocation) {
+func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.PageIdentity]LogRecordLocationInfo) {
+	minLSN := LSN(math.MaxUint64)
+	earliestLogLocation := 
+
 	for _, entry := range ATT.table {
 		if entry.status != TxnStatusUndo {
 			continue
 		}
-		recordLocation := entry.location.PageLoc
+		recordLocation := entry.logLocationInfo.location
 		clrsFound := 0
 	outer:
 		for {
@@ -232,39 +236,57 @@ func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.
 
 			switch tag {
 			case TypeBegin:
+				record, ok := record.(InsertLogRecord)
+				assert.Assert(ok, "todo")
+
+				if minLSN > record.lsn {
+					minLSN = record.lsn
+				}
+
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 				break outer
 			case TypeInsert:
-				record := record.(InsertLogRecord)
-				DPT[record.modifiedPageIdentity] = LogRecordLocation{
-					Lsn:     record.lsn,
-					PageLoc: recordLocation,
+				record, ok := record.(InsertLogRecord)
+				assert.Assert(ok, "todo")
+
+				DPT[record.modifiedPageIdentity] = LogRecordLocationInfo{
+					Lsn:      record.lsn,
+					location: recordLocation,
 				}
-				recordLocation = record.prevLogLocation.PageLoc
+				recordLocation = record.parentLogLocation.location
 				if clrsFound > 0 {
 					clrsFound--
-				} else {
-					l.undoInsert(&record, record.prevLogLocation)
+					continue
 				}
+				_, err := l.undoInsert(&record)
+				assert.Assert(err != nil, "todo")
 			case TypeUpdate:
-				record := record.(UpdateLogRecord)
-				DPT[record.modifiedPageIdentity] = LogRecordLocation{
-					Lsn:     record.lsn,
-					PageLoc: recordLocation,
+				record, ok := record.(UpdateLogRecord)
+				assert.Assert(ok, "todo")
+
+				DPT[record.modifiedPageIdentity] = LogRecordLocationInfo{
+					Lsn:      record.lsn,
+					location: recordLocation,
 				}
-				recordLocation = record.prevLogLocation.PageLoc
+				recordLocation = record.parentLogLocation.location
+				if clrsFound > 0 {
+					clrsFound--
+					continue
+				}
+				_, err := l.undoUpdate(&record)
+				assert.Assert(err != nil, "todo")
 			case TypeCommit:
 				assert.Assert(clrsFound == 0, "found CLRs for a commited txn")
 				break outer
 			case TypeAbort:
 				record := record.(AbortLogRecord)
-				recordLocation = record.prevLogLocation.PageLoc
+				recordLocation = record.parentLogLocation.location
 			case TypeTxnEnd:
 				assert.Assert(tag != TypeTxnEnd, "unreachable: ATT shouldn't have log records with TxnEnd logs")
 			case TypeCompensation:
 				clrsFound++
 				record := record.(CompensationLogRecord)
-				recordLocation = record.prevLogLocation.PageLoc
+				recordLocation = record.parentLogLocation.location
 			case TypeCheckpointBegin:
 				assert.Assert(tag != TypeCheckpointBegin, "unreachable: ATT shouldn't have CheckpointBegin records")
 			case TypeCheckpointEnd:
@@ -275,10 +297,9 @@ func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.
 			}
 		}
 	}
-
 }
 
-func (l *TxnLogger) readLogRecord(recordLocation PageLocation) (LogRecordTypeTag, any, error) {
+func (l *TxnLogger) readLogRecord(recordLocation FileLocation) (LogRecordTypeTag, any, error) {
 	pageIdent := bufferpool.PageIdentity{
 		FileID: l.logfileID,
 		PageID: recordLocation.PageID,
@@ -306,7 +327,7 @@ func (l *TxnLogger) writeLogRecord(serializedRecord []byte) error {
 
 	pageInfo := bufferpool.PageIdentity{
 		FileID: l.logfileID,
-		PageID: l.lastLogLocation.PageLoc.PageID,
+		PageID: l.lastLogLocation.location.PageID,
 	}
 
 	p, err := l.pool.GetPage(pageInfo)
@@ -319,11 +340,11 @@ func (l *TxnLogger) writeLogRecord(serializedRecord []byte) error {
 	l.pool.Unpin(pageInfo)
 
 	if errors.Is(err, page.ErrNoEnoughSpace) {
-		l.lastLogLocation.PageLoc.PageID++
+		l.lastLogLocation.location.PageID++
 
 		pageInfo := bufferpool.PageIdentity{
 			FileID: l.logfileID,
-			PageID: l.lastLogLocation.PageLoc.PageID,
+			PageID: l.lastLogLocation.location.PageID,
 		}
 
 		p, err = l.pool.GetPage(pageInfo)
@@ -339,17 +360,17 @@ func (l *TxnLogger) writeLogRecord(serializedRecord []byte) error {
 		if err != nil {
 			return err
 		}
-		l.lastLogLocation.PageLoc.SlotNum = slotNumber
+		l.lastLogLocation.location.SlotNum = slotNumber
 		return nil
 	} else if err != nil {
 		return err
 	} else {
-		l.lastLogLocation.PageLoc.SlotNum = slotNumber
+		l.lastLogLocation.location.SlotNum = slotNumber
 		return nil
 	}
 }
 
-func (l *TxnLogger) WriteBegin(txnId transactions.TxnID) (LSN, error) {
+func (l *TxnLogger) AppendBegin(txnId transactions.TxnID) (LSN, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -368,9 +389,9 @@ func (l *TxnLogger) WriteBegin(txnId transactions.TxnID) (LSN, error) {
 	return lsn, nil
 }
 
-func (l *TxnLogger) WriteUpdate(
+func (l *TxnLogger) AppendUpdate(
 	txnId transactions.TxnID,
-	prevLog LogRecordLocation,
+	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
 	beforeValue []byte,
@@ -393,9 +414,38 @@ func (l *TxnLogger) WriteUpdate(
 	return lsn, nil
 }
 
-func (l *TxnLogger) WriteInsert(
+func (l *TxnLogger) undoUpdate(updateRecord *UpdateLogRecord) (LSN, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	lsn := LSN(l.logRecordsCount)
+	l.logRecordsCount++
+
+	r := NewCompensationLogRecord(
+		lsn,
+		updateRecord.txnId,
+		l.lastLogLocation,
+		updateRecord.modifiedPageIdentity,
+		updateRecord.modifiedSlotNumber,
+		false,
+		updateRecord.parentLogLocation.Lsn,
+		updateRecord.afterValue,
+		updateRecord.beforeValue,
+	)
+	bytes, err := r.MarshalBinary()
+	if err != nil {
+		return NIL_LSN, err
+	}
+	err = l.writeLogRecord(bytes)
+	if err != nil {
+		return NIL_LSN, err
+	}
+	return lsn, nil
+}
+
+func (l *TxnLogger) AppendInsert(
 	txnId transactions.TxnID,
-	prevLog LogRecordLocation,
+	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
 	value []byte) (LSN, error) {
@@ -431,7 +481,7 @@ func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LSN, error) {
 		insertRecord.modifiedPageIdentity,
 		insertRecord.modifiedSlotNumber,
 		true,
-		insertRecord.prevLogLocation.Lsn,
+		insertRecord.parentLogLocation.Lsn,
 		insertRecord.value,
 		[]byte{},
 	)
@@ -446,9 +496,9 @@ func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LSN, error) {
 	return lsn, nil
 }
 
-func (l *TxnLogger) WriteCommit(
+func (l *TxnLogger) AppendCommit(
 	txnId transactions.TxnID,
-	prevLog LogRecordLocation,
+	prevLog LogRecordLocationInfo,
 ) (LSN, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -468,9 +518,9 @@ func (l *TxnLogger) WriteCommit(
 	return lsn, nil
 }
 
-func (l *TxnLogger) WriteAbort(
+func (l *TxnLogger) AppendAbort(
 	txnId transactions.TxnID,
-	prevLog LogRecordLocation,
+	prevLog LogRecordLocationInfo,
 ) (LSN, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -490,9 +540,9 @@ func (l *TxnLogger) WriteAbort(
 	return lsn, nil
 }
 
-func (l *TxnLogger) WriteTxnEnd(
+func (l *TxnLogger) AppendTxnEnd(
 	txnId transactions.TxnID,
-	prevLog LogRecordLocation,
+	prevLog LogRecordLocationInfo,
 ) (LSN, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -512,7 +562,7 @@ func (l *TxnLogger) WriteTxnEnd(
 	return lsn, nil
 }
 
-func (l *TxnLogger) WriteCheckpointBegin() (LSN, error) {
+func (l *TxnLogger) AppendCheckpointBegin() (LSN, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -531,9 +581,9 @@ func (l *TxnLogger) WriteCheckpointBegin() (LSN, error) {
 	return lsn, nil
 }
 
-func (l *TxnLogger) WriteCheckpointEnd(
+func (l *TxnLogger) AppendCheckpointEnd(
 	activeTransacitons []transactions.TxnID,
-	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocation,
+	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocationInfo,
 ) (LSN, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -551,7 +601,4 @@ func (l *TxnLogger) WriteCheckpointEnd(
 		return NIL_LSN, err
 	}
 	return lsn, nil
-}
-
-func (l *TxnLogger) writeCLR() {
 }
