@@ -50,8 +50,8 @@ type frame[T Page] struct {
 }
 
 type PageIdentity struct {
-	fileID uint64
-	pageID uint64
+	FileID uint64
+	PageID uint64
 }
 
 type Manager[T Page] struct {
@@ -148,15 +148,15 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (*T, error) {
 
 	frameID := m.reserveFrame()
 	if frameID != noFrame {
-		page, err := m.diskManager.ReadPage(pIdent.fileID, pIdent.pageID)
+		page, err := m.diskManager.ReadPage(pIdent.FileID, pIdent.PageID)
 		if err != nil {
 			return nil, err
 		}
 		m.frames[frameID] = frame[T]{
 			Page:     page,
 			PinCount: 1,
-			FileID:   pIdent.fileID,
-			PageID:   pIdent.pageID,
+			FileID:   pIdent.FileID,
+			PageID:   pIdent.PageID,
 		}
 		m.pageToFrame[pIdent] = frameID
 		return &page, nil
@@ -176,13 +176,13 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (*T, error) {
 	}
 
 	oldIdent := PageIdentity{
-		fileID: victimFrame.FileID,
-		pageID: victimFrame.PageID,
+		FileID: victimFrame.FileID,
+		PageID: victimFrame.PageID,
 	}
 
 	delete(m.pageToFrame, oldIdent)
 
-	page, err := m.diskManager.ReadPage(pIdent.fileID, pIdent.pageID)
+	page, err := m.diskManager.ReadPage(pIdent.FileID, pIdent.PageID)
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +190,8 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (*T, error) {
 	m.frames[victimFrameID] = frame[T]{
 		Page:     page,
 		PinCount: 1,
-		FileID:   pIdent.fileID,
-		PageID:   pIdent.pageID,
+		FileID:   pIdent.FileID,
+		PageID:   pIdent.PageID,
 	}
 
 	m.pageToFrame[pIdent] = victimFrameID

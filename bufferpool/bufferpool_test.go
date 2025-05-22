@@ -28,11 +28,11 @@ func TestGetPage_Cached(t *testing.T) {
 		FileID:   fileID,
 		PageID:   pageID,
 	}
-	manager.pageToFrame[PageIdentity{fileID: fileID, pageID: pageID}] = frameID
+	manager.pageToFrame[PageIdentity{FileID: fileID, PageID: pageID}] = frameID
 
 	mockReplacer.On("Pin", frameID).Return()
 
-	pIdent := PageIdentity{fileID: fileID, pageID: pageID}
+	pIdent := PageIdentity{FileID: fileID, PageID: pageID}
 
 	result, err := manager.GetPage(pIdent)
 
@@ -61,7 +61,7 @@ func TestGetPage_LoadFromDisk(t *testing.T) {
 	mockDisk.On("ReadPage", fileID, pageID).Return(expectedPage, nil)
 	mockReplacer.On("Pin", uint64(0)).Return()
 
-	pIdent := PageIdentity{fileID: fileID, pageID: pageID}
+	pIdent := PageIdentity{FileID: fileID, PageID: pageID}
 	result, err := manager.GetPage(pIdent)
 
 	assert.NoError(t, err)
@@ -93,7 +93,7 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 		FileID:   existingFileID,
 		PageID:   existingPageID,
 	}
-	manager.pageToFrame[PageIdentity{fileID: existingFileID, pageID: existingPageID}] = frameID
+	manager.pageToFrame[PageIdentity{FileID: existingFileID, PageID: existingPageID}] = frameID
 	manager.emptyFrames = []uint64{1}
 
 	newFileID := uint64(2)
@@ -104,7 +104,7 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 	mockDisk.On("ReadPage", newFileID, newPageID).Return(newPage, nil)
 	mockReplacer.On("Pin", uint64(1)).Return()
 
-	pIdent := PageIdentity{fileID: newFileID, pageID: newPageID}
+	pIdent := PageIdentity{FileID: newFileID, PageID: newPageID}
 	result, err := manager.GetPage(pIdent)
 
 	assert.NoError(t, err)
@@ -114,7 +114,7 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 	assert.Equal(t, newPage, manager.frames[1].Page)
 
 	assert.Equal(t, existingPage, manager.frames[0].Page)
-	assert.Equal(t, uint64(0), manager.pageToFrame[PageIdentity{fileID: existingFileID, pageID: existingPageID}])
+	assert.Equal(t, uint64(0), manager.pageToFrame[PageIdentity{FileID: existingFileID, PageID: existingPageID}])
 
 	mockDisk.AssertExpectations(t)
 	mockReplacer.AssertExpectations(t)
@@ -139,7 +139,7 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 		FileID:   existingFileID,
 		PageID:   existingPageID,
 	}
-	manager.pageToFrame[PageIdentity{fileID: existingFileID, pageID: existingPageID}] = frameID
+	manager.pageToFrame[PageIdentity{FileID: existingFileID, PageID: existingPageID}] = frameID
 	manager.emptyFrames = nil
 
 	newFileID, newPageID := uint64(2), uint64(1)
@@ -152,13 +152,13 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 	mockDisk.On("WritePage", existingPage).Return(nil)
 	mockDisk.On("ReadPage", newFileID, newPageID).Return(newPage, nil)
 
-	pIdent := PageIdentity{fileID: newFileID, pageID: newPageID}
+	pIdent := PageIdentity{FileID: newFileID, PageID: newPageID}
 	result, err := manager.GetPage(pIdent)
 
 	assert.NoError(t, err)
 	assert.Equal(t, newPage, *result)
 
-	oldIdent := PageIdentity{fileID: existingFileID, pageID: existingPageID}
+	oldIdent := PageIdentity{FileID: existingFileID, PageID: existingPageID}
 	_, exists := manager.pageToFrame[oldIdent]
 	assert.False(t, exists, "Старая страница не удалена из pageToFrame")
 

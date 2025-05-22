@@ -69,6 +69,33 @@ func (m *Manager[T]) ReadPage(fileID, pageID uint64) (T, error) {
 	return page, nil
 }
 
+func (m *Manager[T]) GetPageNoNew(page T, fileID, pageID uint64) (T, error) {
+	var zeroVal T
+
+	path, ok := m.fileIDToPath[fileID]
+	if !ok {
+		return zeroVal, fmt.Errorf("fileID %d not found in path map", fileID)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return zeroVal, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	offset := int64(pageID * PageSize)
+	data := make([]byte, PageSize)
+
+	_, err = file.ReadAt(data, offset)
+	if err != nil {
+		return zeroVal, fmt.Errorf("failed to reat at: %w", err)
+	}
+
+	page.SetData(data)
+
+	return page, nil
+}
+
 func (m *Manager[T]) WritePage(page *T) error {
 	fileID := (*page).GetFileID()
 	pageID := (*page).GetPageID()

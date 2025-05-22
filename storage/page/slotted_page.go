@@ -48,7 +48,7 @@ func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
 	return p
 }
 
-func (p *SlottedPage) numSlots() int {
+func (p *SlottedPage) NumSlots() int {
 	return int(binary.LittleEndian.Uint32(p.data[0:4]))
 }
 
@@ -100,7 +100,7 @@ func (p *SlottedPage) Insert(record []byte) (int, error) {
 	copy(p.data[newOffset:], record)
 
 	// Create slot
-	slotID := p.numSlots()
+	slotID := p.NumSlots()
 	p.setSlot(slotID, newOffset, recLen)
 
 	// Update header
@@ -112,7 +112,7 @@ func (p *SlottedPage) Insert(record []byte) (int, error) {
 }
 
 func (p *SlottedPage) Get(slotID int) ([]byte, error) {
-	if slotID < 0 || slotID >= p.numSlots() {
+	if slotID < 0 || slotID >= p.NumSlots() {
 		return nil, ErrInvalidSlotID
 	}
 
