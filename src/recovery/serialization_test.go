@@ -57,8 +57,8 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLog != recovered.prevLog {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
+	if original.prevLogLocation != recovered.prevLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
 	if original.modifiedPageInfo != recovered.modifiedPageInfo {
 		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
@@ -101,8 +101,8 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLog != recovered.prevLog {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
+	if original.prevLogLocation != recovered.prevLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
 	if original.modifiedPageInfo != recovered.modifiedPageInfo {
 		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
@@ -139,8 +139,8 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLog != recovered.prevLog {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
+	if original.prevLogLocation != recovered.prevLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
 }
 
@@ -168,8 +168,8 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLog != recovered.prevLog {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
+	if original.prevLogLocation != recovered.prevLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
 }
 
@@ -197,8 +197,8 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLog != recovered.prevLog {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
+	if original.prevLogLocation != recovered.prevLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
 }
 
@@ -209,6 +209,7 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 		LogRecordLocation{789, PageLocation{101112, 131415}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
 		222324,
+		true,
 		252627,
 		[]byte("before value"),
 		[]byte("after value"),
@@ -231,8 +232,8 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.txnId != recovered.txnId {
 		t.Errorf("txnId mismatch: got %v, want %v", recovered.txnId, original.txnId)
 	}
-	if original.prevLog != recovered.prevLog {
-		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
+	if original.prevLogLocation != recovered.prevLogLocation {
+		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
 	if original.modifiedPageInfo != recovered.modifiedPageInfo {
 		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
