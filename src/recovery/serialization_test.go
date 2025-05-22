@@ -60,11 +60,11 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.prevLog != recovered.prevLog {
 		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
 	}
-	if original.pageInfo != recovered.pageInfo {
-		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.pageInfo, original.pageInfo)
+	if original.modifiedPageInfo != recovered.modifiedPageInfo {
+		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
 	}
-	if original.slotNumber != recovered.slotNumber {
-		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.slotNumber, original.slotNumber)
+	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
+		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.modifiedSlotNumber, original.modifiedSlotNumber)
 	}
 	if !bytes.Equal(original.beforeValue, recovered.beforeValue) {
 		t.Errorf("beforeValue mismatch: got %v, want %v", recovered.beforeValue, original.beforeValue)
@@ -104,11 +104,11 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.prevLog != recovered.prevLog {
 		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
 	}
-	if original.pageInfo != recovered.pageInfo {
-		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.pageInfo, original.pageInfo)
+	if original.modifiedPageInfo != recovered.modifiedPageInfo {
+		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
 	}
-	if original.slotNumber != recovered.slotNumber {
-		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.slotNumber, original.slotNumber)
+	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
+		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.modifiedSlotNumber, original.modifiedSlotNumber)
 	}
 	if !bytes.Equal(original.value, recovered.value) {
 		t.Errorf("value mismatch: got %v, want %v", recovered.value, original.value)
@@ -234,11 +234,11 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.prevLog != recovered.prevLog {
 		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLog, original.prevLog)
 	}
-	if original.pageInfo != recovered.pageInfo {
-		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.pageInfo, original.pageInfo)
+	if original.modifiedPageInfo != recovered.modifiedPageInfo {
+		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
 	}
-	if original.slotNumber != recovered.slotNumber {
-		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.slotNumber, original.slotNumber)
+	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
+		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.modifiedSlotNumber, original.modifiedSlotNumber)
 	}
 	if original.nextUndoLSN != recovered.nextUndoLSN {
 		t.Errorf("nextUndoLSN mismatch: got %v, want %v", recovered.nextUndoLSN, original.nextUndoLSN)

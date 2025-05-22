@@ -98,12 +98,12 @@ func (u *UpdateLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 	buf.Write(locationBytes)
-	pageData, err := u.pageInfo.MarshalBinary()
+	pageData, err := u.modifiedPageInfo.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 	buf.Write(pageData)
-	if err := binary.Write(buf, binary.BigEndian, u.slotNumber); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, u.modifiedSlotNumber); err != nil {
 		return nil, err
 	}
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(u.beforeValue))); err != nil {
@@ -135,14 +135,14 @@ func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &u.prevLog); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &u.pageInfo); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &u.modifiedPageInfo); err != nil {
 		return err
 	}
 	var slotNum uint32
 	if err := binary.Read(reader, binary.BigEndian, &slotNum); err != nil {
 		return err
 	}
-	u.slotNumber = slotNum
+	u.modifiedSlotNumber = slotNum
 
 	var beforeLen uint32
 	if err := binary.Read(reader, binary.BigEndian, &beforeLen); err != nil {
@@ -178,12 +178,12 @@ func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
 	}
 	buf.Write(d)
 
-	pageData, err := i.pageInfo.MarshalBinary()
+	pageData, err := i.modifiedPageInfo.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 	buf.Write(pageData)
-	if err := binary.Write(buf, binary.BigEndian, i.slotNumber); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, i.modifiedSlotNumber); err != nil {
 		return nil, err
 	}
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(i.value))); err != nil {
@@ -208,10 +208,10 @@ func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &i.prevLog); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &i.pageInfo); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.modifiedPageInfo); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &i.slotNumber); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.modifiedSlotNumber); err != nil {
 		return err
 	}
 	var valueLen uint32
@@ -349,12 +349,12 @@ func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, c.nextUndoLSN); err != nil {
 		return nil, err
 	}
-	pageData, err := c.pageInfo.MarshalBinary()
+	pageData, err := c.modifiedPageInfo.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 	buf.Write(pageData)
-	if err := binary.Write(buf, binary.BigEndian, (c.slotNumber)); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, (c.modifiedSlotNumber)); err != nil {
 		return nil, err
 	}
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.beforeValue))); err != nil {
@@ -387,11 +387,11 @@ func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &c.pageInfo); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.modifiedPageInfo); err != nil {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &c.slotNumber); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.modifiedSlotNumber); err != nil {
 		return err
 	}
 

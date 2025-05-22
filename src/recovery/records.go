@@ -44,59 +44,59 @@ func (p *LogRecordLocation) isNil() bool {
 }
 
 type UpdateLogRecord struct {
-	lsn         LSN
-	txnId       transactions.TxnID
-	prevLog     LogRecordLocation
-	pageInfo    bufferpool.PageIdentity
-	slotNumber  uint32
-	beforeValue []byte
-	afterValue  []byte
+	lsn                LSN
+	txnId              transactions.TxnID
+	prevLog            LogRecordLocation
+	modifiedPageInfo   bufferpool.PageIdentity
+	modifiedSlotNumber uint32
+	beforeValue        []byte
+	afterValue         []byte
 }
 
 func NewUpdateLogRecord(
 	lsn LSN,
 	txnId transactions.TxnID,
 	prevLog LogRecordLocation,
-	pageInfo bufferpool.PageIdentity,
-	slotNumber uint32,
+	modifiedPageInfo bufferpool.PageIdentity,
+	modifiedSlotNumber uint32,
 	beforeValue []byte,
 	afterValue []byte,
 ) UpdateLogRecord {
 	return UpdateLogRecord{
-		lsn:         lsn,
-		txnId:       txnId,
-		prevLog:     prevLog,
-		pageInfo:    pageInfo,
-		slotNumber:  slotNumber,
-		beforeValue: beforeValue,
-		afterValue:  afterValue,
+		lsn:                lsn,
+		txnId:              txnId,
+		prevLog:            prevLog,
+		modifiedPageInfo:   modifiedPageInfo,
+		modifiedSlotNumber: modifiedSlotNumber,
+		beforeValue:        beforeValue,
+		afterValue:         afterValue,
 	}
 }
 
 type InsertLogRecord struct {
-	lsn        LSN
-	txnId      transactions.TxnID
-	prevLog    LogRecordLocation
-	pageInfo   bufferpool.PageIdentity
-	slotNumber uint32
-	value      []byte
+	lsn                LSN
+	txnId              transactions.TxnID
+	prevLog            LogRecordLocation
+	modifiedPageInfo   bufferpool.PageIdentity
+	modifiedSlotNumber uint32
+	value              []byte
 }
 
 func NewInsertLogRecord(
 	lsn LSN,
 	txnId transactions.TxnID,
 	prevLog LogRecordLocation,
-	pageInfo bufferpool.PageIdentity,
-	slotNumber uint32,
+	modifiedPageInfo bufferpool.PageIdentity,
+	modifiedSlotNumber uint32,
 	value []byte,
 ) InsertLogRecord {
 	return InsertLogRecord{
-		lsn:        lsn,
-		txnId:      txnId,
-		prevLog:    prevLog,
-		pageInfo:   pageInfo,
-		slotNumber: slotNumber,
-		value:      value,
+		lsn:                lsn,
+		txnId:              txnId,
+		prevLog:            prevLog,
+		modifiedPageInfo:   modifiedPageInfo,
+		modifiedSlotNumber: modifiedSlotNumber,
+		value:              value,
 	}
 }
 
@@ -146,35 +146,35 @@ func NewTxnEndLogRecord(lsn LSN, txnId transactions.TxnID,
 }
 
 type CompensationLogRecord struct {
-	lsn         LSN
-	txnId       transactions.TxnID
-	prevLog     LogRecordLocation
-	nextUndoLSN LSN
-	pageInfo    bufferpool.PageIdentity
-	slotNumber  uint32
-	beforeValue []byte
-	afterValue  []byte
+	lsn                LSN
+	txnId              transactions.TxnID
+	prevLog            LogRecordLocation
+	nextUndoLSN        LSN
+	modifiedPageInfo   bufferpool.PageIdentity
+	modifiedSlotNumber uint32
+	beforeValue        []byte
+	afterValue         []byte
 }
 
 func NewCompensationLogRecord(
 	lsn LSN,
 	txnId transactions.TxnID,
 	prevLog LogRecordLocation,
-	pageInfo bufferpool.PageIdentity,
-	slotNumber uint32,
+	modifiedPageInfo bufferpool.PageIdentity,
+	modifiedSlotNumber uint32,
 	nextUndoLSN LSN,
 	beforeValue []byte,
 	afterValue []byte,
 ) CompensationLogRecord {
 	return CompensationLogRecord{
-		lsn:         lsn,
-		txnId:       txnId,
-		prevLog:     prevLog,
-		pageInfo:    pageInfo,
-		nextUndoLSN: nextUndoLSN,
-		slotNumber:  slotNumber,
-		beforeValue: beforeValue,
-		afterValue:  afterValue,
+		lsn:                lsn,
+		txnId:              txnId,
+		prevLog:            prevLog,
+		modifiedPageInfo:   modifiedPageInfo,
+		nextUndoLSN:        nextUndoLSN,
+		modifiedSlotNumber: modifiedSlotNumber,
+		beforeValue:        beforeValue,
+		afterValue:         afterValue,
 	}
 }
 

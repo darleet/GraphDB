@@ -3,7 +3,6 @@ package recovery
 import (
 	"encoding"
 	"errors"
-	"fmt"
 	"sync/atomic"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -237,7 +236,12 @@ func NewATT() ActiveTransactionsTable {
 	}
 }
 
-func (att *ActiveTransactionsTable) Insert(id transactions.TxnID, tag LogRecordTypeTag, entry ATTEntry) {
+// returns true iff it is the first record for the transaction
+func (att *ActiveTransactionsTable) Insert(
+	id transactions.TxnID,
+	tag LogRecordTypeTag,
+	entry ATTEntry,
+) {
 	if tag == TypeTxnEnd {
 		delete(att.table, id)
 		return
@@ -254,39 +258,14 @@ func (att *ActiveTransactionsTable) Insert(id transactions.TxnID, tag LogRecordT
 	}
 	prevEntry.location = entry.location
 	att.table[id] = prevEntry
+	return
 }
 
-func (l *TxnLogger) Recover(checkpointLocation LogRecordLocation) {
-	assert.Assert(checkpointLocation.isNil(), "the caller should have passed the first page of the log file")
-
-	iter, err := l.Iter(PageLocation{
-		PageID:  checkpointLocation.PageLoc.PageID,
-		SlotNum: checkpointLocation.PageLoc.SlotNum,
-	})
-	assert.Assert(err == nil, "couldn't recover. reason: %+v", err)
-
-	tag, untypedRecord, err := iter.Get()
-	assert.Assert(err == nil, "couldn't recover. couldn't read a log record. reason: %+v", err)
-	assert.Assert(tag == TypeCheckpointEnd, "expected a checkpoint record")
-
-	checkpoint, ok := untypedRecord.(CheckpointEndLogRecord)
-	assert.Assert(ok, "expected checkpoint end log record")
-
-	// Active Transactions Table
-	ATT := NewATT()
-	for _, txnId := range checkpoint.activeTransactions {
-		ATT.Insert(txnId, TypeBegin, NewATTEntry(
-			TxnStatusUndo,
-			NewNilLogRecordLocation(),
-		))
-	}
-
-	// Dirty Page Table
-	DPT := map[bufferpool.PageIdentity]LSN{}
-	for pageInfo, firstDirtyLSN := range checkpoint.dirtyPageTable {
-		DPT[pageInfo] = firstDirtyLSN
-	}
-
+func (l *TxnLogger) recoverAnalyze(
+	iter *LogRecordIter,
+	ATT ActiveTransactionsTable,
+	DPT map[bufferpool.PageIdentity]LSN,
+) {
 	for {
 		stop, err := iter.MoveForward()
 		assert.Assert(err != nil, "%+v", err)
@@ -294,12 +273,13 @@ func (l *TxnLogger) Recover(checkpointLocation LogRecordLocation) {
 			break
 		}
 
-		tag, untypedRecord, err = iter.Get()
+		tag, untypedRecord, err := iter.Get()
 		assert.Assert(err == nil, "couldn't read a record. reason: %+v", err)
 		switch tag {
 		case TypeBegin:
 			record, ok := untypedRecord.(BeginLogRecord)
 			assert.Assert(ok, "couldn't type cast the record")
+
 			ATT.Insert(
 				record.txnId,
 				TypeBegin,
@@ -311,6 +291,24 @@ func (l *TxnLogger) Recover(checkpointLocation LogRecordLocation) {
 					}),
 			)
 		case TypeInsert:
+			record, ok := untypedRecord.(InsertLogRecord)
+			assert.Assert(ok, "couldn't type cast the record")
+
+			ATT.Insert(
+				record.txnId,
+				TypeInsert,
+				NewATTEntry(
+					TxnStatusUndo,
+					LogRecordLocation{
+						Lsn:     record.lsn,
+						PageLoc: iter.Location(),
+					}),
+			)
+
+			_, alreadyExists := DPT[record.modifiedPageInfo]
+			if !alreadyExists {
+				DPT[record.modifiedPageInfo] = record.lsn
+			}
 		case TypeUpdate:
 		case TypeCommit:
 		case TypeAbort:
@@ -319,7 +317,54 @@ func (l *TxnLogger) Recover(checkpointLocation LogRecordLocation) {
 		case TypeCheckpointEnd:
 		case TypeCompensation:
 		default:
-			panic(fmt.Sprintf("unexpected recovery.LogRecordTypeTag: %#v", tag))
+			assert.Assert(tag < TypeUnknown, "unexpected log record type: %d", tag)
+			panic("unreachable")
 		}
 	}
+
+}
+
+func (l *TxnLogger) Recover(checkpointLocation LogRecordLocation) {
+	assert.Assert(checkpointLocation.isNil(), "the caller should have passed the first page of the log file")
+
+	iter, err := l.Iter(PageLocation{
+		PageID:  checkpointLocation.PageLoc.PageID,
+		SlotNum: checkpointLocation.PageLoc.SlotNum,
+	})
+	assert.Assert(err == nil, "couldn't recover. reason: %+v", err)
+
+	// TODO: REDO THIS!!!
+	// CheckpointBegin is Expected!!!
+	tag, untypedRecord, err := iter.Get()
+	panic("READ THE COMMENT ABOVE!!!")
+
+	assert.Assert(err == nil, "couldn't recover. couldn't read a log record. reason: %+v", err)
+	assert.Assert(tag == TypeCheckpointEnd, "expected a checkpoint record")
+
+	checkpoint, ok := untypedRecord.(CheckpointEndLogRecord)
+	// TODO: assertion will be triggered if there were no checkpoints at all
+	assert.Assert(ok, "expected checkpoint end log record")
+
+	// Active Transactions Table
+	ATT := NewATT()
+	for _, txnId := range checkpoint.activeTransactions {
+		ATT.Insert(txnId, TypeBegin, NewATTEntry(
+			TxnStatusUndo,
+			NewNilLogRecordLocation(),
+		))
+	}
+
+	// Dirty Page Table (DPT):
+	// The DPT contains information about the pages in the buffer pool that were
+	// modified by uncommitted transactions. There is one entry per dirty page
+	// containing the recLSN (i.e., the LSN of the log record that first caused the page to be dirty).
+	//
+	// The DPT contains all pages that are dirty in the buffer pool.
+	// It doesn’t matter if the changes were caused
+	// by a transaction that is running, committed, or aborted.
+	DPT := map[bufferpool.PageIdentity]LSN{}
+	for pageInfo, firstDirtyLSN := range checkpoint.dirtyPageTable {
+		DPT[pageInfo] = firstDirtyLSN
+	}
+
 }
