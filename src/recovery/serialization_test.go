@@ -60,8 +60,8 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.prevLogLocation != recovered.prevLogLocation {
 		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
-	if original.modifiedPageInfo != recovered.modifiedPageInfo {
-		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
+	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
+		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageIdentity, original.modifiedPageIdentity)
 	}
 	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
 		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.modifiedSlotNumber, original.modifiedSlotNumber)
@@ -104,8 +104,8 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.prevLogLocation != recovered.prevLogLocation {
 		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
-	if original.modifiedPageInfo != recovered.modifiedPageInfo {
-		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
+	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
+		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageIdentity, original.modifiedPageIdentity)
 	}
 	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
 		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.modifiedSlotNumber, original.modifiedSlotNumber)
@@ -235,8 +235,8 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	if original.prevLogLocation != recovered.prevLogLocation {
 		t.Errorf("prevLog mismatch: got %v, want %v", recovered.prevLogLocation, original.prevLogLocation)
 	}
-	if original.modifiedPageInfo != recovered.modifiedPageInfo {
-		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageInfo, original.modifiedPageInfo)
+	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
+		t.Errorf("pageInfo mismatch: got %v, want %v", recovered.modifiedPageIdentity, original.modifiedPageIdentity)
 	}
 	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
 		t.Errorf("slotNumber mismatch: got %v, want %v", recovered.modifiedSlotNumber, original.modifiedSlotNumber)

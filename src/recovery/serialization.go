@@ -98,7 +98,7 @@ func (u *UpdateLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 	buf.Write(locationBytes)
-	pageData, err := u.modifiedPageInfo.MarshalBinary()
+	pageData, err := u.modifiedPageIdentity.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &u.prevLogLocation); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &u.modifiedPageInfo); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &u.modifiedPageIdentity); err != nil {
 		return err
 	}
 	var slotNum uint32
@@ -178,7 +178,7 @@ func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
 	}
 	buf.Write(d)
 
-	pageData, err := i.modifiedPageInfo.MarshalBinary()
+	pageData, err := i.modifiedPageIdentity.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &i.prevLogLocation); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &i.modifiedPageInfo); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.modifiedPageIdentity); err != nil {
 		return err
 	}
 	if err := binary.Read(reader, binary.BigEndian, &i.modifiedSlotNumber); err != nil {
@@ -352,7 +352,7 @@ func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, c.isDelete); err != nil {
 		return nil, err
 	}
-	pageData, err := c.modifiedPageInfo.MarshalBinary()
+	pageData, err := c.modifiedPageIdentity.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +392,7 @@ func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &c.isDelete); err != nil {
 		return err
 	}
-	if err := binary.Read(reader, binary.BigEndian, &c.modifiedPageInfo); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.modifiedPageIdentity); err != nil {
 		return err
 	}
 	if err := binary.Read(reader, binary.BigEndian, &c.modifiedSlotNumber); err != nil {

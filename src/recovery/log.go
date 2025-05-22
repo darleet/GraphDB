@@ -108,9 +108,9 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 					}),
 			)
 
-			_, alreadyExists := DPT[record.modifiedPageInfo]
+			_, alreadyExists := DPT[record.modifiedPageIdentity]
 			if !alreadyExists {
-				DPT[record.modifiedPageInfo] = LogRecordLocation{
+				DPT[record.modifiedPageIdentity] = LogRecordLocation{
 					Lsn:     record.lsn,
 					PageLoc: iter.Location(),
 				}
@@ -132,9 +132,9 @@ func (l *TxnLogger) recoverAnalyze(iter *LogRecordsIter) (ActiveTransactionsTabl
 				),
 			)
 
-			_, alreadyExists := DPT[record.modifiedPageInfo]
+			_, alreadyExists := DPT[record.modifiedPageIdentity]
 			if !alreadyExists {
-				DPT[record.modifiedPageInfo] = recordLocation
+				DPT[record.modifiedPageIdentity] = recordLocation
 			}
 		case TypeCommit:
 			record, ok := untypedRecord.(CommitLogRecord)
@@ -236,7 +236,7 @@ func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.
 				break outer
 			case TypeInsert:
 				record := record.(InsertLogRecord)
-				DPT[record.modifiedPageInfo] = LogRecordLocation{
+				DPT[record.modifiedPageIdentity] = LogRecordLocation{
 					Lsn:     record.lsn,
 					PageLoc: recordLocation,
 				}
@@ -248,7 +248,7 @@ func (l *TxnLogger) recoverRedo(ATT ActiveTransactionsTable, DPT map[bufferpool.
 				}
 			case TypeUpdate:
 				record := record.(UpdateLogRecord)
-				DPT[record.modifiedPageInfo] = LogRecordLocation{
+				DPT[record.modifiedPageIdentity] = LogRecordLocation{
 					Lsn:     record.lsn,
 					PageLoc: recordLocation,
 				}
@@ -417,7 +417,33 @@ func (l *TxnLogger) WriteInsert(
 	return lsn, nil
 }
 
-func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) {
+func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LSN, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	lsn := LSN(l.logRecordsCount)
+	l.logRecordsCount++
+
+	r := NewCompensationLogRecord(
+		lsn,
+		insertRecord.txnId,
+		l.lastLogLocation,
+		insertRecord.modifiedPageIdentity,
+		insertRecord.modifiedSlotNumber,
+		true,
+		insertRecord.prevLogLocation.Lsn,
+		insertRecord.value,
+		[]byte{},
+	)
+	bytes, err := r.MarshalBinary()
+	if err != nil {
+		return NIL_LSN, err
+	}
+	err = l.writeLogRecord(bytes)
+	if err != nil {
+		return NIL_LSN, err
+	}
+	return lsn, nil
 }
 
 func (l *TxnLogger) WriteCommit(
@@ -525,4 +551,7 @@ func (l *TxnLogger) WriteCheckpointEnd(
 		return NIL_LSN, err
 	}
 	return lsn, nil
+}
+
+func (l *TxnLogger) writeCLR() {
 }
