@@ -16,7 +16,7 @@ func TestInsertAndGet(t *testing.T) {
 		[]byte("gamma"),
 	}
 
-	var slotIDs []int
+	var slotIDs []uint32
 
 	for _, rec := range records {
 		id, err := page.Insert(rec)
