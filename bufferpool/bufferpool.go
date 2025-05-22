@@ -12,6 +12,10 @@ const noFrame = ^uint64(0)
 
 var ErrNoSuchPage = errors.New("no such page")
 
+type LSN uint64
+
+const NilLSN = LSN(0)
+
 type Page interface {
 	GetData() []byte
 	SetData(d []byte)
@@ -62,7 +66,8 @@ type Manager[T Page] struct {
 
 	replacer Replacer
 
-	diskManager DiskManager[T]
+	diskManager    DiskManager[T]
+	DirtyPageTable map[PageIdentity]LSN
 
 	fastPath sync.Mutex
 	slowPath sync.Mutex
@@ -79,12 +84,13 @@ func New[T Page](poolSize int, replacer Replacer, diskManager DiskManager[T]) (*
 	frames := make([]frame[T], poolSize)
 
 	return &Manager[T]{
-		poolSize:    poolSize,
-		pageToFrame: make(map[PageIdentity]uint64),
-		frames:      frames,
-		emptyFrames: emptyFrames,
-		replacer:    replacer,
-		diskManager: diskManager,
+		poolSize:       poolSize,
+		pageToFrame:    make(map[PageIdentity]uint64),
+		frames:         frames,
+		emptyFrames:    emptyFrames,
+		replacer:       replacer,
+		diskManager:    diskManager,
+		DirtyPageTable: make(map[PageIdentity]LSN),
 	}, nil
 }
 
@@ -173,6 +179,8 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (*T, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		delete(m.DirtyPageTable, pIdent)
 	}
 
 	oldIdent := PageIdentity{
@@ -234,8 +242,9 @@ func (m *Manager[T]) FlushPage(pIdent PageIdentity) error {
 	err := m.diskManager.WritePage(frame.Page)
 	if err != nil {
 		return fmt.Errorf("failed to write page to disk: %w", err)
-
 	}
+
+	delete(m.DirtyPageTable, pIdent)
 
 	frame.Page.SetDirtiness(false)
 
@@ -252,6 +261,11 @@ func (m *Manager[T]) FlushAllPages() error {
 			_ = m.diskManager.WritePage(frame.Page)
 
 			frame.Page.SetDirtiness(false)
+
+			delete(m.DirtyPageTable, PageIdentity{
+				FileID: frame.FileID,
+				PageID: frame.PageID,
+			})
 		}
 	}
 
