@@ -63,6 +63,5 @@ type BufferPool[T Page] interface {
 	Unpin(PageIdentity)
 	GetPage(PageIdentity) (T, error)
 	GetPageNoCreate(PageIdentity) (T, error)
-	MarkDirty(PageIdentity) error
 	FlushPage(PageIdentity) error
 }

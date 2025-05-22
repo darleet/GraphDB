@@ -29,13 +29,13 @@ type FileLocation struct {
 // is considered NIL iff lsn is NIL_LSN
 type LogRecordLocationInfo struct {
 	Lsn      LSN
-	location FileLocation
+	Location FileLocation
 }
 
 func NewNilLogRecordLocation() LogRecordLocationInfo {
 	return LogRecordLocationInfo{
 		Lsn:      NIL_LSN,
-		location: FileLocation{},
+		Location: FileLocation{},
 	}
 }
 

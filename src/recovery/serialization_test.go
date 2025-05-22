@@ -357,11 +357,11 @@ func TestCheckpointEnd_MarshalUnmarshal(t *testing.T) {
 	dirtyPages := map[bufferpool.PageIdentity]LogRecordLocationInfo{
 		bufferpool.PageIdentity{PageID: 1, FileID: 1}: LogRecordLocationInfo{
 			Lsn:     100,
-			location: FileLocation{},
+			Location: FileLocation{},
 		},
 		bufferpool.PageIdentity{PageID: 2, FileID: 1}: LogRecordLocationInfo{
 			Lsn:     200,
-			location: FileLocation{},
+			Location: FileLocation{},
 		},
 	}
 
