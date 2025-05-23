@@ -1,0 +1,71 @@
+version: "2"
+run:
+  issues-exit-code: 1
+  tests: true
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gochecknoinits
+    - goconst
+    - gosec
+    - govet
+    - ineffassign
+    - makezero
+    - staticcheck
+    - unused
+    - whitespace
+  settings:
+    dupl:
+      threshold: 100
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+  exclusions:
+    generated: lax
+    rules:
+      - path: (.+)\.go$
+        text: G104
+      - path: (.+)\.go$
+        text: G404
+      - path: (.+)\.go$
+        text: exported func * returns unexported type *, which can be annoying to use
+      - path: (.+)\.go$
+        text: (comment on exported (method|function|type|const)|should have( a package)? comment|comment should be of the form)
+      - path: (.+)\.go$
+        text: should have a package comment, unless it's in another file for this package
+      - path: (.+)\.go$
+        text: don't use an underscore in package name
+      - path: (.+)\.go$
+        text: Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*printf?|os\.(Un)?Setenv|.*Rollback). is not checked
+      - path: (.+)\.go$
+        text: should check returned error before deferring
+      - path: (.+)\.go$
+        text: not declared by package utf8
+      - path: (.+)\.go$
+        text: unicode/utf8/utf8.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10
+  fix: true
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
