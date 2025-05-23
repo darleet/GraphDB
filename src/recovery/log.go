@@ -176,6 +176,7 @@ func (l *TxnLogger) recoverAnalyze(
 			record, ok := untypedRecord.(CheckpointEndLogRecord)
 			assert.Assert(ok, "couldn't type cast the record")
 
+			// Lecture #21: Database Crash Recovery @CMU
 			// Active Transactions Table
 			// Monitors the last
 			for _, txnId := range record.activeTransactions {

@@ -27,7 +27,7 @@ func TestValidRecovery(t *testing.T) {
 		t.Fatalf("data page getting failed: %v", err)
 	}
 	p.Lock()
-	slotNum, err := p.Insert([]byte("before"))
+	slotNum, err := p.Insert([]byte("bef000"))
 	if err != nil {
 		t.Fatalf("couldn't insert a record: %v", err)
 	}
@@ -38,29 +38,16 @@ func TestValidRecovery(t *testing.T) {
 	before := []byte("before")
 	after := []byte("after")
 
+	chain := NewLogChain(logger)
 	// Simulate a transaction: Begin -> Insert -> Update -> Commit -> TxnEnd
-	lsnBegin, err := logger.AppendBegin(txnId)
+	chain.Begin(txnId).
+		Insert(txnId, pageID, slotNum, before).
+		Update(txnId, pageID, slotNum, before, after).
+		Commit(txnId).
+		TxnEnd(txnId)
+	err = chain.Err()
 	if err != nil {
-		t.Fatalf("AppendBegin failed: %v", err)
-	}
-
-	lsnInsert, err := logger.AppendInsert(txnId, lsnBegin, pageID, slotNum, before)
-	if err != nil {
-		t.Fatalf("AppendInsert failed: %v", err)
-	}
-
-	lsnUpdate, err := logger.AppendUpdate(txnId, lsnInsert, pageID, slotNum, before, after)
-	if err != nil {
-		t.Fatalf("AppendUpdate failed: %v", err)
-	}
-
-	lsnCommit, err := logger.AppendCommit(txnId, lsnUpdate)
-	if err != nil {
-		t.Fatalf("AppendCommit failed: %v", err)
-	}
-	_, err = logger.AppendTxnEnd(txnId, lsnCommit)
-	if err != nil {
-		t.Fatalf("AppendTxnEnd failed: %v", err)
+		t.Fatalf("log record append failed: %v", err)
 	}
 
 	// Simulate a crash and recovery
@@ -84,4 +71,64 @@ func TestValidRecovery(t *testing.T) {
 	if !bytes.Equal(data[:len(after)], after) {
 		t.Errorf("Recovery failed: expected %q, got %q", after, data[:len(after)])
 	}
+}
+
+func TestFailedTxn(t *testing.T) {
+	// Setup
+	pool := bufferpool.NewBufferPoolMock()
+	logger := &TxnLogger{
+		pool:      pool,
+		logfileID: 1,
+		lastLogLocation: LogRecordLocationInfo{
+			Lsn:      0,
+			Location: FileLocation{PageID: 0, SlotNum: 0},
+		},
+	}
+	pageID := bufferpool.PageIdentity{FileID: 1, PageID: 42}
+
+	p, err := pool.GetPage(pageID)
+	if err != nil {
+		t.Fatalf("data page getting failed: %v", err)
+	}
+	p.Lock()
+	slotNum, err := p.Insert([]byte("before"))
+	if err != nil {
+		t.Fatalf("couldn't insert a record: %v", err)
+	}
+	p.Unlock()
+	pool.Unpin(pageID)
+
+	txnId := transactions.TxnID(100)
+	before := []byte("before")
+
+	chain := NewLogChain(logger)
+	// Simulate a transaction: Begin -> Insert -> CRASH
+	chain.Begin(txnId).
+		Insert(txnId, pageID, slotNum, before)
+
+	err = chain.Err()
+	if err != nil {
+		t.Fatalf("log record append failed: %v", err)
+	}
+	lastLoc := chain.Loc()
+
+	// Simulate a crash and recovery
+	logger2 := &TxnLogger{
+		pool:            pool,
+		logfileID:       1,
+		lastLogLocation: logger.lastLogLocation,
+	}
+	checkpoint := LogRecordLocationInfo{Lsn: 0, Location: FileLocation{PageID: 0, SlotNum: 0}}
+	logger2.Recover(checkpoint)
+
+	iter, err := logger.Iter(lastLoc.Location)
+	if err != nil {
+		t.Fatalf("couldn't create an iterator: %v", err)
+	}
+	succ, err := iter.MoveForward()
+	if err != nil || !succ {
+		t.Fatalf("couldn't move the iterator: %v", err)
+	}
+
+	//TODO
 }
