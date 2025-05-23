@@ -21,7 +21,19 @@ func TestValidRecovery(t *testing.T) {
 	}
 
 	pageID := bufferpool.PageIdentity{FileID: 1, PageID: 42}
-	slotNum := uint32(0)
+
+	p, err := pool.GetPage(pageID)
+	if err != nil {
+		t.Fatalf("data page getting failed: %v", err)
+	}
+	p.Lock()
+	slotNum, err := p.Insert([]byte("before"))
+	if err != nil {
+		t.Fatalf("couldn't insert a record: %v", err)
+	}
+	p.Unlock()
+	pool.Unpin(pageID)
+
 	txnId := transactions.TxnID(100)
 	before := []byte("before")
 	after := []byte("after")
@@ -31,25 +43,22 @@ func TestValidRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AppendBegin failed: %v", err)
 	}
-	prevLog := LogRecordLocationInfo{Lsn: lsnBegin, Location: FileLocation{PageID: 0, SlotNum: 0}}
 
-	lsnInsert, err := logger.AppendInsert(txnId, prevLog, pageID, slotNum, before)
+	lsnInsert, err := logger.AppendInsert(txnId, lsnBegin, pageID, slotNum, before)
 	if err != nil {
 		t.Fatalf("AppendInsert failed: %v", err)
 	}
-	prevLog = LogRecordLocationInfo{Lsn: lsnInsert, Location: FileLocation{PageID: 0, SlotNum: 1}}
 
-	lsnUpdate, err := logger.AppendUpdate(txnId, prevLog, pageID, slotNum, before, after)
+	lsnUpdate, err := logger.AppendUpdate(txnId, lsnInsert, pageID, slotNum, before, after)
 	if err != nil {
 		t.Fatalf("AppendUpdate failed: %v", err)
 	}
-	prevLog = LogRecordLocationInfo{Lsn: lsnUpdate, Location: FileLocation{PageID: 0, SlotNum: 2}}
 
-	_, err = logger.AppendCommit(txnId, prevLog)
+	lsnCommit, err := logger.AppendCommit(txnId, lsnUpdate)
 	if err != nil {
 		t.Fatalf("AppendCommit failed: %v", err)
 	}
-	_, err = logger.AppendTxnEnd(txnId, prevLog)
+	_, err = logger.AppendTxnEnd(txnId, lsnCommit)
 	if err != nil {
 		t.Fatalf("AppendTxnEnd failed: %v", err)
 	}
@@ -64,7 +73,7 @@ func TestValidRecovery(t *testing.T) {
 	logger2.Recover(checkpoint)
 
 	// Check that the page contains the "after" value
-	p, err := pool.GetPage(pageID)
+	p, err = pool.GetPage(pageID)
 	if err != nil {
 		t.Fatalf("GetPage failed: %v", err)
 	}
