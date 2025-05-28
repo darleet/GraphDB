@@ -5,7 +5,7 @@ func (c *RootCommand) initFlags() {
 		&c.Options.ConfigPath,
 		"config",
 		"c",
-		"",
+		".",
 		"Path to the .env configuration file",
 	)
 }

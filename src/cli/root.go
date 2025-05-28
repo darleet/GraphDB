@@ -8,10 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type Options struct {
-	ConfigPath string
-}
-
 type RootCommand struct {
 	*cobra.Command
 	Options Options
