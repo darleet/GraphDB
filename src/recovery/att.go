@@ -28,7 +28,7 @@ type ActiveTransactionsTable struct {
 	table map[txns.TxnID]ATTEntry
 }
 
-func NewATT() ActiveTransactionsTable {
+func NewActiveTransactionsTable() ActiveTransactionsTable {
 	return ActiveTransactionsTable{
 		table: map[txns.TxnID]ATTEntry{},
 	}

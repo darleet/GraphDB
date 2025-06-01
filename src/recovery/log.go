@@ -70,17 +70,11 @@ func (l *TxnLogger) recoverAnalyze(
 	})
 	assert.Assert(err == nil, "couldn't recover. reason: %+v", err)
 
-	ATT := NewATT()
+	ATT := NewActiveTransactionsTable()
 	DPT := map[bufferpool.PageIdentity]LogRecordLocationInfo{}
 
 	for {
-		success, err := iter.MoveForward()
-		assert.Assert(err == nil, "%+v", err)
-		if !success {
-			break
-		}
-
-		tag, untypedRecord, err := iter.Get()
+		tag, untypedRecord, err := iter.ReadRecord()
 		assert.Assert(err == nil, "couldn't read a record. reason: %+v", err)
 		switch tag {
 		case TypeBegin:
@@ -217,6 +211,12 @@ func (l *TxnLogger) recoverAnalyze(
 			assert.Assert(tag < TypeUnknown, "unexpected log record type: %d", tag)
 			panic("unreachable")
 		}
+
+		success, err := iter.MoveForward()
+		assert.Assert(err == nil, "%+v", err)
+		if !success {
+			break
+		}
 	}
 
 	return ATT, DPT
@@ -243,7 +243,7 @@ func (l *TxnLogger) recoverPrepareCLRs(
 			assert.Assert(err == nil, "todo")
 			switch tag {
 			case TypeBegin:
-				record, ok := record.(InsertLogRecord)
+				record, ok := record.(BeginLogRecord)
 				assert.Assert(ok, "todo")
 
 				if earliestLogLocation.Lsn > record.lsn {
@@ -315,10 +315,11 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 	assert.Assert(err == nil, "todo")
 
 	for {
-		tag, record, err := iter.Get()
+		tag, record, err := iter.ReadRecord()
 		assert.Assert(err == nil, "todo")
 
-		if tag == TypeInsert {
+		switch tag {
+		case TypeInsert:
 			record, ok := record.(InsertLogRecord)
 			assert.Assert(ok, "todo")
 
@@ -339,7 +340,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 
 			clear(slotData)
 			copy(slotData, record.value)
-		} else if tag == TypeUpdate {
+		case TypeUpdate:
 			record, ok := record.(UpdateLogRecord)
 			assert.Assert(ok, "todo")
 
@@ -360,7 +361,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 
 			clear(slotData)
 			copy(slotData, record.afterValue)
-		} else if tag == TypeCompensation {
+		case TypeCompensation:
 			record, ok := record.(CompensationLogRecord)
 			assert.Assert(ok, "todo")
 
@@ -375,6 +376,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 				data, err := p.Get(record.modifiedSlotNumber)
 				return data, err
 			}()
+
 			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number must be correct")
 			assert.Assert(err == nil, "todo")
 			assert.Assert(len(record.afterValue) <= len(slotData), "length should be the same")

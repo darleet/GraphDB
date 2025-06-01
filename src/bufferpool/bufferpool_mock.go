@@ -12,46 +12,38 @@ var (
 )
 
 type BufferPool_mock struct {
-	mu       sync.Mutex
-	pages    map[PageIdentity]*page.SlottedPage
-	unpinned map[PageIdentity]bool // tracks unpinned pages
+	pages    sync.Map // map[PageIdentity]*page.SlottedPage
+	unpinned sync.Map // map[PageIdentity]bool
 }
 
 func NewBufferPoolMock() *BufferPool_mock {
-	return &BufferPool_mock{
-		pages:    make(map[PageIdentity]*page.SlottedPage),
-		unpinned: make(map[PageIdentity]bool),
-	}
+	return &BufferPool_mock{}
 }
 
 func (b *BufferPool_mock) Unpin(pageID PageIdentity) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.unpinned[pageID] = true
+	b.unpinned.Store(pageID, true)
 }
 
 func (b *BufferPool_mock) GetPage(pageID PageIdentity) (*page.SlottedPage, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	p, ok := b.pages[pageID]
+	val, ok := b.pages.Load(pageID)
+	var p *page.SlottedPage
 	if !ok {
-		// Create a new page for the mock
 		p = page.NewSlottedPage()
-		b.pages[pageID] = p
+		b.pages.Store(pageID, p)
+	} else {
+		p = val.(*page.SlottedPage)
 	}
-	b.unpinned[pageID] = false
+	b.unpinned.Store(pageID, false)
 	return p, nil
 }
 
 func (b *BufferPool_mock) GetPageNoCreate(pageID PageIdentity) (*page.SlottedPage, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	p, ok := b.pages[pageID]
+	val, ok := b.pages.Load(pageID)
 	if !ok {
 		return nil, ErrNoSuchPage
 	}
-	b.unpinned[pageID] = false
-	return p, nil
+	b.unpinned.Store(pageID, false)
+	return val.(*page.SlottedPage), nil
 }
 
 func (b *BufferPool_mock) FlushPage(pageID PageIdentity) error {
@@ -59,12 +51,15 @@ func (b *BufferPool_mock) FlushPage(pageID PageIdentity) error {
 }
 
 func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for pageID := range b.pages {
-		if !b.unpinned[pageID] {
-			return errors.New("not all pages were unpinned")
+	var err error
+	b.pages.Range(func(key, _ interface{}) bool {
+		pageID := key.(PageIdentity)
+		val, ok := b.unpinned.Load(pageID)
+		if !ok || val == false {
+			err = errors.New("not all pages were unpinned")
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return err
 }
