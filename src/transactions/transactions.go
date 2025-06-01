@@ -1,3 +1,3 @@
-package transactions
+package txns
 
 type TxnID uint64

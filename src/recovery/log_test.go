@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	"github.com/Blackdeer1524/GraphDB/src/transactions"
+	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidRecovery(t *testing.T) {
@@ -34,17 +35,17 @@ func TestValidRecovery(t *testing.T) {
 	p.Unlock()
 	pool.Unpin(pageID)
 
-	txnId := transactions.TxnID(100)
+	txnId := txns.TxnID(100)
 	before := []byte("before")
 	after := []byte("after")
 
-	chain := NewLogChain(logger)
+	chain := NewTxnLogChain(logger, txnId)
 	// Simulate a transaction: Begin -> Insert -> Update -> Commit -> TxnEnd
-	chain.Begin(txnId).
-		Insert(txnId, pageID, slotNum, before).
-		Update(txnId, pageID, slotNum, before, after).
-		Commit(txnId).
-		TxnEnd(txnId)
+	chain.Begin().
+		Insert(pageID, slotNum, before).
+		Update(pageID, slotNum, before, after).
+		Commit().
+		TxnEnd()
 	err = chain.Err()
 	if err != nil {
 		t.Fatalf("log record append failed: %v", err)
@@ -74,43 +75,35 @@ func TestValidRecovery(t *testing.T) {
 }
 
 func TestFailedTxn(t *testing.T) {
-	// Setup
 	pool := bufferpool.NewBufferPoolMock()
+
+	logStart := LogRecordLocationInfo{
+		Lsn:      0,
+		Location: FileLocation{PageID: 0, SlotNum: 0},
+	}
 	logger := &TxnLogger{
-		pool:      pool,
-		logfileID: 1,
-		lastLogLocation: LogRecordLocationInfo{
-			Lsn:      0,
-			Location: FileLocation{PageID: 0, SlotNum: 0},
-		},
+		pool:            pool,
+		logfileID:       1,
+		lastLogLocation: logStart,
 	}
 	pageID := bufferpool.PageIdentity{FileID: 1, PageID: 42}
 
 	p, err := pool.GetPage(pageID)
-	if err != nil {
-		t.Fatalf("data page getting failed: %v", err)
-	}
+	require.Nil(t, err, "data page getting failed")
 	p.Lock()
 	slotNum, err := p.Insert([]byte("before"))
-	if err != nil {
-		t.Fatalf("couldn't insert a record: %v", err)
-	}
+	require.Nil(t, err, "couldn't insert a record")
 	p.Unlock()
 	pool.Unpin(pageID)
 
-	txnId := transactions.TxnID(100)
+	txnId := txns.TxnID(100)
 	before := []byte("before")
 
-	chain := NewLogChain(logger)
-	// Simulate a transaction: Begin -> Insert -> CRASH
-	chain.Begin(txnId).
-		Insert(txnId, pageID, slotNum, before)
-
-	err = chain.Err()
-	if err != nil {
-		t.Fatalf("log record append failed: %v", err)
-	}
-	lastLoc := chain.Loc()
+	// Simulate a transaction: **Begin -> Insert -> CRASH**
+	chain := NewTxnLogChain(logger, txnId).
+		Begin().
+		Insert(pageID, slotNum, before)
+	require.Nil(t, chain.Err(), "log record append failed")
 
 	// Simulate a crash and recovery
 	logger2 := &TxnLogger{
@@ -121,10 +114,9 @@ func TestFailedTxn(t *testing.T) {
 	checkpoint := LogRecordLocationInfo{Lsn: 0, Location: FileLocation{PageID: 0, SlotNum: 0}}
 	logger2.Recover(checkpoint)
 
-	iter, err := logger.Iter(lastLoc.Location)
-	if err != nil {
-		t.Fatalf("couldn't create an iterator: %v", err)
-	}
+	iter, err := logger.Iter(logStart.Location)
+	require.Nil(t, err, "couldn't create an iterator")
+
 	succ, err := iter.MoveForward()
 	if err != nil || !succ {
 		t.Fatalf("couldn't move the iterator: %v", err)

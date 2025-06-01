@@ -1,91 +1,130 @@
 package recovery
 
 import (
+	"fmt"
+
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	"github.com/Blackdeer1524/GraphDB/src/transactions"
+	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
-type LogChain struct {
+type TxnLogChain struct {
 	logger *TxnLogger
-	loc    LogRecordLocationInfo
-	err    error
+	txnId  txns.TxnID
+
+	lastLocations map[txns.TxnID]LogRecordLocationInfo
+	err           error
 }
 
-func NewLogChain(logger *TxnLogger) *LogChain {
-	return &LogChain{
+func NewTxnLogChain(logger *TxnLogger, txnId txns.TxnID) *TxnLogChain {
+	return &TxnLogChain{
 		logger: logger,
-		loc:    NewNilLogRecordLocation(),
+		txnId:  txnId,
+
+		lastLocations: map[txns.TxnID]LogRecordLocationInfo{},
 	}
 }
 
-func (c *LogChain) Begin(txnId transactions.TxnID) *LogChain {
+func (c *TxnLogChain) SwitchTxnId(txnId txns.TxnID) *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendBegin(txnId)
+	c.txnId = txnId
 	return c
 }
 
-func (c *LogChain) Insert(txnId transactions.TxnID, pageInfo bufferpool.PageIdentity, slotNumber uint32, value []byte) *LogChain {
+func (c *TxnLogChain) Begin() *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendInsert(txnId, c.loc, pageInfo, slotNumber, value)
+	c.lastLocations[c.txnId], c.err = c.logger.AppendBegin(c.txnId)
 	return c
 }
 
-func (c *LogChain) Update(txnId transactions.TxnID, pageInfo bufferpool.PageIdentity, slotNumber uint32, beforeValue, afterValue []byte) *LogChain {
+func (c *TxnLogChain) Insert(pageInfo bufferpool.PageIdentity, slotNumber uint32, value []byte) *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendUpdate(txnId, c.loc, pageInfo, slotNumber, beforeValue, afterValue)
+	if _, ok := c.lastLocations[c.txnId]; !ok {
+		c.err = fmt.Errorf("no last location found for %d", c.txnId)
+		return c
+	}
+
+	c.lastLocations[c.txnId], c.err = c.logger.AppendInsert(c.txnId, c.lastLocations[c.txnId], pageInfo, slotNumber, value)
 	return c
 }
 
-func (c *LogChain) Commit(txnId transactions.TxnID) *LogChain {
+func (c *TxnLogChain) Update(pageInfo bufferpool.PageIdentity, slotNumber uint32, beforeValue, afterValue []byte) *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendCommit(txnId, c.loc)
+	if _, ok := c.lastLocations[c.txnId]; !ok {
+		c.err = fmt.Errorf("no last location found for %d", c.txnId)
+		return c
+	}
+
+	c.lastLocations[c.txnId], c.err = c.logger.AppendUpdate(c.txnId, c.lastLocations[c.txnId], pageInfo, slotNumber, beforeValue, afterValue)
 	return c
 }
 
-func (c *LogChain) Abort(txnId transactions.TxnID) *LogChain {
+func (c *TxnLogChain) Commit() *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendAbort(txnId, c.loc)
+	if _, ok := c.lastLocations[c.txnId]; !ok {
+		c.err = fmt.Errorf("no last location found for %d", c.txnId)
+		return c
+	}
+
+	c.lastLocations[c.txnId], c.err = c.logger.AppendCommit(c.txnId, c.lastLocations[c.txnId])
 	return c
 }
 
-func (c *LogChain) TxnEnd(txnId transactions.TxnID) *LogChain {
+func (c *TxnLogChain) Abort() *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendTxnEnd(txnId, c.loc)
+	if _, ok := c.lastLocations[c.txnId]; !ok {
+		c.err = fmt.Errorf("no last location found for %d", c.txnId)
+		return c
+	}
+
+	c.lastLocations[c.txnId], c.err = c.logger.AppendAbort(c.txnId, c.lastLocations[c.txnId])
 	return c
 }
 
-func (c *LogChain) CheckpointBegin() *LogChain {
+func (c *TxnLogChain) TxnEnd() *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendCheckpointBegin()
+	if _, ok := c.lastLocations[c.txnId]; !ok {
+		c.err = fmt.Errorf("no last location found for %d", c.txnId)
+		return c
+	}
+
+	c.lastLocations[c.txnId], c.err = c.logger.AppendTxnEnd(c.txnId, c.lastLocations[c.txnId])
 	return c
 }
 
-func (c *LogChain) CheckpointEnd(ATT []transactions.TxnID, DPT map[bufferpool.PageIdentity]LogRecordLocationInfo) *LogChain {
+func (c *TxnLogChain) CheckpointBegin() *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
-	c.loc, c.err = c.logger.AppendCheckpointEnd(ATT, DPT)
+	_, c.err = c.logger.AppendCheckpointBegin()
 	return c
 }
 
-func (c *LogChain) Loc() LogRecordLocationInfo {
-	return c.loc
+func (c *TxnLogChain) CheckpointEnd(ATT []txns.TxnID, DPT map[bufferpool.PageIdentity]LogRecordLocationInfo) *TxnLogChain {
+	if c.err != nil {
+		return c
+	}
+	_, c.err = c.logger.AppendCheckpointEnd(ATT, DPT)
+	return c
 }
 
-func (c *LogChain) Err() error {
+func (c *TxnLogChain) Loc() LogRecordLocationInfo {
+	return c.lastLocations[c.txnId]
+}
+
+func (c *TxnLogChain) Err() error {
 	return c.err
 }

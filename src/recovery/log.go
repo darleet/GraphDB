@@ -8,7 +8,7 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
-	"github.com/Blackdeer1524/GraphDB/src/transactions"
+	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
 type TxnLogger struct {
@@ -24,7 +24,7 @@ type TxnLogger struct {
 	lastLogLocation LogRecordLocationInfo
 	// ================
 
-	getActiveTransactions func() []transactions.TxnID // Прийдет из лок менеджера
+	getActiveTransactions func() []txns.TxnID // Прийдет из лок менеджера
 
 }
 
@@ -37,7 +37,7 @@ func (l *TxnLogger) Iter(start FileLocation) (*LogRecordsIter, error) {
 		return nil, err
 	}
 	p.RLock()
-	iter := NewLogRecordIter(l.logfileID, start, l.pool, p)
+	iter := newLogRecordIter(l.logfileID, start, l.pool, p)
 	return iter, nil
 }
 
@@ -188,7 +188,7 @@ func (l *TxnLogger) recoverAnalyze(
 
 			// Dirty Page Table (DPT):
 			// The DPT contains information about the pages in the buffer pool that were
-			// modified by uncommitted transactions. There is one entry per dirty page
+			// modified by uncommitted txns. There is one entry per dirty page
 			// containing the recLSN (i.e., the LSN of the log record that first caused the page to be dirty).
 			//
 			// The DPT contains all pages that are dirty in the buffer pool.
@@ -459,7 +459,7 @@ func (lockedLogger *TxnLogger) writeLogRecord(serializedRecord []byte) (LogRecor
 	}
 }
 
-func (l *TxnLogger) AppendBegin(txnId transactions.TxnID) (LogRecordLocationInfo, error) {
+func (l *TxnLogger) AppendBegin(txnId txns.TxnID) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -480,7 +480,7 @@ func (l *TxnLogger) AppendBegin(txnId transactions.TxnID) (LogRecordLocationInfo
 }
 
 func (l *TxnLogger) AppendUpdate(
-	txnId transactions.TxnID,
+	txnId txns.TxnID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
@@ -535,7 +535,7 @@ func (l *TxnLogger) undoUpdate(updateRecord *UpdateLogRecord) (LogRecordLocation
 }
 
 func (l *TxnLogger) AppendInsert(
-	txnId transactions.TxnID,
+	txnId txns.TxnID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
@@ -589,7 +589,7 @@ func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LogRecordLocation
 }
 
 func (l *TxnLogger) AppendCommit(
-	txnId transactions.TxnID,
+	txnId txns.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -611,7 +611,7 @@ func (l *TxnLogger) AppendCommit(
 }
 
 func (l *TxnLogger) AppendAbort(
-	txnId transactions.TxnID,
+	txnId txns.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -633,7 +633,7 @@ func (l *TxnLogger) AppendAbort(
 }
 
 func (l *TxnLogger) AppendTxnEnd(
-	txnId transactions.TxnID,
+	txnId txns.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -674,7 +674,7 @@ func (l *TxnLogger) AppendCheckpointBegin() (LogRecordLocationInfo, error) {
 }
 
 func (l *TxnLogger) AppendCheckpointEnd(
-	activeTransacitons []transactions.TxnID,
+	activeTransacitons []txns.TxnID,
 	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()

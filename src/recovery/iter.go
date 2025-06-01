@@ -16,7 +16,7 @@ type LogRecordsIter struct {
 	lockedPage *page.SlottedPage
 }
 
-func NewLogRecordIter(
+func newLogRecordIter(
 	logfileID uint64,
 	curLoc FileLocation,
 	pool bufferpool.BufferPool[*page.SlottedPage],

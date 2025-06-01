@@ -39,6 +39,7 @@ func (b *BufferPool_mock) GetPage(pageID PageIdentity) (*page.SlottedPage, error
 		p = page.NewSlottedPage()
 		b.pages[pageID] = p
 	}
+	b.unpinned[pageID] = false
 	return p, nil
 }
 
@@ -49,6 +50,7 @@ func (b *BufferPool_mock) GetPageNoCreate(pageID PageIdentity) (*page.SlottedPag
 	if !ok {
 		return nil, ErrNoSuchPage
 	}
+	b.unpinned[pageID] = false
 	return p, nil
 }
 
