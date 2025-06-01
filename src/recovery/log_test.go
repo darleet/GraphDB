@@ -286,7 +286,11 @@ func TestMassiveRecovery(t *testing.T) {
 
 			data, err := p.Get(location.SlotNum)
 			require.NoError(t, err)
-			require.Equal(t, INIT, data)
+
+			require.Equal(t, len(INIT), len(data))
+			for i := range len(INIT) {
+				require.Equal(t, INIT[i], data[i])
+			}
 		}()
 	}
 }
