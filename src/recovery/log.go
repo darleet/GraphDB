@@ -53,20 +53,18 @@ func NewTxnLogger() {
 	panic("not implemented")
 }
 
-func (l *TxnLogger) Recover(checkpointLocation LogRecordLocationInfo) {
-	assert.Assert(checkpointLocation.isNil(), "the caller should have passed the first page of the log file")
-
+func (l *TxnLogger) Recover(checkpointLocation FileLocation) {
 	ATT, DPT := l.recoverAnalyze(checkpointLocation)
 	earliestLog := l.recoverPrepareCLRs(ATT, DPT)
 	l.recoverRedo(earliestLog.Location)
 }
 
 func (l *TxnLogger) recoverAnalyze(
-	checkpointLocation LogRecordLocationInfo,
+	checkpointLocation FileLocation,
 ) (ActiveTransactionsTable, map[bufferpool.PageIdentity]LogRecordLocationInfo) {
 	iter, err := l.Iter(FileLocation{
-		PageID:  checkpointLocation.Location.PageID,
-		SlotNum: checkpointLocation.Location.SlotNum,
+		PageID:  checkpointLocation.PageID,
+		SlotNum: checkpointLocation.SlotNum,
 	})
 	assert.Assert(err == nil, "couldn't recover. reason: %+v", err)
 

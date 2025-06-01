@@ -2,12 +2,15 @@ package recovery
 
 import (
 	"bytes"
+	"errors"
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
 	"github.com/stretchr/testify/require"
@@ -15,7 +18,7 @@ import (
 
 func TestValidRecovery(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	defer pool.EnsureAllPagesUnpinned()
+	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
 	logger := &TxnLogger{
 		pool:      pool,
@@ -62,7 +65,7 @@ func TestValidRecovery(t *testing.T) {
 		logfileID:       1,
 		lastLogLocation: logger.lastLogLocation,
 	}
-	checkpoint := LogRecordLocationInfo{Lsn: 0, Location: FileLocation{PageID: 0, SlotNum: 0}}
+	checkpoint := FileLocation{PageID: 0, SlotNum: 0}
 	logger2.Recover(checkpoint)
 
 	// Check that the page contains the "after" value
@@ -111,7 +114,7 @@ func TestFailedTxn(t *testing.T) {
 	require.Nil(t, chain.Err(), "log record append failed")
 
 	// Simulate a crash and recovery
-	checkpoint := logStart
+	checkpoint := logStart.Location
 	logger.Recover(checkpoint)
 
 	// BEGIN
@@ -160,7 +163,132 @@ func TestFailedTxn(t *testing.T) {
 }
 
 func TestMassiveRecovery(t *testing.T) {
+	pool := bufferpool.NewBufferPoolMock()
+	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
+	logPageId := bufferpool.PageIdentity{
+		FileID: 42,
+		PageID: 321,
+	}
+
+	logger := &TxnLogger{
+		pool:            pool,
+		mu:              sync.Mutex{},
+		logRecordsCount: 0,
+		logfileID:       logPageId.FileID,
+		lastLogLocation: LogRecordLocationInfo{
+			Lsn: 0,
+			Location: FileLocation{
+				PageID:  logPageId.PageID,
+				SlotNum: 0,
+			},
+		},
+		getActiveTransactions: func() []txns.TxnID {
+			panic("TODO")
+		},
+	}
+
+	INIT := []byte("init")
+	NEW := []byte("new")
+	NEW2 := []byte("123")
+
+	ORIGIN := bufferpool.PageIdentity{
+		FileID: 0,
+		PageID: 0,
+	}
+	dataPageId := ORIGIN
+	slot := uint32(0)
+
+	N := 1000
+	i := 0
+
+	index2pageID := map[int]FileLocation{}
+	for i < N {
+		succ := func() bool {
+			p, err := pool.GetPage(dataPageId)
+			require.NoError(t, err)
+			defer pool.Unpin(dataPageId)
+
+			p.Lock()
+			defer p.Unlock()
+
+			slot, err = p.Insert(INIT)
+			if errors.Is(err, page.ErrNoEnoughSpace) {
+				dataPageId.PageID++
+				return false
+			}
+			require.NoError(t, err)
+
+			return true
+		}()
+		if succ {
+			index2pageID[i] = FileLocation{
+				PageID:  dataPageId.PageID,
+				SlotNum: slot,
+			}
+			i++
+		}
+	}
+
+	txnIdCounter := atomic.Uint64{}
+
+	left := rand.Int() % N
+	inc := N * 6 / 10
+	right := (left + inc) % N
+	STEP := 5
+
+	assert.Assert(inc%STEP == 0, "step must divide inc. otherwise, it would cause an infinite loop")
+	wg := sync.WaitGroup{}
+	for i := left; i != right; i = (i + STEP) % N {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+
+			txnId := txns.TxnID(txnIdCounter.Add(1))
+			chain := NewTxnLogChain(logger, txnId)
+
+			chain.Begin()
+			for j := range STEP {
+				recordLoc := index2pageID[i+j]
+				chain.
+					Update(bufferpool.PageIdentity{
+						FileID: 0,
+						PageID: recordLoc.PageID,
+					}, recordLoc.SlotNum, INIT, NEW).
+					Update(bufferpool.PageIdentity{
+						FileID: 0,
+						PageID: recordLoc.PageID,
+					}, recordLoc.SlotNum, NEW, NEW2)
+			}
+			require.NoError(t, chain.Err())
+		}(i)
+	}
+	wg.Wait()
+
+	logger.Recover(FileLocation{
+		PageID:  logPageId.PageID,
+		SlotNum: 0,
+	})
+
+	for i := range N {
+		func() {
+			location := index2pageID[i]
+			dataPageId := bufferpool.PageIdentity{
+				FileID: 0,
+				PageID: location.PageID,
+			}
+			p, err := pool.GetPageNoCreate(dataPageId)
+			require.NoError(t, err)
+			defer pool.Unpin(dataPageId)
+
+			p.RLock()
+			defer p.RUnlock()
+
+			data, err := p.Get(location.SlotNum)
+			require.NoError(t, err)
+			require.Equal(t, INIT, data)
+		}()
+	}
 }
 
 func assertLogRecord(
