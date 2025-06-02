@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
 	"github.com/stretchr/testify/require"
@@ -162,6 +161,49 @@ func TestFailedTxn(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestRecoveryATT(t *testing.T) {
+	pool := bufferpool.NewBufferPoolMock()
+	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+
+	logger := &TxnLogger{
+		pool:      pool,
+		logfileID: 1,
+		lastLogLocation: LogRecordLocationInfo{
+			Lsn:      0,
+			Location: FileLocation{PageID: 0, SlotNum: 0},
+		},
+	}
+
+	chain := NewTxnLogChain(logger, txns.TxnID(1))
+	dataPageID := bufferpool.PageIdentity{
+		FileID: 52,
+		PageID: 43,
+	}
+
+	chain.Begin().
+		Insert(dataPageID, 0, []byte("insert")). 
+		Update
+		
+
+}
+
+func insertValue(
+	t *testing.T,
+	pool bufferpool.BufferPool[*page.SlottedPage],
+	pageId bufferpool.PageIdentity,
+	data []byte,
+) (uint32, error) {
+	p, err := pool.GetPage(pageId)
+	require.NoError(t, err)
+	defer pool.Unpin(pageId)
+
+	p.Lock()
+	defer p.Unlock()
+
+	slot, err := p.Insert(data)
+	return slot, err
+}
+
 func TestMassiveRecovery(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
@@ -199,28 +241,22 @@ func TestMassiveRecovery(t *testing.T) {
 	}
 	slot := uint32(0)
 
-	N := 10
+	N := 100
 	i := 0
 
 	index2pageID := map[int]FileLocation{}
 	for i < N {
 		succ := func() bool {
-			p, err := pool.GetPage(dataPageId)
-			require.NoError(t, err)
-			defer pool.Unpin(dataPageId)
-
-			p.Lock()
-			defer p.Unlock()
-
-			slot, err = p.Insert(INIT)
+			var err error
+			slot, err = insertValue(t, pool, dataPageId, INIT)
 			if errors.Is(err, page.ErrNoEnoughSpace) {
 				dataPageId.PageID++
 				return false
 			}
 			require.NoError(t, err)
-
 			return true
 		}()
+
 		if succ {
 			index2pageID[i] = FileLocation{
 				PageID:  dataPageId.PageID,
@@ -235,9 +271,9 @@ func TestMassiveRecovery(t *testing.T) {
 	left := N - N/10
 	inc := N * 6 / 10
 	right := (left + inc) % N
-	STEP := 2
+	STEP := 5
+	require.Equal(t, inc%STEP, 0, "step must divide inc. otherwise, it would cause an infinite loop")
 
-	assert.Assert(inc%STEP == 0, "step must divide inc. otherwise, it would cause an infinite loop")
 	wg := sync.WaitGroup{}
 	for i := left; i != right; i = (i + STEP) % N {
 		wg.Add(1)
@@ -259,6 +295,25 @@ func TestMassiveRecovery(t *testing.T) {
 				chain.
 					Update(pageID, recordLoc.SlotNum, INIT, NEW).
 					Update(pageID, recordLoc.SlotNum, NEW, NEW2)
+
+				func() {
+					p, err := pool.GetPageNoCreate(pageID)
+					require.NoError(t, err)
+					defer pool.Unpin(pageID)
+
+					p.Lock()
+					defer p.Unlock()
+
+					data, err := p.Get(recordLoc.SlotNum)
+					require.NoError(t, err)
+
+					clear(data)
+					if (i+j)%2 != 0 {
+						copy(data, NEW)
+					} else {
+						copy(data, NEW2)
+					}
+				}()
 			}
 			require.NoError(t, chain.Err())
 		}(i)
