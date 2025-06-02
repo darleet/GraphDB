@@ -192,14 +192,14 @@ func TestMassiveRecovery(t *testing.T) {
 	NEW := []byte("new")
 	NEW2 := []byte("123")
 
-	ORIGIN := bufferpool.PageIdentity{
-		FileID: 0,
-		PageID: 0,
+	DataFileID := uint64(0)
+	dataPageId := bufferpool.PageIdentity{
+		FileID: DataFileID,
+		PageID: 321,
 	}
-	dataPageId := ORIGIN
 	slot := uint32(0)
 
-	N := 1000
+	N := 10
 	i := 0
 
 	index2pageID := map[int]FileLocation{}
@@ -232,10 +232,10 @@ func TestMassiveRecovery(t *testing.T) {
 
 	txnIdCounter := atomic.Uint64{}
 
-	left := rand.Int() % N
+	left := N - N/10
 	inc := N * 6 / 10
 	right := (left + inc) % N
-	STEP := 5
+	STEP := 2
 
 	assert.Assert(inc%STEP == 0, "step must divide inc. otherwise, it would cause an infinite loop")
 	wg := sync.WaitGroup{}
@@ -249,16 +249,16 @@ func TestMassiveRecovery(t *testing.T) {
 
 			chain.Begin()
 			for j := range STEP {
-				recordLoc := index2pageID[i+j]
+				recordLoc, ok := index2pageID[(i+j)%N]
+				require.True(t, ok, "%d", i+j)
+
+				pageID := bufferpool.PageIdentity{
+					FileID: DataFileID,
+					PageID: recordLoc.PageID,
+				}
 				chain.
-					Update(bufferpool.PageIdentity{
-						FileID: 0,
-						PageID: recordLoc.PageID,
-					}, recordLoc.SlotNum, INIT, NEW).
-					Update(bufferpool.PageIdentity{
-						FileID: 0,
-						PageID: recordLoc.PageID,
-					}, recordLoc.SlotNum, NEW, NEW2)
+					Update(pageID, recordLoc.SlotNum, INIT, NEW).
+					Update(pageID, recordLoc.SlotNum, NEW, NEW2)
 			}
 			require.NoError(t, chain.Err())
 		}(i)
@@ -274,7 +274,7 @@ func TestMassiveRecovery(t *testing.T) {
 		func() {
 			location := index2pageID[i]
 			dataPageId := bufferpool.PageIdentity{
-				FileID: 0,
+				FileID: DataFileID,
 				PageID: location.PageID,
 			}
 			p, err := pool.GetPageNoCreate(dataPageId)

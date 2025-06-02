@@ -287,13 +287,17 @@ func (l *TxnLogger) recoverPrepareCLRs(
 				assert.Assert(clrsFound == 0, "found CLRs for a commited txn")
 				break outer
 			case TypeAbort:
-				record := record.(AbortLogRecord)
+				record, ok := record.(AbortLogRecord)
+				assert.Assert(ok, "todo")
+
 				recordLocation = record.parentLogLocation.Location
 			case TypeTxnEnd:
 				assert.Assert(tag != TypeTxnEnd, "unreachable: ATT shouldn't have log records with TxnEnd logs")
 			case TypeCompensation:
+				record, ok := record.(CompensationLogRecord)
+				assert.Assert(ok, "todo")
+
 				clrsFound++
-				record := record.(CompensationLogRecord)
 				recordLocation = record.parentLogLocation.Location
 			case TypeCheckpointBegin:
 				assert.Assert(tag != TypeCheckpointBegin, "unreachable: ATT shouldn't have CheckpointBegin records")
@@ -397,10 +401,11 @@ func (l *TxnLogger) readLogRecord(recordLocation FileLocation) (LogRecordTypeTag
 		PageID: recordLocation.PageID,
 	}
 	page, err := l.pool.GetPage(pageIdent)
+	defer l.pool.Unpin(pageIdent)
+
 	if err != nil {
 		return TypeUnknown, nil, err
 	}
-	defer l.pool.Unpin(pageIdent)
 
 	page.RLock()
 	record, err := page.Get(recordLocation.SlotNum)

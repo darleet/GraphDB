@@ -26,7 +26,7 @@ const (
 type SlottedPage struct {
 	data []byte
 
-	locked atomic.Bool
+	Locked atomic.Bool
 	latch  sync.RWMutex
 }
 
@@ -116,7 +116,7 @@ func (p *SlottedPage) Get(slotID uint32) ([]byte, error) {
 }
 
 func (p *SlottedPage) GetData() []byte {
-	assert.Assert(!p.locked.Load(), "GetData contract is violated")
+	assert.Assert(!p.Locked.Load(), "GetData contract is violated")
 
 	return p.data
 }
@@ -124,11 +124,11 @@ func (p *SlottedPage) GetData() []byte {
 func (p *SlottedPage) Lock() {
 	p.latch.Lock()
 
-	p.locked.Store(true)
+	p.Locked.Store(true)
 }
 
 func (p *SlottedPage) Unlock() {
-	p.locked.Store(false)
+	p.Locked.Store(false)
 
 	p.latch.Unlock()
 }
@@ -136,11 +136,11 @@ func (p *SlottedPage) Unlock() {
 func (p *SlottedPage) RLock() {
 	p.latch.RLock()
 
-	p.locked.Store(true)
+	p.Locked.Store(true)
 }
 
 func (p *SlottedPage) RUnlock() {
-	p.locked.Store(false)
+	p.Locked.Store(false)
 
 	p.latch.RUnlock()
 }

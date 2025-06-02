@@ -1,7 +1,7 @@
 package bufferpool
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
@@ -51,15 +51,18 @@ func (b *BufferPool_mock) FlushPage(pageID PageIdentity) error {
 }
 
 func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
-	var err error
+	pinnedIDs := []PageIdentity{}
 	b.pages.Range(func(key, _ interface{}) bool {
 		pageID := key.(PageIdentity)
 		val, ok := b.unpinned.Load(pageID)
 		if !ok || val == false {
-			err = errors.New("not all pages were unpinned")
-			return false
+			pinnedIDs = append(pinnedIDs, pageID)
 		}
 		return true
 	})
-	return err
+
+	if len(pinnedIDs) > 0 {
+		return fmt.Errorf("not all pages were unpinned: %+v", pinnedIDs)
+	}
+	return nil
 }

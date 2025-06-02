@@ -66,8 +66,8 @@ func TestIterSanity(t *testing.T) {
 	}
 
 	dataPageId := bufferpool.PageIdentity{
-		FileID: 0,
-		PageID: 0,
+		FileID: 123,
+		PageID: 23,
 	}
 
 	txnID := txns.TxnID(1)
