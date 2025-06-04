@@ -2,7 +2,7 @@ package recovery
 
 import (
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
 type LSN uint64
@@ -11,13 +11,13 @@ var NIL_LSN LSN = LSN(0)
 
 type BeginLogRecord struct {
 	lsn   LSN
-	txnId txns.TxnID
+	TransactionID transactions.TransactionID
 }
 
-func NewBeginLogRecord(lsn LSN, txnId txns.TxnID) BeginLogRecord {
+func NewBeginLogRecord(lsn LSN, TransactionID transactions.TransactionID) BeginLogRecord {
 	return BeginLogRecord{
 		lsn:   lsn,
-		txnId: txnId,
+		TransactionID: TransactionID,
 	}
 }
 
@@ -45,7 +45,7 @@ func (p *LogRecordLocationInfo) isNil() bool {
 
 type UpdateLogRecord struct {
 	lsn                  LSN
-	txnId                txns.TxnID
+	TransactionID                transactions.TransactionID
 	parentLogLocation    LogRecordLocationInfo
 	modifiedPageIdentity bufferpool.PageIdentity
 	modifiedSlotNumber   uint32
@@ -56,7 +56,7 @@ type UpdateLogRecord struct {
 func (r *UpdateLogRecord) Undo(lsn LSN, parentLogLocation LogRecordLocationInfo) CompensationLogRecord {
 	return NewCompensationLogRecord(
 		lsn,
-		r.txnId,
+		r.TransactionID,
 		parentLogLocation,
 		r.modifiedPageIdentity,
 		r.modifiedSlotNumber,
@@ -69,7 +69,7 @@ func (r *UpdateLogRecord) Undo(lsn LSN, parentLogLocation LogRecordLocationInfo)
 
 func NewUpdateLogRecord(
 	lsn LSN,
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedPageIdentity bufferpool.PageIdentity,
 	modifiedSlotNumber uint32,
@@ -78,7 +78,7 @@ func NewUpdateLogRecord(
 ) UpdateLogRecord {
 	return UpdateLogRecord{
 		lsn:                  lsn,
-		txnId:                txnId,
+		TransactionID:                TransactionID,
 		parentLogLocation:    parentLogLocation,
 		modifiedPageIdentity: modifiedPageIdentity,
 		modifiedSlotNumber:   modifiedSlotNumber,
@@ -89,7 +89,7 @@ func NewUpdateLogRecord(
 
 type InsertLogRecord struct {
 	lsn                  LSN
-	txnId                txns.TxnID
+	TransactionID                transactions.TransactionID
 	parentLogLocation    LogRecordLocationInfo
 	modifiedPageIdentity bufferpool.PageIdentity
 	modifiedSlotNumber   uint32
@@ -98,7 +98,7 @@ type InsertLogRecord struct {
 
 func NewInsertLogRecord(
 	lsn LSN,
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedPageIdentity bufferpool.PageIdentity,
 	modifiedSlotNumber uint32,
@@ -106,7 +106,7 @@ func NewInsertLogRecord(
 ) InsertLogRecord {
 	return InsertLogRecord{
 		lsn:                  lsn,
-		txnId:                txnId,
+		TransactionID:                TransactionID,
 		parentLogLocation:    parentLogLocation,
 		modifiedPageIdentity: modifiedPageIdentity,
 		modifiedSlotNumber:   modifiedSlotNumber,
@@ -117,7 +117,7 @@ func NewInsertLogRecord(
 func (r *InsertLogRecord) Undo(lsn LSN, parentLogLocation LogRecordLocationInfo) CompensationLogRecord {
 	return NewCompensationLogRecord(
 		lsn,
-		r.txnId,
+		r.TransactionID,
 		parentLogLocation,
 		r.modifiedPageIdentity,
 		r.modifiedSlotNumber,
@@ -130,52 +130,52 @@ func (r *InsertLogRecord) Undo(lsn LSN, parentLogLocation LogRecordLocationInfo)
 
 type CommitLogRecord struct {
 	lsn               LSN
-	txnId             txns.TxnID
+	TransactionID             transactions.TransactionID
 	parentLogLocation LogRecordLocationInfo
 }
 
-func NewCommitLogRecord(lsn LSN, txnId txns.TxnID, parentLogLocation LogRecordLocationInfo) CommitLogRecord {
+func NewCommitLogRecord(lsn LSN, TransactionID transactions.TransactionID, parentLogLocation LogRecordLocationInfo) CommitLogRecord {
 	return CommitLogRecord{
 		lsn:               lsn,
-		txnId:             txnId,
+		TransactionID:             TransactionID,
 		parentLogLocation: parentLogLocation,
 	}
 }
 
 type AbortLogRecord struct {
 	lsn               LSN
-	txnId             txns.TxnID
+	TransactionID             transactions.TransactionID
 	parentLogLocation LogRecordLocationInfo
 }
 
-func NewAbortLogRecord(lsn LSN, txnId txns.TxnID,
+func NewAbortLogRecord(lsn LSN, TransactionID transactions.TransactionID,
 	parentLogLocation LogRecordLocationInfo,
 ) AbortLogRecord {
 	return AbortLogRecord{
 		lsn:               lsn,
-		txnId:             txnId,
+		TransactionID:             TransactionID,
 		parentLogLocation: parentLogLocation,
 	}
 }
 
 type TxnEndLogRecord struct {
 	lsn               LSN
-	txnId             txns.TxnID
+	TransactionID             transactions.TransactionID
 	parentLogLocation LogRecordLocationInfo
 }
 
-func NewTxnEndLogRecord(lsn LSN, txnId txns.TxnID,
+func NewTxnEndLogRecord(lsn LSN, TransactionID transactions.TransactionID,
 	parentLogLocation LogRecordLocationInfo) TxnEndLogRecord {
 	return TxnEndLogRecord{
 		lsn:               lsn,
-		txnId:             txnId,
+		TransactionID:             TransactionID,
 		parentLogLocation: parentLogLocation,
 	}
 }
 
 type CompensationLogRecord struct {
 	lsn                  LSN
-	txnId                txns.TxnID
+	TransactionID                transactions.TransactionID
 	parentLogLocation    LogRecordLocationInfo
 	nextUndoLSN          LSN
 	isDelete             bool
@@ -187,7 +187,7 @@ type CompensationLogRecord struct {
 
 func NewCompensationLogRecord(
 	lsn LSN,
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedPageIdentity bufferpool.PageIdentity,
 	modifiedSlotNumber uint32,
@@ -198,7 +198,7 @@ func NewCompensationLogRecord(
 ) CompensationLogRecord {
 	return CompensationLogRecord{
 		lsn:                  lsn,
-		txnId:                txnId,
+		TransactionID:                TransactionID,
 		parentLogLocation:    parentLogLocation,
 		modifiedPageIdentity: modifiedPageIdentity,
 		modifiedSlotNumber:   modifiedSlotNumber,
@@ -219,13 +219,13 @@ func NewCheckpointBegin(lsn LSN) CheckpointBeginLogRecord {
 
 type CheckpointEndLogRecord struct {
 	lsn                LSN
-	activeTransactions []txns.TxnID
+	activeTransactions []transactions.TransactionID
 	dirtyPageTable     map[bufferpool.PageIdentity]LogRecordLocationInfo
 }
 
 func NewCheckpointEnd(
 	lsn LSN,
-	activeTransacitons []txns.TxnID,
+	activeTransacitons []transactions.TransactionID,
 	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocationInfo,
 ) CheckpointEndLogRecord {
 	return CheckpointEndLogRecord{

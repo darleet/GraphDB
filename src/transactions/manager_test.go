@@ -11,7 +11,7 @@ func TestManagerBasicOperation(t *testing.T) {
 	m := NewManager()
 
 	// Test queue creation on first lock
-	req := txnLockRequest{txnId: 1, recordId: 100, lockMode: SHARED}
+	req := txnLockRequest{TransactionID: 1, recordId: 100, lockMode: SHARED}
 	notifier := m.Lock(req)
 	expectClosedChannel(t, notifier, "Initial lock should be granted")
 
@@ -23,7 +23,7 @@ func TestManagerBasicOperation(t *testing.T) {
 	m.qsGuard.Unlock()
 
 	// Successful unlock
-	m.Unlock(txnUnlockRequest{txnId: 1, recordId: 100})
+	m.Unlock(txnUnlockRequest{TransactionID: 1, recordId: 100})
 
 	// Verify queue persists after unlock
 	m.qsGuard.Lock()
@@ -43,7 +43,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 			defer wg.Done()
 			recordID := RecordID(id & 1) // Two distinct records
 			req := txnLockRequest{
-				txnId:    TransactionID(id),
+				TransactionID:    TransactionID(id),
 				recordId: recordID,
 				lockMode: SHARED,
 			}
@@ -53,7 +53,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 			expectClosedChannel(t, notifier, "Concurrent access to different records should work")
 
 			fmt.Printf("before unlock %d\n", id)
-			m.Unlock(txnUnlockRequest{txnId: TransactionID(id), recordId: recordID})
+			m.Unlock(txnUnlockRequest{TransactionID: TransactionID(id), recordId: recordID})
 			fmt.Printf("after unlock %d\n", id)
 		}(i)
 	}
@@ -71,7 +71,7 @@ func TestManagerUnlockPanicScenarios(t *testing.T) {
 				t.Error("Expected panic for non-existent record")
 			}
 		}()
-		m.Unlock(txnUnlockRequest{txnId: 1, recordId: 999})
+		m.Unlock(txnUnlockRequest{TransactionID: 1, recordId: 999})
 	})
 
 	// Test double unlock panic
@@ -82,11 +82,11 @@ func TestManagerUnlockPanicScenarios(t *testing.T) {
 			}
 		}()
 
-		req := txnLockRequest{txnId: 1, recordId: 200, lockMode: EXCLUSIVE}
+		req := txnLockRequest{TransactionID: 1, recordId: 200, lockMode: EXCLUSIVE}
 		notifier := m.Lock(req)
 		expectClosedChannel(t, notifier, "Lock should be granted")
-		m.Unlock(txnUnlockRequest{txnId: 1, recordId: 200})
-		m.Unlock(txnUnlockRequest{txnId: 1, recordId: 200}) // Panic here
+		m.Unlock(txnUnlockRequest{TransactionID: 1, recordId: 200})
+		m.Unlock(txnUnlockRequest{TransactionID: 1, recordId: 200}) // Panic here
 	})
 }
 
@@ -95,24 +95,24 @@ func TestManagerLockContention(t *testing.T) {
 	recordID := RecordID(300)
 
 	// First exclusive lock
-	req1 := txnLockRequest{txnId: 5, recordId: recordID, lockMode: EXCLUSIVE}
+	req1 := txnLockRequest{TransactionID: 5, recordId: recordID, lockMode: EXCLUSIVE}
 	notifier1 := m.Lock(req1)
 	expectClosedChannel(t, notifier1, "First exclusive lock should be granted")
 
 	// Second exclusive lock (should block)
-	req2 := txnLockRequest{txnId: 4, recordId: recordID, lockMode: EXCLUSIVE}
+	req2 := txnLockRequest{TransactionID: 4, recordId: recordID, lockMode: EXCLUSIVE}
 	notifier2 := m.Lock(req2)
 	expectOpenChannel(t, notifier2, "Second exclusive lock should block")
 
 	// Concurrent shared lock (should also block)
-	req3 := txnLockRequest{txnId: 3, recordId: recordID, lockMode: SHARED}
+	req3 := txnLockRequest{TransactionID: 3, recordId: recordID, lockMode: SHARED}
 	notifier3 := m.Lock(req3)
 	expectOpenChannel(t, notifier3, "Shared lock should block behind exclusive")
 
 	// Unlock first and verify chain
-	m.Unlock(txnUnlockRequest{txnId: 5, recordId: recordID})
+	m.Unlock(txnUnlockRequest{TransactionID: 5, recordId: recordID})
 	expectClosedChannel(t, notifier2, "Second lock should be granted after unlock")
-	m.Unlock(txnUnlockRequest{txnId: 4, recordId: recordID})
+	m.Unlock(txnUnlockRequest{TransactionID: 4, recordId: recordID})
 	expectClosedChannel(t, notifier3, "Shared lock should be granted after exclusives")
 }
 
@@ -121,7 +121,7 @@ func TestManagerUnlockRetry(t *testing.T) {
 	recordID := RecordID(400)
 
 	// Setup lock
-	req := txnLockRequest{txnId: 1, recordId: recordID, lockMode: EXCLUSIVE}
+	req := txnLockRequest{TransactionID: 1, recordId: recordID, lockMode: EXCLUSIVE}
 	notifier := m.Lock(req)
 	expectClosedChannel(t, notifier, "Lock should be granted")
 
@@ -137,7 +137,7 @@ func TestManagerUnlockRetry(t *testing.T) {
 	}()
 
 	// This should retry until successful
-	m.Unlock(txnUnlockRequest{txnId: 1, recordId: recordID})
+	m.Unlock(txnUnlockRequest{TransactionID: 1, recordId: recordID})
 	wg.Wait()
 }
 
@@ -148,14 +148,14 @@ func TestManagerUnlockAll(t *testing.T) {
 	runningTxn := TransactionID(1)
 
 	notifier1x := m.Lock(txnLockRequest{
-		txnId:    runningTxn,
+		TransactionID:    runningTxn,
 		recordId: 1,
 		lockMode: EXCLUSIVE,
 	})
 	expectClosedChannel(t, notifier1x, "Txn 1 should have been granted the Exclusive Lock on 1")
 
 	notifier0s := m.Lock(txnLockRequest{
-		txnId:    waitingTxn,
+		TransactionID:    waitingTxn,
 		recordId: 1,
 		lockMode: SHARED,
 	})

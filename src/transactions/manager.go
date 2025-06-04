@@ -44,17 +44,17 @@ func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()
 
-		alreadyLockedRecords, ok := m.lockedRecords[r.txnId]
+		alreadyLockedRecords, ok := m.lockedRecords[r.TransactionID]
 		if !ok {
 			alreadyLockedRecords = make(map[RecordID]struct{})
-			m.lockedRecords[r.txnId] = alreadyLockedRecords
+			m.lockedRecords[r.TransactionID] = alreadyLockedRecords
 		}
 
 		_, isAleadyLocked := alreadyLockedRecords[r.recordId]
 		Assert(!isAleadyLocked,
 			"Didn't expect the record %+v to be locked by a transaction %+v",
 			r.recordId,
-			r.txnId)
+			r.TransactionID)
 
 		alreadyLockedRecords[r.recordId] = struct{}{}
 	}()
@@ -82,30 +82,30 @@ func (m *Manager) Unlock(r txnUnlockRequest) {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()
 
-		lockedRecords, lockedRecordsExist := m.lockedRecords[r.txnId]
+		lockedRecords, lockedRecordsExist := m.lockedRecords[r.TransactionID]
 		Assert(lockedRecordsExist,
 			"expected a set of locked records for the transaction %+v to exist",
-			r.txnId,
+			r.TransactionID,
 		)
 		delete(lockedRecords, r.recordId)
 	}()
 }
 
-func (m *Manager) UnlockAll(txnId TransactionID) {
+func (m *Manager) UnlockAll(TransactionID TransactionID) {
 	lockedRecords := func() map[RecordID]struct{} {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()
 
-		lockedRecords, ok := m.lockedRecords[txnId]
+		lockedRecords, ok := m.lockedRecords[TransactionID]
 		Assert(ok,
 			"expected a set of locked records for the transaction %+v to exist",
-			txnId)
-		delete(m.lockedRecords, txnId)
+			TransactionID)
+		delete(m.lockedRecords, TransactionID)
 		return lockedRecords
 	}()
 
 	unlockRequest := txnUnlockRequest{
-		txnId: txnId,
+		TransactionID: TransactionID,
 	}
 	for r := range lockedRecords {
 		q := func() *txnQueue {

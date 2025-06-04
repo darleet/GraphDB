@@ -11,7 +11,7 @@ import (
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
-	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,9 +28,8 @@ func TestValidRecovery(t *testing.T) {
 		},
 	}
 
-	pageID := bufferpool.PageIdentity{FileID: 1, PageID: 42}
-
-	p, err := pool.GetPage(pageID)
+	dataPageID := bufferpool.PageIdentity{FileID: 42, PageID: 123}
+	p, err := pool.GetPage(dataPageID)
 	if err != nil {
 		t.Fatalf("data page getting failed: %v", err)
 	}
@@ -40,17 +39,17 @@ func TestValidRecovery(t *testing.T) {
 		t.Fatalf("couldn't insert a record: %v", err)
 	}
 	p.Unlock()
-	pool.Unpin(pageID)
+	pool.Unpin(dataPageID)
 
-	txnId := txns.TxnID(100)
+	TransactionID := transactions.TransactionID(100)
 	before := []byte("before")
 	after := []byte("after")
 
-	chain := NewTxnLogChain(logger, txnId)
+	chain := NewTxnLogChain(logger, TransactionID)
 	// Simulate a transaction: Begin -> Insert -> Update -> Commit -> TxnEnd
 	chain.Begin().
-		Insert(pageID, slotNum, before).
-		Update(pageID, slotNum, before, after).
+		Insert(dataPageID, slotNum, before).
+		Update(dataPageID, slotNum, before, after).
 		Commit().
 		TxnEnd()
 	err = chain.Err()
@@ -61,14 +60,19 @@ func TestValidRecovery(t *testing.T) {
 	// Simulate a crash and recovery
 	logger2 := &TxnLogger{
 		pool:            pool,
-		logfileID:       1,
+		logfileID:       logger.logfileID,
 		lastLogLocation: logger.lastLogLocation,
 	}
 	checkpoint := FileLocation{PageID: 0, SlotNum: 0}
 	logger2.Recover(checkpoint)
 
 	// Check that the page contains the "after" value
-	p, err = pool.GetPage(pageID)
+	p, err = pool.GetPage(dataPageID)
+	defer pool.Unpin(dataPageID)
+
+	p.RLock()
+	defer p.RUnlock()
+
 	if err != nil {
 		t.Fatalf("GetPage failed: %v", err)
 	}
@@ -95,7 +99,7 @@ func TestFailedTxn(t *testing.T) {
 	}
 	pageID := bufferpool.PageIdentity{FileID: 1, PageID: 42}
 
-	txnId := txns.TxnID(100)
+	TransactionID := transactions.TransactionID(100)
 	before := []byte("before")
 
 	p, err := pool.GetPage(pageID)
@@ -107,7 +111,7 @@ func TestFailedTxn(t *testing.T) {
 	pool.Unpin(pageID)
 
 	// Simulate a transaction: **Begin -> Insert -> CRASH**
-	chain := NewTxnLogChain(logger, txnId).
+	chain := NewTxnLogChain(logger, TransactionID).
 		Begin().
 		Insert(pageID, slotNum, before)
 	require.Nil(t, chain.Err(), "log record append failed")
@@ -122,7 +126,7 @@ func TestFailedTxn(t *testing.T) {
 	{
 		tag, untypedRecord, err := iter.ReadRecord()
 		require.NoError(t, err)
-		assertLogRecord(t, tag, untypedRecord, TypeBegin, txnId)
+		assertLogRecord(t, tag, untypedRecord, TypeBegin, TransactionID)
 	}
 
 	// INSERT
@@ -132,7 +136,7 @@ func TestFailedTxn(t *testing.T) {
 	{
 		tag, untypedRecord, err := iter.ReadRecord()
 		require.NoError(t, err)
-		assertLogRecord(t, tag, untypedRecord, TypeInsert, txnId)
+		assertLogRecord(t, tag, untypedRecord, TypeInsert, TransactionID)
 	}
 
 	// CLR
@@ -142,7 +146,7 @@ func TestFailedTxn(t *testing.T) {
 	{
 		tag, untypedRecord, err := iter.ReadRecord()
 		require.NoError(t, err)
-		assertLogRecord(t, tag, untypedRecord, TypeCompensation, txnId)
+		assertLogRecord(t, tag, untypedRecord, TypeCompensation, TransactionID)
 	}
 
 	// TxnEnd
@@ -152,7 +156,7 @@ func TestFailedTxn(t *testing.T) {
 	{
 		tag, untypedRecord, err := iter.ReadRecord()
 		require.NoError(t, err)
-		assertLogRecord(t, tag, untypedRecord, TypeTxnEnd, txnId)
+		assertLogRecord(t, tag, untypedRecord, TypeTxnEnd, TransactionID)
 	}
 
 	// NOTHING
@@ -161,31 +165,30 @@ func TestFailedTxn(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestRecoveryATT(t *testing.T) {
-	pool := bufferpool.NewBufferPoolMock()
-	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
-
-	logger := &TxnLogger{
-		pool:      pool,
-		logfileID: 1,
-		lastLogLocation: LogRecordLocationInfo{
-			Lsn:      0,
-			Location: FileLocation{PageID: 0, SlotNum: 0},
-		},
-	}
-
-	chain := NewTxnLogChain(logger, txns.TxnID(1))
-	dataPageID := bufferpool.PageIdentity{
-		FileID: 52,
-		PageID: 43,
-	}
-
-	chain.Begin().
-		Insert(dataPageID, 0, []byte("insert")). 
-		Update
-		
-
-}
+// func TestRecoveryATT(t *testing.T) {
+// 	pool := bufferpool.NewBufferPoolMock()
+// 	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+//
+// 	logger := &TxnLogger{
+// 		pool:      pool,
+// 		logfileID: 1,
+// 		lastLogLocation: LogRecordLocationInfo{
+// 			Lsn:      0,
+// 			Location: FileLocation{PageID: 0, SlotNum: 0},
+// 		},
+// 	}
+//
+// 	chain := NewTxnLogChain(logger, transactions.TransactionID(1))
+// 	dataPageID := bufferpool.PageIdentity{
+// 		FileID: 52,
+// 		PageID: 43,
+// 	}
+//
+// 	chain.Begin().
+// 		Insert(dataPageID, 0, []byte("insert")).
+// 		Update
+//
+// }
 
 func insertValue(
 	t *testing.T,
@@ -225,7 +228,7 @@ func TestMassiveRecovery(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []transactions.TransactionID {
 			panic("TODO")
 		},
 	}
@@ -266,7 +269,7 @@ func TestMassiveRecovery(t *testing.T) {
 		}
 	}
 
-	txnIdCounter := atomic.Uint64{}
+	TransactionIDCounter := atomic.Uint64{}
 
 	left := N - N/10
 	inc := N * 6 / 10
@@ -280,8 +283,8 @@ func TestMassiveRecovery(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			txnId := txns.TxnID(txnIdCounter.Add(1))
-			chain := NewTxnLogChain(logger, txnId)
+			TransactionID := transactions.TransactionID(TransactionIDCounter.Add(1))
+			chain := NewTxnLogChain(logger, TransactionID)
 
 			chain.Begin()
 			for j := range STEP {
@@ -355,38 +358,38 @@ func assertLogRecord(
 	actualTag LogRecordTypeTag,
 	untypedRecord any,
 	expectedRecordType LogRecordTypeTag,
-	expectedTxnID txns.TxnID,
+	expectedTransactionID transactions.TransactionID,
 ) {
 	require.Equal(t, actualTag, expectedRecordType)
 	switch actualTag {
 	case TypeBegin:
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTxnID, r.txnId)
+		require.Equal(t, expectedTransactionID, r.TransactionID)
 	case TypeUpdate:
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTxnID, r.txnId)
+		require.Equal(t, expectedTransactionID, r.TransactionID)
 	case TypeInsert:
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTxnID, r.txnId)
+		require.Equal(t, expectedTransactionID, r.TransactionID)
 	case TypeCommit:
 		r, ok := untypedRecord.(CommitLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTxnID, r.txnId)
+		require.Equal(t, expectedTransactionID, r.TransactionID)
 	case TypeAbort:
 		r, ok := untypedRecord.(AbortLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTxnID, r.txnId)
+		require.Equal(t, expectedTransactionID, r.TransactionID)
 	case TypeTxnEnd:
 		r, ok := untypedRecord.(TxnEndLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTxnID, r.txnId)
+		require.Equal(t, expectedTransactionID, r.TransactionID)
 	case TypeCompensation:
 		r, ok := untypedRecord.(CompensationLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTxnID, r.txnId)
+		require.Equal(t, expectedTransactionID, r.TransactionID)
 	default:
 		require.Less(t, actualTag, TypeUnknown)
 	}
@@ -399,7 +402,7 @@ func assertLogRecordWithRetrieval(
 	pageID bufferpool.PageIdentity,
 	slotNum uint32,
 	expectedRecordType LogRecordTypeTag,
-	expectedTxnID txns.TxnID,
+	expectedTransactionID transactions.TransactionID,
 ) {
 	page, err := pool.GetPage(pageID)
 	require.NoError(t, err)
@@ -411,7 +414,7 @@ func assertLogRecordWithRetrieval(
 	tag, untypedRecord, err := readLogRecord(data)
 	require.NoError(t, err)
 
-	assertLogRecord(t, tag, untypedRecord, expectedRecordType, expectedTxnID)
+	assertLogRecord(t, tag, untypedRecord, expectedRecordType, expectedTransactionID)
 
 	page.RUnlock()
 	pool.Unpin(pageID)
@@ -438,7 +441,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []transactions.TransactionID {
 			panic("TODO")
 		},
 	}
@@ -457,10 +460,10 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 	for i := range OUTER {
 		waitWg.Add(1)
 		barierWg.Add(1)
-		go func(txnID txns.TxnID) {
+		go func(TransactionID transactions.TransactionID) {
 			defer waitWg.Done()
 
-			chain := NewTxnLogChain(logger, txnID)
+			chain := NewTxnLogChain(logger, TransactionID)
 
 			insertLocs := []LogRecordLocationInfo{}
 			updateLocs := []LogRecordLocationInfo{}
@@ -492,27 +495,27 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 			barierWg.Done()
 			barierWg.Wait()
 
-			assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: beginLoc.Location.PageID}, beginLoc.Location.SlotNum, TypeBegin, txnID)
+			assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: beginLoc.Location.PageID}, beginLoc.Location.SlotNum, TypeBegin, TransactionID)
 			if isCommit {
-				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: finishLoc.Location.PageID}, finishLoc.Location.SlotNum, TypeCommit, txnID)
+				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: finishLoc.Location.PageID}, finishLoc.Location.SlotNum, TypeCommit, TransactionID)
 			} else {
-				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: finishLoc.Location.PageID}, finishLoc.Location.SlotNum, TypeAbort, txnID)
+				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: finishLoc.Location.PageID}, finishLoc.Location.SlotNum, TypeAbort, TransactionID)
 			}
 
 			for _, insert := range insertLocs {
 				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{
 					FileID: logger.logfileID,
 					PageID: insert.Location.PageID,
-				}, insert.Location.SlotNum, TypeInsert, txnID)
+				}, insert.Location.SlotNum, TypeInsert, TransactionID)
 			}
 
 			for _, update := range updateLocs {
 				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{
 					FileID: logger.logfileID,
 					PageID: update.Location.PageID,
-				}, update.Location.SlotNum, TypeUpdate, txnID)
+				}, update.Location.SlotNum, TypeUpdate, TransactionID)
 			}
-		}(txns.TxnID(i))
+		}(transactions.TransactionID(i))
 	}
 
 	waitWg.Wait()

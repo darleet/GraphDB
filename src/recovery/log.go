@@ -8,7 +8,7 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
-	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
 type TxnLogger struct {
@@ -24,7 +24,7 @@ type TxnLogger struct {
 	lastLogLocation LogRecordLocationInfo
 	// ================
 
-	getActiveTransactions func() []txns.TxnID // Прийдет из лок менеджера
+	getActiveTransactions func() []transactions.TransactionID // Прийдет из лок менеджера
 
 }
 
@@ -80,7 +80,7 @@ func (l *TxnLogger) recoverAnalyze(
 			assert.Assert(ok, "couldn't type cast the record")
 
 			assert.Assert(ATT.Insert(
-				record.txnId,
+				record.TransactionID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -88,13 +88,13 @@ func (l *TxnLogger) recoverAnalyze(
 						Lsn:      record.lsn,
 						Location: iter.Location(),
 					}),
-			), "Found a `begin` record for the already running transaction. TxnID: %d", record.txnId)
+			), "Found a `begin` record for the already running transaction. TransactionID: %d", record.TransactionID)
 		case TypeInsert:
 			record, ok := untypedRecord.(InsertLogRecord)
 			assert.Assert(ok, "couldn't type cast the record")
 
 			ATT.Insert(
-				record.txnId,
+				record.TransactionID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -120,7 +120,7 @@ func (l *TxnLogger) recoverAnalyze(
 			assert.Assert(ok, "couldn't type cast the record")
 
 			ATT.Insert(
-				record.txnId,
+				record.TransactionID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -136,7 +136,7 @@ func (l *TxnLogger) recoverAnalyze(
 			record, ok := untypedRecord.(CommitLogRecord)
 			assert.Assert(ok, "couldn't type cast the record")
 			ATT.Insert(
-				record.txnId,
+				record.TransactionID,
 				tag,
 				NewATTEntry(
 					TxnStatusCommit,
@@ -150,7 +150,7 @@ func (l *TxnLogger) recoverAnalyze(
 			assert.Assert(ok, "couldn't type cast the record")
 
 			ATT.Insert(
-				record.txnId,
+				record.TransactionID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -162,7 +162,7 @@ func (l *TxnLogger) recoverAnalyze(
 		case TypeTxnEnd:
 			record, ok := untypedRecord.(TxnEndLogRecord)
 			assert.Assert(ok, "couldn't type cast the record")
-			delete(ATT.table, record.txnId)
+			delete(ATT.table, record.TransactionID)
 		case TypeCheckpointBegin:
 		case TypeCheckpointEnd:
 			record, ok := untypedRecord.(CheckpointEndLogRecord)
@@ -171,8 +171,8 @@ func (l *TxnLogger) recoverAnalyze(
 			// Lecture #21: Database Crash Recovery @CMU
 			// Active Transactions Table
 			// Monitors the last
-			for _, txnId := range record.activeTransactions {
-				ATT.Insert(txnId, TypeBegin, NewATTEntry(
+			for _, TransactionID := range record.activeTransactions {
+				ATT.Insert(TransactionID, TypeBegin, NewATTEntry(
 					TxnStatusUndo,
 					NewNilLogRecordLocation(),
 				))
@@ -180,7 +180,7 @@ func (l *TxnLogger) recoverAnalyze(
 
 			// Dirty Page Table (DPT):
 			// The DPT contains information about the pages in the buffer pool that were
-			// modified by uncommitted txns. There is one entry per dirty page
+			// modified by uncommitted transactions. There is one entry per dirty page
 			// containing the recLSN (i.e., the LSN of the log record that first caused the page to be dirty).
 			//
 			// The DPT contains all pages that are dirty in the buffer pool.
@@ -196,7 +196,7 @@ func (l *TxnLogger) recoverAnalyze(
 			assert.Assert(ok, "couldn't type cast the record")
 
 			ATT.Insert(
-				record.txnId,
+				record.TransactionID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -250,7 +250,7 @@ func (l *TxnLogger) recoverPrepareCLRs(
 				}
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 
-				_, err := l.AppendTxnEnd(record.txnId, entry.logLocationInfo)
+				_, err := l.AppendTxnEnd(record.TransactionID, entry.logLocationInfo)
 				assert.Assert(err == nil, "todo")
 				break outer
 			case TypeInsert:
@@ -464,14 +464,14 @@ func (lockedLogger *TxnLogger) writeLogRecord(serializedRecord []byte) (LogRecor
 	}
 }
 
-func (l *TxnLogger) AppendBegin(txnId txns.TxnID) (LogRecordLocationInfo, error) {
+func (l *TxnLogger) AppendBegin(TransactionID transactions.TransactionID) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	lsn := LSN(l.logRecordsCount)
 	l.logRecordsCount++
 
-	r := NewBeginLogRecord(lsn, txnId)
+	r := NewBeginLogRecord(lsn, TransactionID)
 
 	bytes, err := r.MarshalBinary()
 	if err != nil {
@@ -485,7 +485,7 @@ func (l *TxnLogger) AppendBegin(txnId txns.TxnID) (LogRecordLocationInfo, error)
 }
 
 func (l *TxnLogger) AppendUpdate(
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
@@ -498,7 +498,7 @@ func (l *TxnLogger) AppendUpdate(
 	lsn := LSN(l.logRecordsCount)
 	l.logRecordsCount++
 
-	r := NewUpdateLogRecord(lsn, txnId, prevLog, pageInfo, slotNumber, beforeValue, afterValue)
+	r := NewUpdateLogRecord(lsn, TransactionID, prevLog, pageInfo, slotNumber, beforeValue, afterValue)
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
@@ -519,7 +519,7 @@ func (l *TxnLogger) undoUpdate(updateRecord *UpdateLogRecord) (LogRecordLocation
 
 	r := NewCompensationLogRecord(
 		lsn,
-		updateRecord.txnId,
+		updateRecord.TransactionID,
 		l.lastLogLocation,
 		updateRecord.modifiedPageIdentity,
 		updateRecord.modifiedSlotNumber,
@@ -540,7 +540,7 @@ func (l *TxnLogger) undoUpdate(updateRecord *UpdateLogRecord) (LogRecordLocation
 }
 
 func (l *TxnLogger) AppendInsert(
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
@@ -552,7 +552,7 @@ func (l *TxnLogger) AppendInsert(
 	lsn := LSN(l.logRecordsCount)
 	l.logRecordsCount++
 
-	r := NewInsertLogRecord(lsn, txnId, prevLog, pageInfo, slotNumber, value)
+	r := NewInsertLogRecord(lsn, TransactionID, prevLog, pageInfo, slotNumber, value)
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
@@ -573,7 +573,7 @@ func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LogRecordLocation
 
 	r := NewCompensationLogRecord(
 		lsn,
-		insertRecord.txnId,
+		insertRecord.TransactionID,
 		l.lastLogLocation,
 		insertRecord.modifiedPageIdentity,
 		insertRecord.modifiedSlotNumber,
@@ -594,7 +594,7 @@ func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LogRecordLocation
 }
 
 func (l *TxnLogger) AppendCommit(
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -603,7 +603,7 @@ func (l *TxnLogger) AppendCommit(
 	lsn := LSN(l.logRecordsCount)
 	l.logRecordsCount++
 
-	r := NewCommitLogRecord(lsn, txnId, prevLog)
+	r := NewCommitLogRecord(lsn, TransactionID, prevLog)
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
@@ -616,7 +616,7 @@ func (l *TxnLogger) AppendCommit(
 }
 
 func (l *TxnLogger) AppendAbort(
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -625,7 +625,7 @@ func (l *TxnLogger) AppendAbort(
 	lsn := LSN(l.logRecordsCount)
 	l.logRecordsCount++
 
-	r := NewAbortLogRecord(lsn, txnId, prevLog)
+	r := NewAbortLogRecord(lsn, TransactionID, prevLog)
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
@@ -638,7 +638,7 @@ func (l *TxnLogger) AppendAbort(
 }
 
 func (l *TxnLogger) AppendTxnEnd(
-	txnId txns.TxnID,
+	TransactionID transactions.TransactionID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -647,7 +647,7 @@ func (l *TxnLogger) AppendTxnEnd(
 	lsn := LSN(l.logRecordsCount)
 	l.logRecordsCount++
 
-	r := NewTxnEndLogRecord(lsn, txnId, prevLog)
+	r := NewTxnEndLogRecord(lsn, TransactionID, prevLog)
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
@@ -679,7 +679,7 @@ func (l *TxnLogger) AppendCheckpointBegin() (LogRecordLocationInfo, error) {
 }
 
 func (l *TxnLogger) AppendCheckpointEnd(
-	activeTransacitons []txns.TxnID,
+	activeTransacitons []transactions.TransactionID,
 	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()

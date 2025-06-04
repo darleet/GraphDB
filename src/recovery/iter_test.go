@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,7 +60,7 @@ func TestIterSanity(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []transactions.TransactionID {
 			panic("TODO")
 		},
 	}
@@ -70,8 +70,8 @@ func TestIterSanity(t *testing.T) {
 		PageID: 23,
 	}
 
-	txnID := txns.TxnID(1)
-	chain := NewTxnLogChain(logger, txnID)
+	TransactionID := transactions.TransactionID(1)
+	chain := NewTxnLogChain(logger, TransactionID)
 
 	types := generateSequence(chain, dataPageId, 100)
 	iter, err := logger.Iter(FileLocation{
@@ -83,7 +83,7 @@ func TestIterSanity(t *testing.T) {
 	for i := range len(types) {
 		expectedType := types[i]
 		tag, untypedRecord, err := iter.ReadRecord()
-		assertLogRecord(t, tag, untypedRecord, expectedType, txnID)
+		assertLogRecord(t, tag, untypedRecord, expectedType, TransactionID)
 		require.NoError(t, err)
 
 		ok, err := iter.MoveForward()

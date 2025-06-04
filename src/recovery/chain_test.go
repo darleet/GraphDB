@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
 func TestChainSanity(t *testing.T) {
@@ -31,12 +31,12 @@ func TestChainSanity(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []transactions.TransactionID {
 			panic("TODO")
 		},
 	}
 
-	chain := NewTxnLogChain(logger, txns.TxnID(1))
+	chain := NewTxnLogChain(logger, transactions.TransactionID(1))
 
 	dataPageId := bufferpool.PageIdentity{
 		FileID: 1,
@@ -139,7 +139,7 @@ func TestChain(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []transactions.TransactionID {
 			panic("TODO")
 		},
 	}
@@ -149,19 +149,19 @@ func TestChain(t *testing.T) {
 		PageID: 0,
 	}
 
-	txnId_1 := txns.TxnID(1)
-	txnId_2 := txns.TxnID(2)
+	TransactionID_1 := transactions.TransactionID(1)
+	TransactionID_2 := transactions.TransactionID(2)
 
-	chain := NewTxnLogChain(logger, txnId_1)
+	chain := NewTxnLogChain(logger, TransactionID_1)
 
 	// interleaving
 	chain.Begin().
 		Insert(dataPageId, 0, []byte("first")).
-		SwitchTxnId(txnId_2).
+		SwitchTransactionID(TransactionID_2).
 		Begin().
 		Insert(dataPageId, 1, []byte("second")).
 		Update(dataPageId, 1, []byte("second"), []byte("sec0nd")).
-		SwitchTxnId(txnId_1).
+		SwitchTransactionID(TransactionID_1).
 		Update(dataPageId, 0, []byte("first"), []byte("update"))
 
 	require.NoError(t, chain.Err())
@@ -182,7 +182,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TypeBegin, tag)
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
-		require.Equal(t, txnId_1, r.txnId)
+		require.Equal(t, TransactionID_1, r.TransactionID)
 	}
 	{
 		data, err := page.Get(1)
@@ -193,7 +193,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TypeInsert, tag)
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
-		require.Equal(t, txnId_1, r.txnId)
+		require.Equal(t, TransactionID_1, r.TransactionID)
 	}
 
 	{
@@ -205,7 +205,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TypeBegin, tag)
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
-		require.Equal(t, txnId_2, r.txnId)
+		require.Equal(t, TransactionID_2, r.TransactionID)
 	}
 	{
 		data, err := page.Get(3)
@@ -216,7 +216,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TypeInsert, tag)
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
-		require.Equal(t, txnId_2, r.txnId)
+		require.Equal(t, TransactionID_2, r.TransactionID)
 	}
 	{
 		data, err := page.Get(4)
@@ -227,7 +227,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TypeUpdate, tag)
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
-		require.Equal(t, txnId_2, r.txnId)
+		require.Equal(t, TransactionID_2, r.TransactionID)
 	}
 
 	{
@@ -239,7 +239,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TypeUpdate, tag)
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
-		require.Equal(t, txnId_1, r.txnId)
+		require.Equal(t, TransactionID_1, r.TransactionID)
 	}
 
 }
