@@ -28,7 +28,7 @@ func (b *BufferPool_mock) GetPage(pageID PageIdentity) (*page.SlottedPage, error
 	val, ok := b.pages.Load(pageID)
 	var p *page.SlottedPage
 	if !ok {
-		p = page.NewSlottedPage()
+		p = page.NewSlottedPage(pageID.FileID, pageID.PageID)
 		b.pages.Store(pageID, p)
 	} else {
 		p = val.(*page.SlottedPage)
