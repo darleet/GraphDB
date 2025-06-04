@@ -21,6 +21,7 @@ func TestInsertAndGet(t *testing.T) {
 	for _, rec := range records {
 		id, err := page.Insert(rec)
 		require.NoError(t, err, "Insert failed")
+
 		slotIDs = append(slotIDs, id)
 	}
 

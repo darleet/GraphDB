@@ -20,12 +20,15 @@ func compatibleLockModes(l LockMode, r LockMode) bool {
 	if l == helper_FORBID_ALL || r == helper_FORBID_ALL {
 		return false
 	}
+
 	if l == helper_ALLOW_ALL || r == helper_ALLOW_ALL {
 		return true
 	}
+
 	if l == SHARED && r == SHARED {
 		return true
 	}
+
 	return false
 }
 

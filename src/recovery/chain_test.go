@@ -66,6 +66,7 @@ func TestChainSanity(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeBegin, tag)
+
 		_, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
 	}
@@ -78,6 +79,7 @@ func TestChainSanity(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeInsert, tag)
+
 		_, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
 	}
@@ -90,6 +92,7 @@ func TestChainSanity(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeUpdate, tag)
+
 		_, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
 	}
@@ -102,6 +105,7 @@ func TestChainSanity(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeAbort, tag)
+
 		_, ok := untypedRecord.(AbortLogRecord)
 		require.True(t, ok)
 	}
@@ -114,6 +118,7 @@ func TestChainSanity(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeTxnEnd, tag)
+
 		_, ok := untypedRecord.(TxnEndLogRecord)
 		require.True(t, ok)
 	}
@@ -180,6 +185,7 @@ func TestChain(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeBegin, tag)
+
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
 		require.Equal(t, TransactionID_1, r.TransactionID)
@@ -191,6 +197,7 @@ func TestChain(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeInsert, tag)
+
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
 		require.Equal(t, TransactionID_1, r.TransactionID)
@@ -203,6 +210,7 @@ func TestChain(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeBegin, tag)
+
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
 		require.Equal(t, TransactionID_2, r.TransactionID)
@@ -214,6 +222,7 @@ func TestChain(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeInsert, tag)
+
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
 		require.Equal(t, TransactionID_2, r.TransactionID)
@@ -225,6 +234,7 @@ func TestChain(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeUpdate, tag)
+
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
 		require.Equal(t, TransactionID_2, r.TransactionID)
@@ -237,9 +247,9 @@ func TestChain(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, TypeUpdate, tag)
+
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
 		require.Equal(t, TransactionID_1, r.TransactionID)
 	}
-
 }

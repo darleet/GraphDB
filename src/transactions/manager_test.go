@@ -35,19 +35,24 @@ func TestManagerBasicOperation(t *testing.T) {
 
 func TestManagerConcurrentRecordAccess(t *testing.T) {
 	m := NewManager()
+
 	var wg sync.WaitGroup
 
 	for i := range 50 {
 		wg.Add(1)
+
 		go func(id int) {
 			defer wg.Done()
+
 			recordID := RecordID(id & 1) // Two distinct records
 			req := txnLockRequest{
-				TransactionID:    TxnID(id),
-				recordId: recordID,
-				lockMode: SHARED,
+				TransactionID: TxnID(id),
+				recordId:      recordID,
+				lockMode:      SHARED,
 			}
+
 			fmt.Printf("before lock %d\n", id)
+
 			notifier := m.Lock(req)
 			fmt.Printf("after lock %d\n", id)
 			expectClosedChannel(t, notifier, "Concurrent access to different records should work")
@@ -127,7 +132,9 @@ func TestManagerUnlockRetry(t *testing.T) {
 
 	// Block the unlock path
 	var wg sync.WaitGroup
+
 	wg.Add(1)
+
 	go func() {
 		// Acquire lock on previous node to force retry
 		m.qs[recordID].head.mu.Lock()
@@ -148,16 +155,16 @@ func TestManagerUnlockAll(t *testing.T) {
 	runningTxn := TxnID(1)
 
 	notifier1x := m.Lock(txnLockRequest{
-		TransactionID:    runningTxn,
-		recordId: 1,
-		lockMode: EXCLUSIVE,
+		TransactionID: runningTxn,
+		recordId:      1,
+		lockMode:      EXCLUSIVE,
 	})
 	expectClosedChannel(t, notifier1x, "Txn 1 should have been granted the Exclusive Lock on 1")
 
 	notifier0s := m.Lock(txnLockRequest{
-		TransactionID:    waitingTxn,
-		recordId: 1,
-		lockMode: SHARED,
+		TransactionID: waitingTxn,
+		recordId:      1,
+		lockMode:      SHARED,
 	})
 	expectOpenChannel(t, notifier0s, "Txn 0 should be enqueued on record 1")
 

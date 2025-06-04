@@ -9,10 +9,11 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 	"github.com/Blackdeer1524/GraphDB/src/transactions"
-	"github.com/stretchr/testify/require"
 )
 
 func TestValidRecovery(t *testing.T) {
@@ -29,11 +30,14 @@ func TestValidRecovery(t *testing.T) {
 	}
 
 	dataPageID := bufferpool.PageIdentity{FileID: 42, PageID: 123}
+
 	p, err := pool.GetPage(dataPageID)
 	if err != nil {
 		t.Fatalf("data page getting failed: %v", err)
 	}
+
 	p.Lock()
+
 	slotNum, err := p.Insert([]byte("bef000"))
 	if err != nil {
 		t.Fatalf("couldn't insert a record: %v", err)
@@ -52,6 +56,7 @@ func TestValidRecovery(t *testing.T) {
 		Update(dataPageID, slotNum, before, after).
 		Commit().
 		TxnEnd()
+
 	err = chain.Err()
 	if err != nil {
 		t.Fatalf("log record append failed: %v", err)
@@ -76,10 +81,12 @@ func TestValidRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPage failed: %v", err)
 	}
+
 	data, err := p.Get(slotNum)
 	if err != nil {
 		t.Fatalf("Page.Get failed: %v", err)
 	}
+
 	if !bytes.Equal(data[:len(after)], after) {
 		t.Errorf("Recovery failed: expected %q, got %q", after, data[:len(after)])
 	}
@@ -204,6 +211,7 @@ func insertValue(
 	defer p.Unlock()
 
 	slot, err := p.Insert(data)
+
 	return slot, err
 }
 
@@ -248,15 +256,19 @@ func TestMassiveRecovery(t *testing.T) {
 	i := 0
 
 	index2pageID := map[int]FileLocation{}
+
 	for i < N {
 		succ := func() bool {
 			var err error
+
 			slot, err = insertValue(t, pool, dataPageId, INIT)
 			if errors.Is(err, page.ErrNoEnoughSpace) {
 				dataPageId.PageID++
 				return false
 			}
+
 			require.NoError(t, err)
+
 			return true
 		}()
 
@@ -280,6 +292,7 @@ func TestMassiveRecovery(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for i := left; i != right; i = (i + STEP) % N {
 		wg.Add(1)
+
 		go func(i int) {
 			defer wg.Done()
 
@@ -287,6 +300,7 @@ func TestMassiveRecovery(t *testing.T) {
 			chain := NewTxnLogChain(logger, TransactionID)
 
 			chain.Begin()
+
 			for j := range STEP {
 				recordLoc, ok := index2pageID[(i+j)%N]
 				require.True(t, ok, "%d", i+j)
@@ -311,6 +325,7 @@ func TestMassiveRecovery(t *testing.T) {
 					require.NoError(t, err)
 
 					clear(data)
+
 					if (i+j)%2 != 0 {
 						copy(data, NEW)
 					} else {
@@ -318,9 +333,11 @@ func TestMassiveRecovery(t *testing.T) {
 					}
 				}()
 			}
+
 			require.NoError(t, chain.Err())
 		}(i)
 	}
+
 	wg.Wait()
 
 	logger.Recover(FileLocation{
@@ -337,6 +354,7 @@ func TestMassiveRecovery(t *testing.T) {
 			}
 			p, err := pool.GetPageNoCreate(dataPageId)
 			require.NoError(t, err)
+
 			defer pool.Unpin(dataPageId)
 
 			p.RLock()
@@ -346,6 +364,7 @@ func TestMassiveRecovery(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, len(INIT), len(data))
+
 			for i := range len(INIT) {
 				require.Equal(t, INIT[i], data[i])
 			}
@@ -361,6 +380,7 @@ func assertLogRecord(
 	expectedTransactionID transactions.TxnID,
 ) {
 	require.Equal(t, actualTag, expectedRecordType)
+
 	switch actualTag {
 	case TypeBegin:
 		r, ok := untypedRecord.(BeginLogRecord)
@@ -393,7 +413,6 @@ func assertLogRecord(
 	default:
 		require.Less(t, actualTag, TypeUnknown)
 	}
-
 }
 
 func assertLogRecordWithRetrieval(
@@ -460,6 +479,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 	for i := range OUTER {
 		waitWg.Add(1)
 		barierWg.Add(1)
+
 		go func(TransactionID transactions.TxnID) {
 			defer waitWg.Done()
 
@@ -468,6 +488,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 			insertLocs := []LogRecordLocationInfo{}
 			updateLocs := []LogRecordLocationInfo{}
 			beginLoc := chain.Begin().Loc()
+
 			for j := range INNER {
 				switch rand.Int() % 2 {
 				case 0:
@@ -482,13 +503,16 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 					)
 				}
 			}
+
 			finishLoc := NewNilLogRecordLocation()
 			isCommit := rand.Int()%2 != 0
+
 			if isCommit {
 				finishLoc = chain.Commit().Loc()
 			} else {
 				finishLoc = chain.Abort().Loc()
 			}
+
 			chain.TxnEnd()
 			require.NoError(t, chain.Err())
 
@@ -496,6 +520,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 			barierWg.Wait()
 
 			assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: beginLoc.Location.PageID}, beginLoc.Location.SlotNum, TypeBegin, TransactionID)
+
 			if isCommit {
 				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: finishLoc.Location.PageID}, finishLoc.Location.SlotNum, TypeCommit, TransactionID)
 			} else {
