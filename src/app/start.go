@@ -7,10 +7,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Blackdeer1524/GraphDB/pkg/utils"
 	"github.com/Blackdeer1524/GraphDB/src"
 	"github.com/Blackdeer1524/GraphDB/src/cfg"
 	"github.com/Blackdeer1524/GraphDB/src/delivery"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 )
 
 const CloseTimeout = 15 * time.Second

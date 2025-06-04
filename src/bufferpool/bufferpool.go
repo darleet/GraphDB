@@ -48,6 +48,7 @@ func (p PageIdentity) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.BigEndian, p.FileID)
 	_ = binary.Write(buf, binary.BigEndian, p.PageID)
+
 	return buf.Bytes(), nil
 }
 
@@ -56,6 +57,7 @@ func (p *PageIdentity) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(rd, binary.BigEndian, &p.FileID); err != nil {
 		return err
 	}
+
 	return binary.Read(rd, binary.BigEndian, &p.PageID)
 }
 

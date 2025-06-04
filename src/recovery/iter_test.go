@@ -6,9 +6,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/transactions"
-	"github.com/stretchr/testify/require"
 )
 
 func generateSequence(chain *TxnLogChain, dataPageId bufferpool.PageIdentity, length int) []LogRecordTypeTag {
@@ -21,18 +22,22 @@ func generateSequence(chain *TxnLogChain, dataPageId bufferpool.PageIdentity, le
 		switch rand.Int() % 2 {
 		case 0:
 			res[i] = TypeInsert
+
 			chain.Insert(dataPageId, uint32(i), []byte(strconv.Itoa(i))).Loc()
 		case 1:
 			res[i] = TypeUpdate
+
 			chain.Update(dataPageId, uint32(i), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i))).Loc()
 		}
 	}
 
 	if rand.Int()%2 == 0 {
 		chain.Abort()
+
 		res[len(res)-1] = TypeAbort
 	} else {
 		chain.Commit()
+
 		res[len(res)-1] = TypeCommit
 	}
 
@@ -88,11 +93,11 @@ func TestIterSanity(t *testing.T) {
 
 		ok, err := iter.MoveForward()
 		require.NoError(t, err)
+
 		if i != len(types)-1 {
 			require.True(t, ok)
 		} else {
 			require.False(t, ok)
 		}
 	}
-
 }

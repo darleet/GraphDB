@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Blackdeer1524/GraphDB/pkg/assert"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
 
 var (

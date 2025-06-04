@@ -32,6 +32,7 @@ func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
 			q = newTxnQueue()
 			m.qs[r.recordId] = q
 		}
+
 		return q
 	}()
 
@@ -58,6 +59,7 @@ func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
 
 		alreadyLockedRecords[r.recordId] = struct{}{}
 	}()
+
 	return notifier
 }
 
@@ -70,6 +72,7 @@ func (m *Manager) Unlock(r txnUnlockRequest) {
 		Assert(present,
 			"trying to unlock a transaction on an unlocked tuple. recordID: %+v",
 			r.recordId)
+
 		return q
 	}()
 
@@ -101,12 +104,14 @@ func (m *Manager) UnlockAll(TransactionID TxnID) {
 			"expected a set of locked records for the transaction %+v to exist",
 			TransactionID)
 		delete(m.lockedRecords, TransactionID)
+
 		return lockedRecords
 	}()
 
 	unlockRequest := txnUnlockRequest{
 		TransactionID: TransactionID,
 	}
+
 	for r := range lockedRecords {
 		q := func() *txnQueue {
 			m.qsGuard.Lock()
@@ -116,6 +121,7 @@ func (m *Manager) UnlockAll(TransactionID TxnID) {
 			Assert(present,
 				"trying to unlock a transaction on an unlocked tuple. recordID: %+v",
 				r)
+
 			return q
 		}()
 

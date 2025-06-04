@@ -54,9 +54,12 @@ func (att *ActiveTransactionsTable) Insert(
 	if prevEntry.status == TxnStatusUndo {
 		prevEntry.status = entry.status
 	}
+
 	if !entry.logLocationInfo.isNil() {
 		prevEntry.logLocationInfo = entry.logLocationInfo
 	}
+
 	att.table[id] = prevEntry
+
 	return false
 }

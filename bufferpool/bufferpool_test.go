@@ -3,10 +3,11 @@ package bufferpool
 import (
 	"testing"
 
-	"github.com/Blackdeer1524/GraphDB/bufferpool/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Blackdeer1524/GraphDB/bufferpool/mocks"
 )
 
 func TestGetPage_Cached(t *testing.T) {

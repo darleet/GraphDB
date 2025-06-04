@@ -19,6 +19,7 @@ func (lockedEntry *txnQueueEntry) SafeNext() *txnQueueEntry {
 	next := lockedEntry.next
 	next.mu.Lock()
 	lockedEntry.mu.Unlock()
+
 	return next
 }
 
@@ -29,6 +30,7 @@ func (lockedEntry *txnQueueEntry) SafeInsert(n *txnQueueEntry) {
 	n.next = next
 
 	lockedEntry.next = n
+
 	next.mu.Lock()
 	next.prev = n
 	next.mu.Unlock()
@@ -109,10 +111,12 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 	defer q.mu.Unlock()
 
 	q.head.mu.Lock()
+
 	cur := q.head
 	defer func(c **txnQueueEntry) { (*c).mu.Unlock() }(&cur)
 
 	locksAreCompatible := true
+
 	for {
 		Assert(cur.r.TransactionID != r.TransactionID, "trying to lock already locked transaction. %+v", r)
 
@@ -127,6 +131,7 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 		if cur.next == q.tail {
 			break
 		}
+
 		cur = cur.SafeNext()
 	}
 
@@ -141,8 +146,10 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 		cur.SafeInsert(newNode)
 
 		q.txnNodes[r.TransactionID] = newNode
+
 		return notifier
 	}
+
 	newNode := &txnQueueEntry{
 		r:        r,
 		notifier: notifier,
@@ -151,6 +158,7 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 	cur.SafeInsert(newNode)
 
 	q.txnNodes[r.TransactionID] = newNode
+
 	return notifier
 }
 
@@ -172,6 +180,7 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	if !prev.mu.TryLock() {
 		return false
 	}
+
 	delete(q.txnNodes, r.TransactionID)
 
 	next := deletingNode.next
@@ -185,5 +194,6 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 		return true
 	}
 	prev.mu.Unlock()
+
 	return true
 }

@@ -70,18 +70,23 @@ func TestDeadlockPrevention(t *testing.T) {
 // TestConcurrentAccess checks for race conditions
 func TestConcurrentAccess(t *testing.T) {
 	q := newTxnQueue()
+
 	var wg sync.WaitGroup
 
 	for i := 1; i <= 10; i++ {
 		wg.Add(1)
+
 		go func(id int) {
 			defer wg.Done()
+
 			req := txnLockRequest{
 				TransactionID: TxnID(id),
 				recordId:      1,
 				lockMode:      SHARED,
 			}
+
 			fmt.Printf("before lock %d\n", id)
+
 			notifier := q.Lock(req)
 			fmt.Printf("after lock %d\n", id)
 

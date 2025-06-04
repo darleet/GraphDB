@@ -36,8 +36,10 @@ func (l *TxnLogger) Iter(start FileLocation) (*LogRecordsIter, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	p.RLock()
 	iter := newLogRecordIter(l.logfileID, start, l.pool, p)
+
 	return iter, nil
 }
 
@@ -74,6 +76,7 @@ func (l *TxnLogger) recoverAnalyze(
 	for {
 		tag, untypedRecord, err := iter.ReadRecord()
 		assert.Assert(err == nil, "couldn't read a record. reason: %+v", err)
+
 		switch tag {
 		case TypeBegin:
 			record, ok := untypedRecord.(BeginLogRecord)
@@ -117,6 +120,7 @@ func (l *TxnLogger) recoverAnalyze(
 				Lsn:      record.lsn,
 				Location: iter.Location(),
 			}
+
 			assert.Assert(ok, "couldn't type cast the record")
 
 			ATT.Insert(
@@ -212,6 +216,7 @@ func (l *TxnLogger) recoverAnalyze(
 
 		success, err := iter.MoveForward()
 		assert.Assert(err == nil, "%+v", err)
+
 		if !success {
 			break
 		}
@@ -233,6 +238,7 @@ func (l *TxnLogger) recoverPrepareCLRs(
 		if entry.status != TxnStatusUndo {
 			continue
 		}
+
 		recordLocation := entry.logLocationInfo.Location
 		clrsFound := 0
 	outer:
@@ -309,6 +315,7 @@ func (l *TxnLogger) recoverPrepareCLRs(
 			}
 		}
 	}
+
 	return earliestLogLocation
 }
 
@@ -334,6 +341,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 				defer p.Unlock()
 
 				data, err := p.Get(record.modifiedSlotNumber)
+
 				return data, err
 			}()
 			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number should have been correct")
@@ -355,6 +363,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 				defer p.Unlock()
 
 				data, err := p.Get(record.modifiedSlotNumber)
+
 				return data, err
 			}()
 			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number must be correct")
@@ -376,6 +385,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 				defer p.Unlock()
 
 				data, err := p.Get(record.modifiedSlotNumber)
+
 				return data, err
 			}()
 
@@ -389,6 +399,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 
 		success, err := iter.MoveForward()
 		assert.Assert(err == nil, "todo")
+
 		if !success {
 			break
 		}
@@ -414,7 +425,9 @@ func (l *TxnLogger) readLogRecord(recordLocation FileLocation) (LogRecordTypeTag
 	if err != nil {
 		return TypeUnknown, nil, err
 	}
+
 	tag, r, err := readLogRecord(record)
+
 	return tag, r, err
 }
 
@@ -428,6 +441,7 @@ func (lockedLogger *TxnLogger) writeLogRecord(serializedRecord []byte) (LogRecor
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	p.Lock()
 	slotNumber, err := p.Insert(serializedRecord)
 	p.Unlock()
@@ -445,16 +459,20 @@ func (lockedLogger *TxnLogger) writeLogRecord(serializedRecord []byte) (LogRecor
 		if err != nil {
 			return NewNilLogRecordLocation(), err
 		}
+
 		p.Lock()
 		slotNumber, err = p.Insert(serializedRecord)
 		p.Unlock()
 		lockedLogger.pool.Unpin(pageInfo)
 
 		assert.Assert(!errors.Is(err, page.ErrNoEnoughSpace), "very strange")
+
 		if err != nil {
 			return NewNilLogRecordLocation(), err
 		}
+
 		lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
+
 		return lockedLogger.lastLogLocation, nil
 	} else if err != nil {
 		return NewNilLogRecordLocation(), err
@@ -477,10 +495,12 @@ func (l *TxnLogger) AppendBegin(TransactionID transactions.TxnID) (LogRecordLoca
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -499,14 +519,17 @@ func (l *TxnLogger) AppendUpdate(
 	l.logRecordsCount++
 
 	r := NewUpdateLogRecord(lsn, TransactionID, prevLog, pageInfo, slotNumber, beforeValue, afterValue)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -528,14 +551,17 @@ func (l *TxnLogger) undoUpdate(updateRecord *UpdateLogRecord) (LogRecordLocation
 		updateRecord.afterValue,
 		updateRecord.beforeValue,
 	)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -553,14 +579,17 @@ func (l *TxnLogger) AppendInsert(
 	l.logRecordsCount++
 
 	r := NewInsertLogRecord(lsn, TransactionID, prevLog, pageInfo, slotNumber, value)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -582,14 +611,17 @@ func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LogRecordLocation
 		insertRecord.value,
 		[]byte{},
 	)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -604,14 +636,17 @@ func (l *TxnLogger) AppendCommit(
 	l.logRecordsCount++
 
 	r := NewCommitLogRecord(lsn, TransactionID, prevLog)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -626,14 +661,17 @@ func (l *TxnLogger) AppendAbort(
 	l.logRecordsCount++
 
 	r := NewAbortLogRecord(lsn, TransactionID, prevLog)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -648,14 +686,17 @@ func (l *TxnLogger) AppendTxnEnd(
 	l.logRecordsCount++
 
 	r := NewTxnEndLogRecord(lsn, TransactionID, prevLog)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -667,14 +708,17 @@ func (l *TxnLogger) AppendCheckpointBegin() (LogRecordLocationInfo, error) {
 	l.logRecordsCount++
 
 	r := NewCheckpointBegin(lsn)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
 
@@ -689,13 +733,16 @@ func (l *TxnLogger) AppendCheckpointEnd(
 	l.logRecordsCount++
 
 	r := NewCheckpointEnd(lsn, activeTransacitons, dirtyPageTable)
+
 	bytes, err := r.MarshalBinary()
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	loc, err := l.writeLogRecord(bytes)
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
+
 	return loc, nil
 }
