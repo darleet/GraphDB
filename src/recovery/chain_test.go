@@ -31,12 +31,12 @@ func TestChainSanity(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []transactions.TransactionID {
+		getActiveTransactions: func() []transactions.TxnID {
 			panic("TODO")
 		},
 	}
 
-	chain := NewTxnLogChain(logger, transactions.TransactionID(1))
+	chain := NewTxnLogChain(logger, transactions.TxnID(1))
 
 	dataPageId := bufferpool.PageIdentity{
 		FileID: 1,
@@ -139,7 +139,7 @@ func TestChain(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []transactions.TransactionID {
+		getActiveTransactions: func() []transactions.TxnID {
 			panic("TODO")
 		},
 	}
@@ -149,8 +149,8 @@ func TestChain(t *testing.T) {
 		PageID: 0,
 	}
 
-	TransactionID_1 := transactions.TransactionID(1)
-	TransactionID_2 := transactions.TransactionID(2)
+	TransactionID_1 := transactions.TxnID(1)
+	TransactionID_2 := transactions.TxnID(2)
 
 	chain := NewTxnLogChain(logger, TransactionID_1)
 

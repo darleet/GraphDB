@@ -10,7 +10,7 @@ type Manager struct {
 	qs      map[RecordID]*txnQueue
 
 	lockedRecordsGuard sync.Mutex
-	lockedRecords      map[TransactionID]map[RecordID]struct{}
+	lockedRecords      map[TxnID]map[RecordID]struct{}
 }
 
 func NewManager() *Manager {
@@ -18,7 +18,7 @@ func NewManager() *Manager {
 		qsGuard:            sync.Mutex{},
 		qs:                 map[RecordID]*txnQueue{},
 		lockedRecordsGuard: sync.Mutex{},
-		lockedRecords:      map[TransactionID]map[RecordID]struct{}{},
+		lockedRecords:      map[TxnID]map[RecordID]struct{}{},
 	}
 }
 
@@ -91,7 +91,7 @@ func (m *Manager) Unlock(r txnUnlockRequest) {
 	}()
 }
 
-func (m *Manager) UnlockAll(TransactionID TransactionID) {
+func (m *Manager) UnlockAll(TransactionID TxnID) {
 	lockedRecords := func() map[RecordID]struct{} {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()

@@ -9,22 +9,22 @@ import (
 
 type TxnLogChain struct {
 	logger        *TxnLogger
-	TransactionID transactions.TransactionID
+	TransactionID transactions.TxnID
 
-	lastLocations map[transactions.TransactionID]LogRecordLocationInfo
+	lastLocations map[transactions.TxnID]LogRecordLocationInfo
 	err           error
 }
 
-func NewTxnLogChain(logger *TxnLogger, TransactionID transactions.TransactionID) *TxnLogChain {
+func NewTxnLogChain(logger *TxnLogger, TransactionID transactions.TxnID) *TxnLogChain {
 	return &TxnLogChain{
 		logger:        logger,
 		TransactionID: TransactionID,
 
-		lastLocations: map[transactions.TransactionID]LogRecordLocationInfo{},
+		lastLocations: map[transactions.TxnID]LogRecordLocationInfo{},
 	}
 }
 
-func (c *TxnLogChain) SwitchTransactionID(TransactionID transactions.TransactionID) *TxnLogChain {
+func (c *TxnLogChain) SwitchTransactionID(TransactionID transactions.TxnID) *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
@@ -113,7 +113,7 @@ func (c *TxnLogChain) CheckpointBegin() *TxnLogChain {
 	return c
 }
 
-func (c *TxnLogChain) CheckpointEnd(ATT []transactions.TransactionID, DPT map[bufferpool.PageIdentity]LogRecordLocationInfo) *TxnLogChain {
+func (c *TxnLogChain) CheckpointEnd(ATT []transactions.TxnID, DPT map[bufferpool.PageIdentity]LogRecordLocationInfo) *TxnLogChain {
 	if c.err != nil {
 		return c
 	}

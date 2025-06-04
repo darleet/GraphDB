@@ -25,18 +25,18 @@ func NewATTEntry(
 }
 
 type ActiveTransactionsTable struct {
-	table map[transactions.TransactionID]ATTEntry
+	table map[transactions.TxnID]ATTEntry
 }
 
 func NewActiveTransactionsTable() ActiveTransactionsTable {
 	return ActiveTransactionsTable{
-		table: map[transactions.TransactionID]ATTEntry{},
+		table: map[transactions.TxnID]ATTEntry{},
 	}
 }
 
 // returns true iff it is the first record for the transaction
 func (att *ActiveTransactionsTable) Insert(
-	id transactions.TransactionID,
+	id transactions.TxnID,
 	tag LogRecordTypeTag,
 	entry ATTEntry,
 ) bool {

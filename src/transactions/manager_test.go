@@ -43,7 +43,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 			defer wg.Done()
 			recordID := RecordID(id & 1) // Two distinct records
 			req := txnLockRequest{
-				TransactionID:    TransactionID(id),
+				TransactionID:    TxnID(id),
 				recordId: recordID,
 				lockMode: SHARED,
 			}
@@ -53,7 +53,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 			expectClosedChannel(t, notifier, "Concurrent access to different records should work")
 
 			fmt.Printf("before unlock %d\n", id)
-			m.Unlock(txnUnlockRequest{TransactionID: TransactionID(id), recordId: recordID})
+			m.Unlock(txnUnlockRequest{TransactionID: TxnID(id), recordId: recordID})
 			fmt.Printf("after unlock %d\n", id)
 		}(i)
 	}
@@ -144,8 +144,8 @@ func TestManagerUnlockRetry(t *testing.T) {
 func TestManagerUnlockAll(t *testing.T) {
 	m := NewManager()
 
-	waitingTxn := TransactionID(0)
-	runningTxn := TransactionID(1)
+	waitingTxn := TxnID(0)
+	runningTxn := TxnID(1)
 
 	notifier1x := m.Lock(txnLockRequest{
 		TransactionID:    runningTxn,

@@ -60,7 +60,7 @@ func TestIterSanity(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []transactions.TransactionID {
+		getActiveTransactions: func() []transactions.TxnID {
 			panic("TODO")
 		},
 	}
@@ -70,7 +70,7 @@ func TestIterSanity(t *testing.T) {
 		PageID: 23,
 	}
 
-	TransactionID := transactions.TransactionID(1)
+	TransactionID := transactions.TxnID(1)
 	chain := NewTxnLogChain(logger, TransactionID)
 
 	types := generateSequence(chain, dataPageId, 100)

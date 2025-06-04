@@ -494,7 +494,7 @@ func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(reader, binary.BigEndian, &activeTxnsLen); err != nil {
 		return err
 	}
-	c.activeTransactions = make([]transactions.TransactionID, activeTxnsLen)
+	c.activeTransactions = make([]transactions.TxnID, activeTxnsLen)
 	for i := range c.activeTransactions {
 		if err := binary.Read(reader, binary.BigEndian, &c.activeTransactions[i]); err != nil {
 			return err

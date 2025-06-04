@@ -39,7 +39,7 @@ type txnQueue struct {
 	tail *txnQueueEntry
 
 	mu       sync.Mutex
-	txnNodes map[TransactionID]*txnQueueEntry
+	txnNodes map[TxnID]*txnQueueEntry
 }
 
 func (q *txnQueue) processBatch(lockedHead *txnQueueEntry) {
@@ -98,7 +98,7 @@ func newTxnQueue() *txnQueue {
 		tail: tail,
 
 		mu:       sync.Mutex{},
-		txnNodes: map[TransactionID]*txnQueueEntry{},
+		txnNodes: map[TxnID]*txnQueueEntry{},
 	}
 
 	return q

@@ -41,7 +41,7 @@ func TestValidRecovery(t *testing.T) {
 	p.Unlock()
 	pool.Unpin(dataPageID)
 
-	TransactionID := transactions.TransactionID(100)
+	TransactionID := transactions.TxnID(100)
 	before := []byte("before")
 	after := []byte("after")
 
@@ -99,7 +99,7 @@ func TestFailedTxn(t *testing.T) {
 	}
 	pageID := bufferpool.PageIdentity{FileID: 1, PageID: 42}
 
-	TransactionID := transactions.TransactionID(100)
+	TransactionID := transactions.TxnID(100)
 	before := []byte("before")
 
 	p, err := pool.GetPage(pageID)
@@ -228,7 +228,7 @@ func TestMassiveRecovery(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []transactions.TransactionID {
+		getActiveTransactions: func() []transactions.TxnID {
 			panic("TODO")
 		},
 	}
@@ -283,7 +283,7 @@ func TestMassiveRecovery(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			TransactionID := transactions.TransactionID(TransactionIDCounter.Add(1))
+			TransactionID := transactions.TxnID(TransactionIDCounter.Add(1))
 			chain := NewTxnLogChain(logger, TransactionID)
 
 			chain.Begin()
@@ -358,7 +358,7 @@ func assertLogRecord(
 	actualTag LogRecordTypeTag,
 	untypedRecord any,
 	expectedRecordType LogRecordTypeTag,
-	expectedTransactionID transactions.TransactionID,
+	expectedTransactionID transactions.TxnID,
 ) {
 	require.Equal(t, actualTag, expectedRecordType)
 	switch actualTag {
@@ -402,7 +402,7 @@ func assertLogRecordWithRetrieval(
 	pageID bufferpool.PageIdentity,
 	slotNum uint32,
 	expectedRecordType LogRecordTypeTag,
-	expectedTransactionID transactions.TransactionID,
+	expectedTransactionID transactions.TxnID,
 ) {
 	page, err := pool.GetPage(pageID)
 	require.NoError(t, err)
@@ -441,7 +441,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []transactions.TransactionID {
+		getActiveTransactions: func() []transactions.TxnID {
 			panic("TODO")
 		},
 	}
@@ -460,7 +460,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 	for i := range OUTER {
 		waitWg.Add(1)
 		barierWg.Add(1)
-		go func(TransactionID transactions.TransactionID) {
+		go func(TransactionID transactions.TxnID) {
 			defer waitWg.Done()
 
 			chain := NewTxnLogChain(logger, TransactionID)
@@ -515,7 +515,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 					PageID: update.Location.PageID,
 				}, update.Location.SlotNum, TypeUpdate, TransactionID)
 			}
-		}(transactions.TransactionID(i))
+		}(transactions.TxnID(i))
 	}
 
 	waitWg.Wait()

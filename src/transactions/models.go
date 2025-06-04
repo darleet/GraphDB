@@ -5,7 +5,7 @@ type RecordID uint64
 /* a monotonically increasing counter. It is guaranteed to be unique between transactions
  * WARN: there might be problems with synchronization
  *       in distributed systems that use this kind of transaction IDs */
-type TransactionID uint64
+type TxnID uint64
 
 type LockMode int
 
@@ -30,12 +30,12 @@ func compatibleLockModes(l LockMode, r LockMode) bool {
 }
 
 type txnLockRequest struct {
-	TransactionID    TransactionID
-	recordId RecordID
-	lockMode LockMode
+	TransactionID TxnID
+	recordId      RecordID
+	lockMode      LockMode
 }
 
 type txnUnlockRequest struct {
-	TransactionID    TransactionID
-	recordId RecordID
+	TransactionID TxnID
+	recordId      RecordID
 }

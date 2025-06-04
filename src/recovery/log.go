@@ -24,7 +24,7 @@ type TxnLogger struct {
 	lastLogLocation LogRecordLocationInfo
 	// ================
 
-	getActiveTransactions func() []transactions.TransactionID // Прийдет из лок менеджера
+	getActiveTransactions func() []transactions.TxnID // Прийдет из лок менеджера
 
 }
 
@@ -464,7 +464,7 @@ func (lockedLogger *TxnLogger) writeLogRecord(serializedRecord []byte) (LogRecor
 	}
 }
 
-func (l *TxnLogger) AppendBegin(TransactionID transactions.TransactionID) (LogRecordLocationInfo, error) {
+func (l *TxnLogger) AppendBegin(TransactionID transactions.TxnID) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -485,7 +485,7 @@ func (l *TxnLogger) AppendBegin(TransactionID transactions.TransactionID) (LogRe
 }
 
 func (l *TxnLogger) AppendUpdate(
-	TransactionID transactions.TransactionID,
+	TransactionID transactions.TxnID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
@@ -540,7 +540,7 @@ func (l *TxnLogger) undoUpdate(updateRecord *UpdateLogRecord) (LogRecordLocation
 }
 
 func (l *TxnLogger) AppendInsert(
-	TransactionID transactions.TransactionID,
+	TransactionID transactions.TxnID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
 	slotNumber uint32,
@@ -594,7 +594,7 @@ func (l *TxnLogger) undoInsert(insertRecord *InsertLogRecord) (LogRecordLocation
 }
 
 func (l *TxnLogger) AppendCommit(
-	TransactionID transactions.TransactionID,
+	TransactionID transactions.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -616,7 +616,7 @@ func (l *TxnLogger) AppendCommit(
 }
 
 func (l *TxnLogger) AppendAbort(
-	TransactionID transactions.TransactionID,
+	TransactionID transactions.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -638,7 +638,7 @@ func (l *TxnLogger) AppendAbort(
 }
 
 func (l *TxnLogger) AppendTxnEnd(
-	TransactionID transactions.TransactionID,
+	TransactionID transactions.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
@@ -679,7 +679,7 @@ func (l *TxnLogger) AppendCheckpointBegin() (LogRecordLocationInfo, error) {
 }
 
 func (l *TxnLogger) AppendCheckpointEnd(
-	activeTransacitons []transactions.TransactionID,
+	activeTransacitons []transactions.TxnID,
 	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
