@@ -20,8 +20,9 @@ func NewBufferPoolMock() *BufferPool_mock {
 	return &BufferPool_mock{}
 }
 
-func (b *BufferPool_mock) Unpin(pageID PageIdentity) {
+func (b *BufferPool_mock) Unpin(pageID PageIdentity) error {
 	b.unpinned.Store(pageID, true)
+	return nil
 }
 
 func (b *BufferPool_mock) GetPage(pageID PageIdentity) (*page.SlottedPage, error) {

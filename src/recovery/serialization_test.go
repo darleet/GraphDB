@@ -34,9 +34,9 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewUpdateLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 13141}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
-		222324,
+		2224,
 		[]byte("before value"),
 		[]byte("after value"),
 	)
@@ -85,9 +85,9 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewInsertLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 13115}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
-		222324,
+		2224,
 		[]byte("test value"),
 	)
 
@@ -131,7 +131,7 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCommitLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 13115}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -162,7 +162,7 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewAbortLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 13145}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -193,7 +193,7 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewTxnEndLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 13415}},
 	)
 
 	data, err := original.MarshalBinary()
@@ -224,9 +224,9 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCompensationLogRecord(
 		123,
 		transactions.TxnID(456),
-		LogRecordLocationInfo{789, FileLocation{101112, 131415}},
+		LogRecordLocationInfo{789, FileLocation{101112, 13145}},
 		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
-		222324,
+		22224,
 		true,
 		252627,
 		[]byte("before value"),

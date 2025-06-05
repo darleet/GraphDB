@@ -4,6 +4,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -12,7 +13,7 @@ import (
 
 func TestChainSanity(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
 	logPageId := bufferpool.PageIdentity{
 		FileID: 42,
@@ -53,7 +54,8 @@ func TestChainSanity(t *testing.T) {
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
-	defer pool.Unpin(logPageId)
+
+	defer func() { assert.NoError(t, pool.Unpin(logPageId)) }()
 
 	page.RLock()
 	defer page.RUnlock()
@@ -173,7 +175,8 @@ func TestChain(t *testing.T) {
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
-	defer pool.Unpin(logPageId)
+
+	defer func() { assert.NoError(t, pool.Unpin(logPageId)) }()
 
 	page.RLock()
 	defer page.RUnlock()

@@ -126,12 +126,14 @@ func (u *UpdateLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
+	//nolint:gosec
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(u.beforeValue))); err != nil {
 		return nil, err
 	}
 
 	buf.Write(u.beforeValue)
 
+	//nolint:gosec
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(u.afterValue))); err != nil {
 		return nil, err
 	}
@@ -168,7 +170,7 @@ func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	var slotNum uint32
+	var slotNum uint16
 	if err := binary.Read(reader, binary.BigEndian, &slotNum); err != nil {
 		return err
 	}
@@ -227,6 +229,7 @@ func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
+	//nolint:gosec
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(i.value))); err != nil {
 		return nil, err
 	}
@@ -448,12 +451,14 @@ func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
+	//nolint:gosec
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.beforeValue))); err != nil {
 		return nil, err
 	}
 
 	buf.Write(c.beforeValue)
 
+	//nolint:gosec
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.afterValue))); err != nil {
 		return nil, err
 	}
@@ -553,6 +558,7 @@ func (c *CheckpointEndLogRecord) MarshalBinary() ([]byte, error) {
 	}
 
 	// Write active transactions
+	//nolint:gosec
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.activeTransactions))); err != nil {
 		return nil, err
 	}
@@ -564,6 +570,7 @@ func (c *CheckpointEndLogRecord) MarshalBinary() ([]byte, error) {
 	}
 
 	// Write dirty page table
+	//nolint:gosec
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(c.dirtyPageTable))); err != nil {
 		return nil, err
 	}
