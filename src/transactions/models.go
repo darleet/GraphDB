@@ -42,9 +42,3 @@ type txnUnlockRequest struct {
 	txnID    TxnID
 	recordId RecordID
 }
-
-type txnLockUpgradeRequest struct {
-	txnID      TxnID
-	recordId   RecordID
-	targetMode LockMode
-}
