@@ -16,11 +16,12 @@ func TestInsertAndGet(t *testing.T) {
 		[]byte("gamma"),
 	}
 
-	var slotIDs []uint32
+	var slotIDs []uint16
 
 	for _, rec := range records {
 		id, err := page.Insert(rec)
 		require.NoError(t, err, "Insert failed")
+
 		slotIDs = append(slotIDs, id)
 	}
 

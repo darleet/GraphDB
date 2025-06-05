@@ -6,9 +6,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	txns "github.com/Blackdeer1524/GraphDB/src/transactions"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/transactions"
 )
 
 func generateSequence(chain *TxnLogChain, dataPageId bufferpool.PageIdentity, length int) []LogRecordTypeTag {
@@ -21,18 +23,24 @@ func generateSequence(chain *TxnLogChain, dataPageId bufferpool.PageIdentity, le
 		switch rand.Int() % 2 {
 		case 0:
 			res[i] = TypeInsert
-			chain.Insert(dataPageId, uint32(i), []byte(strconv.Itoa(i))).Loc()
+
+			//nolint:gosec
+			chain.Insert(dataPageId, uint16(i), []byte(strconv.Itoa(i))).Loc()
 		case 1:
 			res[i] = TypeUpdate
-			chain.Update(dataPageId, uint32(i), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i))).Loc()
+
+			//nolint:gosec
+			chain.Update(dataPageId, uint16(i), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i))).Loc()
 		}
 	}
 
 	if rand.Int()%2 == 0 {
 		chain.Abort()
+
 		res[len(res)-1] = TypeAbort
 	} else {
 		chain.Commit()
+
 		res[len(res)-1] = TypeCommit
 	}
 
@@ -41,7 +49,7 @@ func generateSequence(chain *TxnLogChain, dataPageId bufferpool.PageIdentity, le
 
 func TestIterSanity(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
 	logPageId := bufferpool.PageIdentity{
 		FileID: 42,
@@ -60,7 +68,7 @@ func TestIterSanity(t *testing.T) {
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []transactions.TxnID {
 			panic("TODO")
 		},
 	}
@@ -70,8 +78,8 @@ func TestIterSanity(t *testing.T) {
 		PageID: 23,
 	}
 
-	txnID := txns.TxnID(1)
-	chain := NewTxnLogChain(logger, txnID)
+	TransactionID := transactions.TxnID(1)
+	chain := NewTxnLogChain(logger, TransactionID)
 
 	types := generateSequence(chain, dataPageId, 100)
 	iter, err := logger.Iter(FileLocation{
@@ -83,16 +91,16 @@ func TestIterSanity(t *testing.T) {
 	for i := range len(types) {
 		expectedType := types[i]
 		tag, untypedRecord, err := iter.ReadRecord()
-		assertLogRecord(t, tag, untypedRecord, expectedType, txnID)
+		assertLogRecord(t, tag, untypedRecord, expectedType, TransactionID)
 		require.NoError(t, err)
 
 		ok, err := iter.MoveForward()
 		require.NoError(t, err)
+
 		if i != len(types)-1 {
 			require.True(t, ok)
 		} else {
 			require.False(t, ok)
 		}
 	}
-
 }

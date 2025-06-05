@@ -19,6 +19,7 @@ func (lockedEntry *txnQueueEntry) SafeNext() *txnQueueEntry {
 	next := lockedEntry.next
 	next.mu.Lock()
 	lockedEntry.mu.Unlock()
+
 	return next
 }
 
@@ -29,6 +30,7 @@ func (lockedEntry *txnQueueEntry) SafeInsert(n *txnQueueEntry) {
 	n.next = next
 
 	lockedEntry.next = n
+
 	next.mu.Lock()
 	next.prev = n
 	next.mu.Unlock()
@@ -39,7 +41,7 @@ type txnQueue struct {
 	tail *txnQueueEntry
 
 	mu       sync.Mutex
-	txnNodes map[TransactionID]*txnQueueEntry
+	txnNodes map[TxnID]*txnQueueEntry
 }
 
 func (q *txnQueue) processBatch(lockedHead *txnQueueEntry) {
@@ -80,14 +82,14 @@ outer:
 func newTxnQueue() *txnQueue {
 	head := &txnQueueEntry{
 		r: txnLockRequest{
-			txnId:    math.MaxUint64, // Needed for the deadlock prevention policy
-			lockMode: helper_ALLOW_ALL,
+			TransactionID: math.MaxUint64, // Needed for the deadlock prevention policy
+			lockMode:      helper_ALLOW_ALL,
 		},
 	}
 	tail := &txnQueueEntry{
 		r: txnLockRequest{
-			txnId:    0, // Needed for the deadlock prevention policy
-			lockMode: helper_FORBID_ALL,
+			TransactionID: 0, // Needed for the deadlock prevention policy
+			lockMode:      helper_FORBID_ALL,
 		},
 	}
 	head.next = tail
@@ -98,7 +100,7 @@ func newTxnQueue() *txnQueue {
 		tail: tail,
 
 		mu:       sync.Mutex{},
-		txnNodes: map[TransactionID]*txnQueueEntry{},
+		txnNodes: map[TxnID]*txnQueueEntry{},
 	}
 
 	return q
@@ -109,15 +111,17 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 	defer q.mu.Unlock()
 
 	q.head.mu.Lock()
+
 	cur := q.head
 	defer func(c **txnQueueEntry) { (*c).mu.Unlock() }(&cur)
 
 	locksAreCompatible := true
+
 	for {
-		Assert(cur.r.txnId != r.txnId, "trying to lock already locked transaction. %+v", r)
+		Assert(cur.r.TransactionID != r.TransactionID, "trying to lock already locked transaction. %+v", r)
 
 		locksAreCompatible = locksAreCompatible && compatibleLockModes(r.lockMode, cur.r.lockMode)
-		if !locksAreCompatible && cur.r.txnId < r.txnId {
+		if !locksAreCompatible && cur.r.TransactionID < r.TransactionID {
 			// Deadlock prevention policy
 			// Only an older transaction can wait for a younger one.
 			// Ohterwise, a younger transaction is aborted
@@ -127,6 +131,7 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 		if cur.next == q.tail {
 			break
 		}
+
 		cur = cur.SafeNext()
 	}
 
@@ -140,9 +145,11 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 		}
 		cur.SafeInsert(newNode)
 
-		q.txnNodes[r.txnId] = newNode
+		q.txnNodes[r.TransactionID] = newNode
+
 		return notifier
 	}
+
 	newNode := &txnQueueEntry{
 		r:        r,
 		notifier: notifier,
@@ -150,7 +157,8 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 	}
 	cur.SafeInsert(newNode)
 
-	q.txnNodes[r.txnId] = newNode
+	q.txnNodes[r.TransactionID] = newNode
+
 	return notifier
 }
 
@@ -158,7 +166,7 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	deletingNode, present := q.txnNodes[r.txnId]
+	deletingNode, present := q.txnNodes[r.TransactionID]
 	Assert(present, "node not found. %+v", r)
 
 	deletingNode.mu.Lock()
@@ -172,7 +180,8 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 	if !prev.mu.TryLock() {
 		return false
 	}
-	delete(q.txnNodes, r.txnId)
+
+	delete(q.txnNodes, r.TransactionID)
 
 	next := deletingNode.next
 	next.mu.Lock()
@@ -185,5 +194,6 @@ func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
 		return true
 	}
 	prev.mu.Unlock()
+
 	return true
 }

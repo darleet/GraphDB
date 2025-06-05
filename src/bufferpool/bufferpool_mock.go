@@ -20,20 +20,25 @@ func NewBufferPoolMock() *BufferPool_mock {
 	return &BufferPool_mock{}
 }
 
-func (b *BufferPool_mock) Unpin(pageID PageIdentity) {
+func (b *BufferPool_mock) Unpin(pageID PageIdentity) error {
 	b.unpinned.Store(pageID, true)
+	return nil
 }
 
 func (b *BufferPool_mock) GetPage(pageID PageIdentity) (*page.SlottedPage, error) {
 	val, ok := b.pages.Load(pageID)
+
 	var p *page.SlottedPage
+
 	if !ok {
-		p = page.NewSlottedPage()
+		p = page.NewSlottedPage(pageID.FileID, pageID.PageID)
 		b.pages.Store(pageID, p)
 	} else {
 		p = val.(*page.SlottedPage)
 	}
+
 	b.unpinned.Store(pageID, false)
+
 	return p, nil
 }
 
@@ -42,7 +47,9 @@ func (b *BufferPool_mock) GetPageNoCreate(pageID PageIdentity) (*page.SlottedPag
 	if !ok {
 		return nil, ErrNoSuchPage
 	}
+
 	b.unpinned.Store(pageID, false)
+
 	return val.(*page.SlottedPage), nil
 }
 
@@ -52,17 +59,21 @@ func (b *BufferPool_mock) FlushPage(pageID PageIdentity) error {
 
 func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
 	pinnedIDs := []PageIdentity{}
+
 	b.pages.Range(func(key, _ interface{}) bool {
 		pageID := key.(PageIdentity)
 		val, ok := b.unpinned.Load(pageID)
+
 		if !ok || val == false {
 			pinnedIDs = append(pinnedIDs, pageID)
 		}
+
 		return true
 	})
 
 	if len(pinnedIDs) > 0 {
 		return fmt.Errorf("not all pages were unpinned: %+v", pinnedIDs)
 	}
+
 	return nil
 }
