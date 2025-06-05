@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -23,11 +24,13 @@ func generateSequence(chain *TxnLogChain, dataPageId bufferpool.PageIdentity, le
 		case 0:
 			res[i] = TypeInsert
 
-			chain.Insert(dataPageId, uint32(i), []byte(strconv.Itoa(i))).Loc()
+			//nolint:gosec
+			chain.Insert(dataPageId, uint16(i), []byte(strconv.Itoa(i))).Loc()
 		case 1:
 			res[i] = TypeUpdate
 
-			chain.Update(dataPageId, uint32(i), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i))).Loc()
+			//nolint:gosec
+			chain.Update(dataPageId, uint16(i), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i))).Loc()
 		}
 	}
 
@@ -46,7 +49,7 @@ func generateSequence(chain *TxnLogChain, dataPageId bufferpool.PageIdentity, le
 
 func TestIterSanity(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
 	logPageId := bufferpool.PageIdentity{
 		FileID: 42,

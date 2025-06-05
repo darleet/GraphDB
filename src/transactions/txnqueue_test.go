@@ -80,7 +80,7 @@ func TestConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 
 			req := txnLockRequest{
-				TransactionID: TxnID(id),
+				TransactionID: TxnID(id), //nolint:gosec
 				recordId:      1,
 				lockMode:      SHARED,
 			}
@@ -93,7 +93,7 @@ func TestConcurrentAccess(t *testing.T) {
 			expectClosedChannel(t, notifier, "shared lock request should have been granted")
 
 			fmt.Printf("before unlock %d\n", id)
-			q.Unlock(txnUnlockRequest{TransactionID: TxnID(id), recordId: 1})
+			q.Unlock(txnUnlockRequest{TransactionID: TxnID(id), recordId: 1}) //nolint:gosec
 			fmt.Printf("after unlock %d\n", id)
 		}(i)
 	}

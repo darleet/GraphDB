@@ -319,6 +319,23 @@ func (l *TxnLogger) recoverPrepareCLRs(
 	return earliestLogLocation
 }
 
+func getSlotFromPage(
+	pool bufferpool.BufferPool[*page.SlottedPage],
+	pageID bufferpool.PageIdentity,
+	slotNum uint16,
+) (data []byte, err error) {
+	p, err := pool.GetPage(pageID)
+	defer func() { err = pool.Unpin(pageID) }()
+	assert.Assert(err == nil, "todo")
+
+	p.Lock()
+	defer p.Unlock()
+
+	data, err = p.Get(slotNum)
+
+	return data, err
+}
+
 func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 	iter, err := l.Iter(earliestLog)
 	assert.Assert(err == nil, "todo")
@@ -332,18 +349,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 			record, ok := record.(InsertLogRecord)
 			assert.Assert(ok, "todo")
 
-			slotData, err := func() ([]byte, error) {
-				p, err := l.pool.GetPage(record.modifiedPageIdentity)
-				defer l.pool.Unpin(record.modifiedPageIdentity)
-				assert.Assert(err == nil, "todo")
-
-				p.Lock()
-				defer p.Unlock()
-
-				data, err := p.Get(record.modifiedSlotNumber)
-
-				return data, err
-			}()
+			slotData, err := getSlotFromPage(l.pool, record.modifiedPageIdentity, record.modifiedSlotNumber)
 			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number should have been correct")
 			assert.Assert(err == nil, "todo")
 			assert.Assert(len(record.value) <= len(slotData), "new item len should be at most len of the old one")
@@ -354,18 +360,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 			record, ok := record.(UpdateLogRecord)
 			assert.Assert(ok, "todo")
 
-			slotData, err := func() ([]byte, error) {
-				p, err := l.pool.GetPage(record.modifiedPageIdentity)
-				defer l.pool.Unpin(record.modifiedPageIdentity)
-				assert.Assert(err == nil, "todo")
-
-				p.Lock()
-				defer p.Unlock()
-
-				data, err := p.Get(record.modifiedSlotNumber)
-
-				return data, err
-			}()
+			slotData, err := getSlotFromPage(l.pool, record.modifiedPageIdentity, record.modifiedSlotNumber)
 			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number must be correct")
 			assert.Assert(err == nil, "todo")
 			assert.Assert(len(record.afterValue) <= len(slotData), "length should be the same")
@@ -376,19 +371,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 			record, ok := record.(CompensationLogRecord)
 			assert.Assert(ok, "todo")
 
-			slotData, err := func() ([]byte, error) {
-				p, err := l.pool.GetPage(record.modifiedPageIdentity)
-				defer l.pool.Unpin(record.modifiedPageIdentity)
-				assert.Assert(err == nil, "todo")
-
-				p.Lock()
-				defer p.Unlock()
-
-				data, err := p.Get(record.modifiedSlotNumber)
-
-				return data, err
-			}()
-
+			slotData, err := getSlotFromPage(l.pool, record.modifiedPageIdentity, record.modifiedSlotNumber)
 			assert.Assert(!errors.Is(err, page.ErrInvalidSlotID), "(invariant) slot number must be correct")
 			assert.Assert(err == nil, "todo")
 			assert.Assert(len(record.afterValue) <= len(slotData), "length should be the same")
@@ -406,13 +389,14 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 	}
 }
 
-func (l *TxnLogger) readLogRecord(recordLocation FileLocation) (LogRecordTypeTag, any, error) {
+func (l *TxnLogger) readLogRecord(recordLocation FileLocation) (tag LogRecordTypeTag, r any, err error) {
 	pageIdent := bufferpool.PageIdentity{
 		FileID: l.logfileID,
 		PageID: recordLocation.PageID,
 	}
 	page, err := l.pool.GetPage(pageIdent)
-	defer l.pool.Unpin(pageIdent)
+
+	defer func() { err = errors.Join(err, l.pool.Unpin(pageIdent)) }()
 
 	if err != nil {
 		return TypeUnknown, nil, err
@@ -426,11 +410,24 @@ func (l *TxnLogger) readLogRecord(recordLocation FileLocation) (LogRecordTypeTag
 		return TypeUnknown, nil, err
 	}
 
-	tag, r, err := readLogRecord(record)
+	tag, r, err = readLogRecord(record)
 
 	return tag, r, err
 }
 
+// writeLogRecord writes a serialized log record to the log file managed by the TxnLogger.
+// It attempts to insert the record into the current log page. If there is not enough space
+// on the current page, it advances to the next page and retries the insertion. The function
+// returns the location information of the written log record or an error if the operation fails.
+//
+// Parameters:
+//
+//	serializedRecord []byte - The serialized log record to be written.
+//
+// Returns:
+//
+//	LogRecordLocationInfo - The location information of the written log record.
+//	error - An error if the operation fails, otherwise nil.
 func (lockedLogger *TxnLogger) writeLogRecord(serializedRecord []byte) (LogRecordLocationInfo, error) {
 	pageInfo := bufferpool.PageIdentity{
 		FileID: lockedLogger.logfileID,
@@ -445,41 +442,35 @@ func (lockedLogger *TxnLogger) writeLogRecord(serializedRecord []byte) (LogRecor
 	p.Lock()
 	slotNumber, err := p.Insert(serializedRecord)
 	p.Unlock()
-	lockedLogger.pool.Unpin(pageInfo)
 
-	if errors.Is(err, page.ErrNoEnoughSpace) {
-		lockedLogger.lastLogLocation.Location.PageID++
-
-		pageInfo := bufferpool.PageIdentity{
-			FileID: lockedLogger.logfileID,
-			PageID: lockedLogger.lastLogLocation.Location.PageID,
-		}
-
-		p, err = lockedLogger.pool.GetPage(pageInfo)
-		if err != nil {
-			return NewNilLogRecordLocation(), err
-		}
-
-		p.Lock()
-		slotNumber, err = p.Insert(serializedRecord)
-		p.Unlock()
-		lockedLogger.pool.Unpin(pageInfo)
-
-		assert.Assert(!errors.Is(err, page.ErrNoEnoughSpace), "very strange")
-
-		if err != nil {
-			return NewNilLogRecordLocation(), err
-		}
-
-		lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
-
-		return lockedLogger.lastLogLocation, nil
-	} else if err != nil {
-		return NewNilLogRecordLocation(), err
-	} else {
+	if err == nil {
 		lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
 		return lockedLogger.lastLogLocation, nil
 	}
+
+	assert.Assert(errors.Is(err, page.ErrNoEnoughSpace), "SlottedPage.Insert contract violation")
+
+	lockedLogger.lastLogLocation.Location.PageID++
+	pageInfo = bufferpool.PageIdentity{
+		FileID: lockedLogger.logfileID,
+		PageID: lockedLogger.lastLogLocation.Location.PageID,
+	}
+
+	p, err = lockedLogger.pool.GetPage(pageInfo)
+	if err != nil {
+		return NewNilLogRecordLocation(), err
+	}
+
+	p.Lock()
+	slotNumber, err = p.Insert(serializedRecord)
+	p.Unlock()
+	assert.Assert(!errors.Is(err, page.ErrNoEnoughSpace), "very strange")
+	assert.Assert(err == nil, "SlottedPage.Insert contract violation")
+
+	err = lockedLogger.pool.Unpin(pageInfo)
+	lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
+
+	return lockedLogger.lastLogLocation, err
 }
 
 func (l *TxnLogger) AppendBegin(TransactionID transactions.TxnID) (LogRecordLocationInfo, error) {
@@ -508,7 +499,7 @@ func (l *TxnLogger) AppendUpdate(
 	TransactionID transactions.TxnID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
-	slotNumber uint32,
+	slotNumber uint16,
 	beforeValue []byte,
 	afterValue []byte,
 ) (LogRecordLocationInfo, error) {
@@ -569,7 +560,7 @@ func (l *TxnLogger) AppendInsert(
 	TransactionID transactions.TxnID,
 	prevLog LogRecordLocationInfo,
 	pageInfo bufferpool.PageIdentity,
-	slotNumber uint32,
+	slotNumber uint16,
 	value []byte,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()

@@ -44,7 +44,7 @@ func (c *TxnLogChain) Begin() *TxnLogChain {
 	return c
 }
 
-func (c *TxnLogChain) Insert(pageInfo bufferpool.PageIdentity, slotNumber uint32, value []byte) *TxnLogChain {
+func (c *TxnLogChain) Insert(pageInfo bufferpool.PageIdentity, slotNumber uint16, value []byte) *TxnLogChain {
 	if c.err != nil {
 		return c
 	}
@@ -59,7 +59,7 @@ func (c *TxnLogChain) Insert(pageInfo bufferpool.PageIdentity, slotNumber uint32
 	return c
 }
 
-func (c *TxnLogChain) Update(pageInfo bufferpool.PageIdentity, slotNumber uint32, beforeValue, afterValue []byte) *TxnLogChain {
+func (c *TxnLogChain) Update(pageInfo bufferpool.PageIdentity, slotNumber uint16, beforeValue, afterValue []byte) *TxnLogChain {
 	if c.err != nil {
 		return c
 	}

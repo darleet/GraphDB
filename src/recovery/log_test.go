@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -18,7 +19,7 @@ import (
 
 func TestValidRecovery(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
 	logger := &TxnLogger{
 		pool:      pool,
@@ -30,20 +31,8 @@ func TestValidRecovery(t *testing.T) {
 	}
 
 	dataPageID := bufferpool.PageIdentity{FileID: 42, PageID: 123}
-
-	p, err := pool.GetPage(dataPageID)
-	if err != nil {
-		t.Fatalf("data page getting failed: %v", err)
-	}
-
-	p.Lock()
-
-	slotNum, err := p.Insert([]byte("bef000"))
-	if err != nil {
-		t.Fatalf("couldn't insert a record: %v", err)
-	}
-	p.Unlock()
-	pool.Unpin(dataPageID)
+	slotNum, err := insertValue(t, pool, dataPageID, []byte("bef000"))
+	require.NoError(t, err)
 
 	TransactionID := transactions.TxnID(100)
 	before := []byte("before")
@@ -72,8 +61,8 @@ func TestValidRecovery(t *testing.T) {
 	logger2.Recover(checkpoint)
 
 	// Check that the page contains the "after" value
-	p, err = pool.GetPage(dataPageID)
-	defer pool.Unpin(dataPageID)
+	p, err := pool.GetPage(dataPageID)
+	defer func(pageID bufferpool.PageIdentity) { assert.NoError(t, pool.Unpin(pageID)) }(dataPageID)
 
 	p.RLock()
 	defer p.RUnlock()
@@ -109,13 +98,8 @@ func TestFailedTxn(t *testing.T) {
 	TransactionID := transactions.TxnID(100)
 	before := []byte("before")
 
-	p, err := pool.GetPage(pageID)
-	require.NoError(t, err, "data page getting failed")
-	p.Lock()
-	slotNum, err := p.Insert(before)
+	slotNum, err := insertValue(t, pool, pageID, before)
 	require.NoError(t, err, "couldn't insert a record")
-	p.Unlock()
-	pool.Unpin(pageID)
 
 	// Simulate a transaction: **Begin -> Insert -> CRASH**
 	chain := NewTxnLogChain(logger, TransactionID).
@@ -174,7 +158,7 @@ func TestFailedTxn(t *testing.T) {
 
 // func TestRecoveryATT(t *testing.T) {
 // 	pool := bufferpool.NewBufferPoolMock()
-// 	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+// 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 //
 // 	logger := &TxnLogger{
 // 		pool:      pool,
@@ -202,10 +186,10 @@ func insertValue(
 	pool bufferpool.BufferPool[*page.SlottedPage],
 	pageId bufferpool.PageIdentity,
 	data []byte,
-) (uint32, error) {
+) (uint16, error) {
 	p, err := pool.GetPage(pageId)
 	require.NoError(t, err)
-	defer pool.Unpin(pageId)
+	defer func(pgID bufferpool.PageIdentity) { require.NoError(t, pool.Unpin(pgID)) }(pageId)
 
 	p.Lock()
 	defer p.Unlock()
@@ -217,7 +201,7 @@ func insertValue(
 
 func TestMassiveRecovery(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
 	logPageId := bufferpool.PageIdentity{
 		FileID: 42,
@@ -250,7 +234,7 @@ func TestMassiveRecovery(t *testing.T) {
 		FileID: DataFileID,
 		PageID: 321,
 	}
-	slot := uint32(0)
+	slot := uint16(0)
 
 	N := 100
 	i := 0
@@ -316,7 +300,8 @@ func TestMassiveRecovery(t *testing.T) {
 				func() {
 					p, err := pool.GetPageNoCreate(pageID)
 					require.NoError(t, err)
-					defer pool.Unpin(pageID)
+
+					defer func() { require.NoError(t, pool.Unpin(pageID)) }()
 
 					p.Lock()
 					defer p.Unlock()
@@ -355,7 +340,7 @@ func TestMassiveRecovery(t *testing.T) {
 			p, err := pool.GetPageNoCreate(dataPageId)
 			require.NoError(t, err)
 
-			defer pool.Unpin(dataPageId)
+			defer func() { require.NoError(t, pool.Unpin(dataPageId)) }()
 
 			p.RLock()
 			defer p.RUnlock()
@@ -419,7 +404,7 @@ func assertLogRecordWithRetrieval(
 	t *testing.T,
 	pool bufferpool.BufferPool[*page.SlottedPage],
 	pageID bufferpool.PageIdentity,
-	slotNum uint32,
+	slotNum uint16,
 	expectedRecordType LogRecordTypeTag,
 	expectedTransactionID transactions.TxnID,
 ) {
@@ -436,12 +421,12 @@ func assertLogRecordWithRetrieval(
 	assertLogRecord(t, tag, untypedRecord, expectedRecordType, expectedTransactionID)
 
 	page.RUnlock()
-	pool.Unpin(pageID)
+	require.NoError(t, pool.Unpin(pageID))
 }
 
 func TestLoggerValidConcurrentWrites(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	defer func() { require.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
 	logPageId := bufferpool.PageIdentity{
 		FileID: 42,
@@ -494,12 +479,14 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				case 0:
 					insertLocs = append(
 						insertLocs,
-						chain.Insert(dataPageId, uint32(j), []byte(strconv.Itoa(i*INNER+j))).Loc(),
+						//nolint:gosec
+						chain.Insert(dataPageId, uint16(j), []byte(strconv.Itoa(i*INNER+j))).Loc(),
 					)
 				case 1:
 					updateLocs = append(
 						updateLocs,
-						chain.Update(dataPageId, uint32(j), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i*INNER+j))).Loc(),
+						//nolint:gosec
+						chain.Update(dataPageId, uint16(j), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i*INNER+j))).Loc(),
 					)
 				}
 			}
@@ -540,7 +527,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 					PageID: update.Location.PageID,
 				}, update.Location.SlotNum, TypeUpdate, TransactionID)
 			}
-		}(transactions.TxnID(i))
+		}(transactions.TxnID(i)) //nolint:gosec
 	}
 
 	waitWg.Wait()

@@ -33,16 +33,17 @@ func newLogRecordIter(
 var ErrInvalidIterator = errors.New("iterator is invalid")
 
 // Returns an error only if couldn't read the next page
-func (iter *LogRecordsIter) MoveForward() (bool, error) {
+func (iter *LogRecordsIter) MoveForward() (res bool, err error) {
 	if iter.curLoc.SlotNum+1 < iter.lockedPage.NumSlots() {
 		iter.curLoc.SlotNum++
 		return true, nil
 	}
 
-	defer iter.pool.Unpin(bufferpool.PageIdentity{
+	curPageID := bufferpool.PageIdentity{
 		FileID: iter.logfileID,
 		PageID: iter.curLoc.PageID,
-	})
+	}
+	defer func(pageID bufferpool.PageIdentity) { err = iter.pool.Unpin(pageID) }(curPageID)
 	defer iter.lockedPage.RUnlock()
 
 	newPage, err := iter.pool.GetPageNoCreate(
@@ -75,12 +76,4 @@ func (iter *LogRecordsIter) ReadRecord() (LogRecordTypeTag, any, error) {
 
 func (iter *LogRecordsIter) Location() FileLocation {
 	return iter.curLoc
-}
-
-func (iter *LogRecordsIter) Invalidate() {
-	iter.lockedPage.RUnlock()
-	iter.pool.Unpin(bufferpool.PageIdentity{
-		FileID: iter.logfileID,
-		PageID: iter.curLoc.PageID,
-	})
 }

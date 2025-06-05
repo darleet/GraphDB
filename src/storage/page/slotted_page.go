@@ -19,8 +19,8 @@ var (
 
 const (
 	Size       = 4096
-	HeaderSize = uint32(unsafe.Sizeof(uint32(0)) * 3) // numSlots (4) + freeStart (4) + freeEnd (4)
-	SlotSize   = uint32(unsafe.Sizeof(uint16(0)) * 2) // offset (2) + length (2)
+	HeaderSize = uint16(unsafe.Sizeof(uint16(0))) * 3 // numSlots (4) + freeStart (4) + freeEnd (4)
+	SlotSize   = uint16(unsafe.Sizeof(uint16(0))) * 2 // offset (2) + length (2)
 )
 
 type SlottedPage struct {
@@ -49,47 +49,51 @@ func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
 	return p
 }
 
-func (p *SlottedPage) NumSlots() uint32 {
-	return uint32(binary.LittleEndian.Uint32(p.data[0:4]))
+func (p *SlottedPage) NumSlots() uint16 {
+	return binary.LittleEndian.Uint16(p.data[0:2])
 }
 
-func (p *SlottedPage) setNumSlots(n uint32) {
-	binary.LittleEndian.PutUint32(p.data[0:4], uint32(n))
+func (p *SlottedPage) setNumSlots(n uint16) {
+	binary.LittleEndian.PutUint16(p.data[0:2], n)
 }
 
-func (p *SlottedPage) freeStart() uint32 {
-	return uint32(binary.LittleEndian.Uint32(p.data[4:8]))
+func (p *SlottedPage) freeStart() uint16 {
+	return binary.LittleEndian.Uint16(p.data[2:4])
 }
 
-func (p *SlottedPage) setFreeStart(n uint32) {
-	binary.LittleEndian.PutUint32(p.data[4:8], uint32(n))
+func (p *SlottedPage) setFreeStart(n uint16) {
+	binary.LittleEndian.PutUint16(p.data[2:4], n)
 }
 
-func (p *SlottedPage) freeEnd() uint32 {
-	return uint32(binary.LittleEndian.Uint32(p.data[8:12]))
+func (p *SlottedPage) freeEnd() uint16 {
+	return binary.LittleEndian.Uint16(p.data[4:6])
 }
 
-func (p *SlottedPage) setFreeEnd(n uint32) {
-	binary.LittleEndian.PutUint32(p.data[8:12], uint32(n))
+func (p *SlottedPage) setFreeEnd(n uint16) {
+	binary.LittleEndian.PutUint16(p.data[4:6], n)
 }
 
-func (p *SlottedPage) getSlot(i uint32) (offset, length uint32) {
+func (p *SlottedPage) getSlot(i uint16) (offset, length uint16) {
 	base := HeaderSize + i*SlotSize
 
-	offset = uint32(binary.LittleEndian.Uint16(p.data[base : base+2]))
-	length = uint32(binary.LittleEndian.Uint16(p.data[base+2 : base+4]))
+	offset = binary.LittleEndian.Uint16(p.data[base : base+2])
+	length = binary.LittleEndian.Uint16(p.data[base+2 : base+4])
 
 	return
 }
 
-func (p *SlottedPage) setSlot(i, offset, length uint32) {
+func (p *SlottedPage) setSlot(i, offset, length uint16) {
 	base := HeaderSize + i*SlotSize
-	binary.LittleEndian.PutUint16(p.data[base:base+2], uint16(offset))
-	binary.LittleEndian.PutUint16(p.data[base+2:base+4], uint16(length))
+	binary.LittleEndian.PutUint16(p.data[base:base+2], offset)
+	binary.LittleEndian.PutUint16(p.data[base+2:base+4], length)
 }
 
-func (p *SlottedPage) Insert(record []byte) (uint32, error) {
-	recLen := uint32(len(record))
+// returns an error ONLY IF there is no free space left
+func (p *SlottedPage) Insert(record []byte) (slotID uint16, err error) {
+	defer func() { assert.Assert(err == nil || errors.Is(err, ErrNoEnoughSpace), "contract violation") }()
+
+	//nolint:gosec
+	recLen := uint16(len(record))
 	freeSpace := p.freeEnd() - p.freeStart()
 
 	if freeSpace < recLen+SlotSize {
@@ -101,7 +105,7 @@ func (p *SlottedPage) Insert(record []byte) (uint32, error) {
 	copy(p.data[newOffset:], record)
 
 	// Create slot
-	slotID := p.NumSlots()
+	slotID = p.NumSlots()
 	p.setSlot(slotID, newOffset, recLen)
 
 	// Update header
@@ -112,7 +116,7 @@ func (p *SlottedPage) Insert(record []byte) (uint32, error) {
 	return slotID, nil
 }
 
-func (p *SlottedPage) Get(slotID uint32) ([]byte, error) {
+func (p *SlottedPage) Get(slotID uint16) ([]byte, error) {
 	if slotID >= p.NumSlots() {
 		return nil, ErrInvalidSlotID
 	}
@@ -154,4 +158,23 @@ func (p *SlottedPage) RUnlock() {
 
 func (p *SlottedPage) SetDirtiness(val bool) {
 	p.dirty.Store(val)
+}
+
+func (p *SlottedPage) GetFileID() uint64 {
+	return p.fileID
+}
+
+func (p *SlottedPage) GetPageID() uint64 {
+	return p.pageID
+}
+
+func (p *SlottedPage) IsDirty() bool {
+	return p.dirty.Load()
+}
+
+func (p *SlottedPage) SetData(d []byte) {
+	assert.Assert(p.locked.Load(), "SetData contract is violated")
+
+	clear(p.data)
+	copy(p.data, d)
 }

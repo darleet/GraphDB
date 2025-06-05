@@ -23,7 +23,7 @@ func NewBeginLogRecord(lsn LSN, TransactionID transactions.TxnID) BeginLogRecord
 
 type FileLocation struct {
 	PageID  uint64
-	SlotNum uint32
+	SlotNum uint16
 }
 
 // is considered NIL iff lsn is NIL_LSN
@@ -48,7 +48,7 @@ type UpdateLogRecord struct {
 	TransactionID        transactions.TxnID
 	parentLogLocation    LogRecordLocationInfo
 	modifiedPageIdentity bufferpool.PageIdentity
-	modifiedSlotNumber   uint32
+	modifiedSlotNumber   uint16
 	beforeValue          []byte
 	afterValue           []byte
 }
@@ -72,7 +72,7 @@ func NewUpdateLogRecord(
 	TransactionID transactions.TxnID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedPageIdentity bufferpool.PageIdentity,
-	modifiedSlotNumber uint32,
+	modifiedSlotNumber uint16,
 	beforeValue []byte,
 	afterValue []byte,
 ) UpdateLogRecord {
@@ -92,7 +92,7 @@ type InsertLogRecord struct {
 	TransactionID        transactions.TxnID
 	parentLogLocation    LogRecordLocationInfo
 	modifiedPageIdentity bufferpool.PageIdentity
-	modifiedSlotNumber   uint32
+	modifiedSlotNumber   uint16
 	value                []byte
 }
 
@@ -101,7 +101,7 @@ func NewInsertLogRecord(
 	TransactionID transactions.TxnID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedPageIdentity bufferpool.PageIdentity,
-	modifiedSlotNumber uint32,
+	modifiedSlotNumber uint16,
 	value []byte,
 ) InsertLogRecord {
 	return InsertLogRecord{
@@ -180,7 +180,7 @@ type CompensationLogRecord struct {
 	nextUndoLSN          LSN
 	isDelete             bool
 	modifiedPageIdentity bufferpool.PageIdentity
-	modifiedSlotNumber   uint32
+	modifiedSlotNumber   uint16
 	beforeValue          []byte
 	afterValue           []byte
 }
@@ -190,7 +190,7 @@ func NewCompensationLogRecord(
 	TransactionID transactions.TxnID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedPageIdentity bufferpool.PageIdentity,
-	modifiedSlotNumber uint32,
+	modifiedSlotNumber uint16,
 	isDelete bool,
 	nextUndoLSN LSN,
 	beforeValue []byte,
