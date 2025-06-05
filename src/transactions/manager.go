@@ -3,6 +3,8 @@ package transactions
 import (
 	"runtime"
 	"sync"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
 
 type Manager struct {
@@ -45,22 +47,41 @@ func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()
 
-		alreadyLockedRecords, ok := m.lockedRecords[r.TransactionID]
+		alreadyLockedRecords, ok := m.lockedRecords[r.txnID]
 		if !ok {
 			alreadyLockedRecords = make(map[RecordID]struct{})
-			m.lockedRecords[r.TransactionID] = alreadyLockedRecords
+			m.lockedRecords[r.txnID] = alreadyLockedRecords
 		}
 
 		_, isAleadyLocked := alreadyLockedRecords[r.recordId]
-		Assert(!isAleadyLocked,
+		assert.Assert(!isAleadyLocked,
 			"Didn't expect the record %+v to be locked by a transaction %+v",
 			r.recordId,
-			r.TransactionID)
+			r.txnID)
 
 		alreadyLockedRecords[r.recordId] = struct{}{}
 	}()
 
 	return notifier
+}
+
+func (m *Manager) Upgrade(r txnLockUpgradeRequest) {
+	q := func() *txnQueue {
+		m.qsGuard.Lock()
+		defer m.qsGuard.Unlock()
+
+		q, present := m.qs[r.recordId]
+		assert.Assert(present,
+			"trying to upgrade a lock on the unlocked tuple. recordID: %+v",
+			r.recordId)
+
+		return q
+	}()
+
+	entry, ok := q.txnNodes[r.txnID]
+	assert.Assert(ok, "transaction %+v hasn't acquired the tuple with %+v record id", r.txnID, r.recordId)
+	
+
 }
 
 func (m *Manager) Unlock(r txnUnlockRequest) {
@@ -69,8 +90,8 @@ func (m *Manager) Unlock(r txnUnlockRequest) {
 		defer m.qsGuard.Unlock()
 
 		q, present := m.qs[r.recordId]
-		Assert(present,
-			"trying to unlock a transaction on an unlocked tuple. recordID: %+v",
+		assert.Assert(present,
+			"trying to unlock the already unlocked tuple. recordID: %+v",
 			r.recordId)
 
 		return q
@@ -85,10 +106,10 @@ func (m *Manager) Unlock(r txnUnlockRequest) {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()
 
-		lockedRecords, lockedRecordsExist := m.lockedRecords[r.TransactionID]
-		Assert(lockedRecordsExist,
+		lockedRecords, lockedRecordsExist := m.lockedRecords[r.txnID]
+		assert.Assert(lockedRecordsExist,
 			"expected a set of locked records for the transaction %+v to exist",
-			r.TransactionID,
+			r.txnID,
 		)
 		delete(lockedRecords, r.recordId)
 	}()
@@ -100,7 +121,7 @@ func (m *Manager) UnlockAll(TransactionID TxnID) {
 		defer m.lockedRecordsGuard.Unlock()
 
 		lockedRecords, ok := m.lockedRecords[TransactionID]
-		Assert(ok,
+		assert.Assert(ok,
 			"expected a set of locked records for the transaction %+v to exist",
 			TransactionID)
 		delete(m.lockedRecords, TransactionID)
@@ -109,7 +130,7 @@ func (m *Manager) UnlockAll(TransactionID TxnID) {
 	}()
 
 	unlockRequest := txnUnlockRequest{
-		TransactionID: TransactionID,
+		txnID: TransactionID,
 	}
 
 	for r := range lockedRecords {
@@ -118,7 +139,7 @@ func (m *Manager) UnlockAll(TransactionID TxnID) {
 			defer m.qsGuard.Unlock()
 
 			q, present := m.qs[r]
-			Assert(present,
+			assert.Assert(present,
 				"trying to unlock a transaction on an unlocked tuple. recordID: %+v",
 				r)
 

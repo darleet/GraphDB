@@ -33,12 +33,18 @@ func compatibleLockModes(l LockMode, r LockMode) bool {
 }
 
 type txnLockRequest struct {
-	TransactionID TxnID
-	recordId      RecordID
-	lockMode      LockMode
+	txnID    TxnID
+	recordId RecordID
+	lockMode LockMode
 }
 
 type txnUnlockRequest struct {
-	TransactionID TxnID
-	recordId      RecordID
+	txnID    TxnID
+	recordId RecordID
+}
+
+type txnLockUpgradeRequest struct {
+	txnID      TxnID
+	recordId   RecordID
+	targetMode LockMode
 }
