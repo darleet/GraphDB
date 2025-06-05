@@ -8,7 +8,7 @@ import (
 )
 
 type txnQueueEntry struct {
-	r          txnLockRequest
+	r          TxnLockRequest
 	notifier   chan struct{}
 	isAcquired bool
 
@@ -105,13 +105,13 @@ outer:
 
 func newTxnQueue() *txnQueue {
 	head := &txnQueueEntry{
-		r: txnLockRequest{
+		r: TxnLockRequest{
 			txnID:    math.MaxUint64, // Needed for the deadlock prevention policy
 			lockMode: helper_ALLOW_ALL,
 		},
 	}
 	tail := &txnQueueEntry{
-		r: txnLockRequest{
+		r: TxnLockRequest{
 			txnID:    0, // Needed for the deadlock prevention policy
 			lockMode: helper_FORBID_ALL,
 		},
@@ -138,34 +138,14 @@ func newTxnQueue() *txnQueue {
 // and a closed channel is returned. Otherwise, the request is queued and a channel is returned that
 // will be closed when the lock is eventually granted. The returned channel can be used to wait for
 // lock acquisition.
-func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
-	q.head.mu.Lock()
-
+func (q *txnQueue) Lock(r TxnLockRequest) <-chan struct{} {
+	// Fast path - locks are compatible
 	cur := q.head
-	defer func(c **txnQueueEntry) { (*c).mu.Unlock() }(&cur)
+	cur.mu.Lock()
+	defer func() { cur.mu.Unlock() }()
 
-	locksAreCompatible := true
-
-	for {
-		assert.Assert(cur.r.txnID != r.txnID, "trying to lock already locked transaction. %+v", r)
-
-		locksAreCompatible = locksAreCompatible && compatibleLockModes(r.lockMode, cur.r.lockMode)
-		if !locksAreCompatible && cur.r.txnID < r.txnID {
-			// Deadlock prevention policy
-			// Only an older transaction can wait for a younger one.
-			// Ohterwise, a younger transaction is aborted
-			return nil
-		}
-
-		if cur.next == q.tail {
-			break
-		}
-
-		cur = cur.SafeNext()
-	}
-
-	notifier := make(chan struct{})
-	if locksAreCompatible {
+	if cur.next == q.tail {
+		notifier := make(chan struct{})
 		close(notifier) // Grant the lock immediately
 		newNode := &txnQueueEntry{
 			r:          r,
@@ -181,6 +161,61 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 		return notifier
 	}
 
+	cur = cur.SafeNext()
+	locksAreCompatible := true
+	for cur.isAcquired && cur.next != q.tail {
+		assert.Assert(
+			cur.r.txnID != r.txnID,
+			"trying to lock already locked transaction. %+v",
+			r,
+		)
+
+		locksAreCompatible = locksAreCompatible && compatibleLockModes(r.lockMode, cur.r.lockMode)
+		if !locksAreCompatible {
+			break
+		}
+		cur = cur.SafeNext()
+	}
+
+	if locksAreCompatible {
+		notifier := make(chan struct{})
+		close(notifier) // Grant the lock immediately
+		newNode := &txnQueueEntry{
+			r:          r,
+			notifier:   nil,
+			isAcquired: true,
+		}
+		cur.SafeInsert(newNode)
+
+		q.mu.Lock()
+		q.txnNodes[r.txnID] = newNode
+		q.mu.Unlock()
+
+		return notifier
+	}
+	cur.mu.Unlock()
+
+	// Slow path: locks aren't compatible
+	cur = q.head
+	cur.mu.Lock()
+
+	for {
+		assert.Assert(cur.r.txnID != r.txnID, "trying to lock already locked transaction. %+v", r)
+		if cur.r.txnID < r.txnID {
+			// Deadlock prevention policy
+			// Only older transactions can wait for younger ones.
+			// Ohterwise, a younger transaction is aborted
+			return nil
+		}
+
+		if cur.next == q.tail {
+			break
+		}
+
+		cur = cur.SafeNext()
+	}
+
+	notifier := make(chan struct{})
 	newNode := &txnQueueEntry{
 		r:          r,
 		notifier:   notifier,
@@ -195,7 +230,68 @@ func (q *txnQueue) Lock(r txnLockRequest) <-chan struct{} {
 	return notifier
 }
 
-func (q *txnQueue) Unlock(r txnUnlockRequest) bool {
+func (q *txnQueue) Upgrade(r TxnLockRequest) <-chan struct{} {
+	q.mu.Lock()
+	cur, exists := q.txnNodes[r.txnID]
+	q.mu.Unlock()
+
+	assert.Assert(exists, "transaction %+v hasn't acquired the tuple with %+v record id. request: %+v", r.txnID, r.recordId, r)
+	cur.mu.Lock()
+	assert.Assert(cur.isAcquired, "can't upgrade a lock: it wasn't acquired yet. request: %+v", r)
+
+	first := cur.prev
+	if !first.mu.TryLock() {
+		cur.mu.Unlock()
+		return nil // the caller should retry
+	}
+	defer first.mu.Unlock()
+
+	next := cur.next
+	next.mu.Lock()
+
+	for next.isAcquired {
+		tmp := next.next
+		tmp.mu.Lock()
+		cur.mu.Unlock()
+		cur = next
+		next = tmp
+	}
+
+	c := make(chan struct{})
+	e := &txnQueueEntry{
+		r:          r,
+		notifier:   c,
+		isAcquired: false,
+		mu:         sync.Mutex{},
+		next:       next,
+		prev:       cur,
+	}
+
+	cur.next = e
+	next.prev = e
+
+	q.mu.Lock()
+	q.txnNodes[r.txnID] = e
+	q.mu.Unlock()
+
+	cur.mu.Unlock()
+	next.mu.Unlock()
+
+	second := first.next
+	second.mu.Lock()
+	defer second.mu.Unlock()
+
+	third := second.next
+	third.mu.Lock()
+	defer third.mu.Unlock()
+
+	first.next = third
+	third.prev = first
+
+	return c
+}
+
+func (q *txnQueue) Unlock(r TxnUnlockRequest) bool {
 	q.mu.Lock()
 	deletingNode, present := q.txnNodes[r.txnID]
 	q.mu.Unlock()

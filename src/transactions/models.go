@@ -32,13 +32,28 @@ func compatibleLockModes(l LockMode, r LockMode) bool {
 	return false
 }
 
-type txnLockRequest struct {
+type TxnLockRequest struct {
 	txnID    TxnID
 	recordId RecordID
 	lockMode LockMode
 }
 
-type txnUnlockRequest struct {
+func NewTxnLockRequest(txnID TxnID, recordId RecordID, lockMode LockMode) *TxnLockRequest {
+	return &TxnLockRequest{
+		txnID:    txnID,
+		recordId: recordId,
+		lockMode: lockMode,
+	}
+}
+
+type TxnUnlockRequest struct {
 	txnID    TxnID
 	recordId RecordID
+}
+
+func NewTxnUnlockRequest(txnID TxnID, recordId RecordID) *TxnUnlockRequest {
+	return &TxnUnlockRequest{
+		txnID:    txnID,
+		recordId: recordId,
+	}
 }

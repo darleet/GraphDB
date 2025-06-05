@@ -24,7 +24,12 @@ func NewManager() *Manager {
 	}
 }
 
-func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
+// Lock attempts to acquire a lock on the record specified in the TxnLockRequest.
+// It ensures that a transaction does not lock the same record multiple times.
+// If the lock is available, it returns a channel that will be closed when the lock is acquired.
+// If the lock cannot be acquired immediately, the channel will be closed once the lock is available.
+// Returns nil if the lock cannot be acquired due to a deadlock prevention policy.
+func (m *Manager) Lock(r TxnLockRequest) <-chan struct{} {
 	q := func() *txnQueue {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
@@ -76,7 +81,7 @@ func (m *Manager) Lock(r txnLockRequest) <-chan struct{} {
 //
 // Returns:
 //   - <-chan struct{}: A channel that will be closed when the lock upgrade is granted, or nil if the upgrade cannot be performed immediately.
-func (m *Manager) Upgrade(r txnLockRequest) <-chan struct{} {
+func (m *Manager) Upgrade(r TxnLockRequest) <-chan struct{} {
 	q := func() *txnQueue {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
@@ -89,64 +94,7 @@ func (m *Manager) Upgrade(r txnLockRequest) <-chan struct{} {
 		return q
 	}()
 
-	q.mu.Lock()
-	cur, exists := q.txnNodes[r.txnID]
-	q.mu.Unlock()
-
-	assert.Assert(exists, "transaction %+v hasn't acquired the tuple with %+v record id. request: %+v", r.txnID, r.recordId, r)
-	cur.mu.Lock()
-	assert.Assert(cur.isAcquired, "can't upgrade a lock: it wasn't acquired yet. request: %+v", r)
-
-	first := cur.prev
-	if !first.mu.TryLock() {
-		cur.mu.Unlock()
-		return nil // the caller should retry
-	}
-	defer first.mu.Unlock()
-
-	next := cur.next
-	next.mu.Lock()
-
-	for next.isAcquired {
-		tmp := next.next
-		tmp.mu.Lock()
-		cur.mu.Unlock()
-		cur = next
-		next = tmp
-	}
-
-	c := make(chan struct{})
-	e := &txnQueueEntry{
-		r:          r,
-		notifier:   c,
-		isAcquired: false,
-		mu:         sync.Mutex{},
-		next:       next,
-		prev:       cur,
-	}
-
-	cur.next = e
-	next.prev = e
-
-	q.mu.Lock()
-	q.txnNodes[r.txnID] = e
-	q.mu.Unlock()
-
-	cur.mu.Unlock()
-	next.mu.Unlock()
-
-	second := first.next
-	second.mu.Lock()
-	defer second.mu.Unlock()
-
-	third := second.next
-	third.mu.Lock()
-	defer third.mu.Unlock()
-
-	first.next = third
-	third.prev = first
-
-	return c
+	return q.Upgrade(r)
 }
 
 // Unlock releases the lock held by a transaction on a specific record.
@@ -156,7 +104,7 @@ func (m *Manager) Upgrade(r txnLockRequest) <-chan struct{} {
 // it removes the record from the set of records locked by the transaction.
 // Panics if the record is not currently locked or if the transaction does not
 // have any locked records.
-func (m *Manager) Unlock(r txnUnlockRequest) {
+func (m *Manager) Unlock(r TxnUnlockRequest) {
 	q := func() *txnQueue {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
@@ -201,7 +149,7 @@ func (m *Manager) UnlockAll(TransactionID TxnID) {
 		return lockedRecords
 	}()
 
-	unlockRequest := txnUnlockRequest{
+	unlockRequest := TxnUnlockRequest{
 		txnID: TransactionID,
 	}
 
