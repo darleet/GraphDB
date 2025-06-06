@@ -7,18 +7,18 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
 
-type Manager struct {
+type Manager[LockModeType LockMode[LockModeType]] struct {
 	qsGuard sync.Mutex
-	qs      map[RecordID]*txnQueue
+	qs      map[RecordID]*txnQueue[LockModeType]
 
 	lockedRecordsGuard sync.Mutex
 	lockedRecords      map[TxnID]map[RecordID]struct{}
 }
 
-func NewManager() *Manager {
-	return &Manager{
+func NewManager[LockModeType LockMode[LockModeType]]() *Manager[LockModeType] {
+	return &Manager[LockModeType]{
 		qsGuard:            sync.Mutex{},
-		qs:                 map[RecordID]*txnQueue{},
+		qs:                 map[RecordID]*txnQueue[LockModeType]{},
 		lockedRecordsGuard: sync.Mutex{},
 		lockedRecords:      map[TxnID]map[RecordID]struct{}{},
 	}
@@ -29,14 +29,14 @@ func NewManager() *Manager {
 // If the lock is available, it returns a channel that will be closed when the lock is acquired.
 // If the lock cannot be acquired immediately, the channel will be closed once the lock is available.
 // Returns nil if the lock cannot be acquired due to a deadlock prevention policy.
-func (m *Manager) Lock(r TxnLockRequest) <-chan struct{} {
-	q := func() *txnQueue {
+func (m *Manager[LockModeType]) Lock(r TxnLockRequest[LockModeType]) <-chan struct{} {
+	q := func() *txnQueue[LockModeType] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
 
 		q, ok := m.qs[r.recordId]
 		if !ok {
-			q = newTxnQueue()
+			q = newTxnQueue[LockModeType]()
 			m.qs[r.recordId] = q
 		}
 
@@ -81,8 +81,8 @@ func (m *Manager) Lock(r TxnLockRequest) <-chan struct{} {
 //
 // Returns:
 //   - <-chan struct{}: A channel that will be closed when the lock upgrade is granted, or nil if the upgrade cannot be performed immediately.
-func (m *Manager) Upgrade(r TxnLockRequest) <-chan struct{} {
-	q := func() *txnQueue {
+func (m *Manager[LockModeType]) Upgrade(r TxnLockRequest[LockModeType]) <-chan struct{} {
+	q := func() *txnQueue[LockModeType] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
 
@@ -104,8 +104,8 @@ func (m *Manager) Upgrade(r TxnLockRequest) <-chan struct{} {
 // it removes the record from the set of records locked by the transaction.
 // Panics if the record is not currently locked or if the transaction does not
 // have any locked records.
-func (m *Manager) Unlock(r TxnUnlockRequest) {
-	q := func() *txnQueue {
+func (m *Manager[LockModeType]) Unlock(r TxnUnlockRequest) {
+	q := func() *txnQueue[LockModeType] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
 
@@ -135,7 +135,7 @@ func (m *Manager) Unlock(r TxnUnlockRequest) {
 	}()
 }
 
-func (m *Manager) UnlockAll(TransactionID TxnID) {
+func (m *Manager[LockModeType]) UnlockAll(TransactionID TxnID) {
 	lockedRecords := func() map[RecordID]struct{} {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()
@@ -154,7 +154,7 @@ func (m *Manager) UnlockAll(TransactionID TxnID) {
 	}
 
 	for r := range lockedRecords {
-		q := func() *txnQueue {
+		q := func() *txnQueue[LockModeType] {
 			m.qsGuard.Lock()
 			defer m.qsGuard.Unlock()
 

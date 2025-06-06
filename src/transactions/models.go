@@ -7,39 +7,47 @@ type RecordID uint64
  *       in distributed systems that use this kind of transaction IDs */
 type TxnID uint64
 
-type RecordLockMode int
+type TaggedLockMode[TypeTag any] int
+
+type RecordLockMode TaggedLockMode[struct{}]
+type TableLockMode TaggedLockMode[struct{}]
+
+type LockMode[T any] interface {
+	Compatible(T) bool
+}
 
 const (
-	helper_RECORD_LOCK_ALLOW_ALL RecordLockMode = iota
-	RECORD_LOCK_SHARED
+	RECORD_LOCK_SHARED RecordLockMode = iota
 	RECORD_LOCK_EXCLUSIVE
-	helper_FORBID_ALL
 )
 
-func compatibleLockModes(l RecordLockMode, r RecordLockMode) bool {
-	if l == helper_FORBID_ALL || r == helper_FORBID_ALL {
-		return false
-	}
+const (
+	TABLE_LOCK_SHARED TableLockMode = iota
+	TABLE_LOCK_EXCLUSIVE
+	TABLE_LOCK_INTENTION_EXCLUSIVE
+	TABLE_LOCK_INTENTION_SHARED
+	TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE
+)
 
-	if l == helper_RECORD_LOCK_ALLOW_ALL || r == helper_RECORD_LOCK_ALLOW_ALL {
+func (m RecordLockMode) Compatible(other RecordLockMode) bool {
+	if m == RECORD_LOCK_SHARED && other == RECORD_LOCK_SHARED {
 		return true
 	}
-
-	if l == RECORD_LOCK_SHARED && r == RECORD_LOCK_SHARED {
-		return true
-	}
-
 	return false
 }
 
-type TxnLockRequest struct {
-	txnID    TxnID
-	recordId RecordID
-	lockMode RecordLockMode
+func (m TableLockMode) Compatible(other TableLockMode) bool {
+	panic("NOT IMPLEMENTED")
 }
 
-func NewTxnLockRequest(txnID TxnID, recordId RecordID, lockMode RecordLockMode) *TxnLockRequest {
-	return &TxnLockRequest{
+type TxnLockRequest[LockModeType LockMode[LockModeType]] struct {
+	txnID    TxnID
+	recordId RecordID
+	lockMode LockModeType
+}
+
+func NewTxnLockRequest[LockModeType LockMode[LockModeType]](txnID TxnID, recordId RecordID, lockMode LockModeType) *TxnLockRequest[LockModeType] {
+	return &TxnLockRequest[LockModeType]{
 		txnID:    txnID,
 		recordId: recordId,
 		lockMode: lockMode,
