@@ -7,21 +7,21 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
 
-type txnQueueEntry[LockModeType LockMode[LockModeType]] struct {
-	r         TxnLockRequest[LockModeType]
+type txnQueueEntry[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
+	r         TxnLockRequest[LockModeType, ObjectIDType]
 	notifier  chan struct{}
 	isRunning bool
 
 	mu   sync.Mutex
-	next *txnQueueEntry[LockModeType]
-	prev *txnQueueEntry[LockModeType]
+	next *txnQueueEntry[LockModeType, ObjectIDType]
+	prev *txnQueueEntry[LockModeType, ObjectIDType]
 }
 
 // SafeNext safely advances to the next txnQueueEntry in the queue.
 // It acquires the lock on the next entry before releasing the lock on the current entry,
 // ensuring that the transition between entries is thread-safe and prevents race conditions.
 // Returns a pointer to the next txnQueueEntry.
-func (lockedEntry *txnQueueEntry[LockModeType]) SafeNext() *txnQueueEntry[LockModeType] {
+func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeNext() *txnQueueEntry[LockModeType, ObjectIDType] {
 	next := lockedEntry.next
 	assert.Assert(next != nil, "precondition is violated")
 
@@ -35,7 +35,7 @@ func (lockedEntry *txnQueueEntry[LockModeType]) SafeNext() *txnQueueEntry[LockMo
 // It updates the necessary pointers to maintain the doubly-linked list structure.
 // The method assumes that the current entry is already locked, and it locks the 'next' entry
 // to safely update its 'prev' pointer, ensuring thread safety during the insertion.
-func (lockedEntry *txnQueueEntry[LockModeType]) SafeInsert(n *txnQueueEntry[LockModeType]) {
+func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeInsert(n *txnQueueEntry[LockModeType, ObjectIDType]) {
 	next := lockedEntry.next
 
 	n.prev = lockedEntry
@@ -48,12 +48,12 @@ func (lockedEntry *txnQueueEntry[LockModeType]) SafeInsert(n *txnQueueEntry[Lock
 	next.mu.Unlock()
 }
 
-type txnQueue[LockModeType LockMode[LockModeType]] struct {
-	head *txnQueueEntry[LockModeType]
-	tail *txnQueueEntry[LockModeType]
+type txnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
+	head *txnQueueEntry[LockModeType, ObjectIDType]
+	tail *txnQueueEntry[LockModeType, ObjectIDType]
 
 	mu       sync.Mutex
-	txnNodes map[TxnID]*txnQueueEntry[LockModeType]
+	txnNodes map[TxnID]*txnQueueEntry[LockModeType, ObjectIDType]
 }
 
 // processBatch processes a batch of transactions in the txnQueue starting from the given
@@ -71,7 +71,7 @@ type txnQueue[LockModeType LockMode[LockModeType]] struct {
 // Postconditions:
 //   - All compatible transactions in the batch are granted the lock and notified.
 //   - Only the processed prefix of the queue is in the locked state.
-func (q *txnQueue[LockModeType]) processBatch(muGuardedHead *txnQueueEntry[LockModeType]) {
+func (q *txnQueue[LockModeType, ObjectIDType]) processBatch(muGuardedHead *txnQueueEntry[LockModeType, ObjectIDType]) {
 	assert.Assert(!muGuardedHead.isRunning, "processBatch contract is violated")
 
 	cur := muGuardedHead
@@ -104,26 +104,26 @@ outer:
 	}
 }
 
-func newTxnQueue[LockModeType LockMode[LockModeType]]() *txnQueue[LockModeType] {
-	head := &txnQueueEntry[LockModeType]{
-		r: TxnLockRequest[LockModeType]{
+func newTxnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable]() *txnQueue[LockModeType, ObjectIDType] {
+	head := &txnQueueEntry[LockModeType, ObjectIDType]{
+		r: TxnLockRequest[LockModeType, ObjectIDType]{
 			txnID: math.MaxUint64, // Needed for the deadlock prevention policy
 		},
 	}
-	tail := &txnQueueEntry[LockModeType]{
-		r: TxnLockRequest[LockModeType]{
+	tail := &txnQueueEntry[LockModeType, ObjectIDType]{
+		r: TxnLockRequest[LockModeType, ObjectIDType]{
 			txnID: 0, // Needed for the deadlock prevention policy
 		},
 	}
 	head.next = tail
 	tail.prev = head
 
-	q := &txnQueue[LockModeType]{
+	q := &txnQueue[LockModeType, ObjectIDType]{
 		head: head,
 		tail: tail,
 
 		mu:       sync.Mutex{},
-		txnNodes: map[TxnID]*txnQueueEntry[LockModeType]{},
+		txnNodes: map[TxnID]*txnQueueEntry[LockModeType, ObjectIDType]{},
 	}
 
 	return q
@@ -144,7 +144,7 @@ func checkDeadlockCondition(runnerID TxnID, waiterID TxnID) bool {
 // and a closed channel is returned. Otherwise, the request is queued and a channel is returned that
 // will be closed when the lock is eventually granted. The returned channel can be used to wait for
 // lock acquisition.
-func (q *txnQueue[LockModeType]) Lock(r TxnLockRequest[LockModeType]) <-chan struct{} {
+func (q *txnQueue[LockModeType, ObjectIDType]) Lock(r TxnLockRequest[LockModeType, ObjectIDType]) <-chan struct{} {
 	// Fast path - locks are compatible
 	cur := q.head
 	cur.mu.Lock()
@@ -153,7 +153,7 @@ func (q *txnQueue[LockModeType]) Lock(r TxnLockRequest[LockModeType]) <-chan str
 	if cur.next == q.tail {
 		notifier := make(chan struct{})
 		close(notifier) // Grant the lock immediately
-		newNode := &txnQueueEntry[LockModeType]{
+		newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
 			r:         r,
 			notifier:  nil,
 			isRunning: true,
@@ -186,7 +186,7 @@ func (q *txnQueue[LockModeType]) Lock(r TxnLockRequest[LockModeType]) <-chan str
 		if cur.next == q.tail {
 			notifier := make(chan struct{})
 			close(notifier) // Grant the lock immediately
-			newNode := &txnQueueEntry[LockModeType]{
+			newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
 				r:         r,
 				notifier:  nil,
 				isRunning: true,
@@ -220,7 +220,7 @@ func (q *txnQueue[LockModeType]) Lock(r TxnLockRequest[LockModeType]) <-chan str
 	}
 
 	notifier := make(chan struct{})
-	newNode := &txnQueueEntry[LockModeType]{
+	newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
 		r:         r,
 		notifier:  notifier,
 		isRunning: false,
@@ -234,7 +234,7 @@ func (q *txnQueue[LockModeType]) Lock(r TxnLockRequest[LockModeType]) <-chan str
 	return notifier
 }
 
-func (q *txnQueue[LockModeType]) Upgrade(r TxnLockRequest[LockModeType]) <-chan struct{} {
+func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(r TxnLockRequest[LockModeType, ObjectIDType]) <-chan struct{} {
 	q.mu.Lock()
 	cur, exists := q.txnNodes[r.txnID]
 	q.mu.Unlock()
@@ -262,7 +262,7 @@ func (q *txnQueue[LockModeType]) Upgrade(r TxnLockRequest[LockModeType]) <-chan 
 	}
 
 	c := make(chan struct{})
-	e := &txnQueueEntry[LockModeType]{
+	e := &txnQueueEntry[LockModeType, ObjectIDType]{
 		r:         r,
 		notifier:  c,
 		isRunning: false,
@@ -295,7 +295,7 @@ func (q *txnQueue[LockModeType]) Upgrade(r TxnLockRequest[LockModeType]) <-chan 
 	return c
 }
 
-func (q *txnQueue[LockModeType]) Unlock(r TxnUnlockRequest) bool {
+func (q *txnQueue[LockModeType, ObjectIDType]) Unlock(r TxnUnlockRequest[ObjectIDType]) bool {
 	q.mu.Lock()
 	deletingNode, present := q.txnNodes[r.txnID]
 	q.mu.Unlock()

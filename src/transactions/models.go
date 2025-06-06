@@ -1,6 +1,7 @@
 package transactions
 
 type RecordID uint64
+type TableID uint64
 
 /* a monotonically increasing counter. It is guaranteed to be unique between transactions
  * WARN: there might be problems with synchronization
@@ -9,8 +10,8 @@ type TxnID uint64
 
 type TaggedLockMode[TypeTag any] int
 
-type RecordLockMode TaggedLockMode[struct{}]
-type TableLockMode TaggedLockMode[struct{}]
+type RecordLockMode TaggedLockMode[RecordID]
+type TableLockMode TaggedLockMode[TableID]
 
 type LockMode[T any] interface {
 	Compatible(T) bool
@@ -40,27 +41,27 @@ func (m TableLockMode) Compatible(other TableLockMode) bool {
 	panic("NOT IMPLEMENTED")
 }
 
-type TxnLockRequest[LockModeType LockMode[LockModeType]] struct {
+type TxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
 	txnID    TxnID
-	recordId RecordID
+	recordId ObjectIDType
 	lockMode LockModeType
 }
 
-func NewTxnLockRequest[LockModeType LockMode[LockModeType]](txnID TxnID, recordId RecordID, lockMode LockModeType) *TxnLockRequest[LockModeType] {
-	return &TxnLockRequest[LockModeType]{
+func NewTxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable](txnID TxnID, recordId ObjectIDType, lockMode LockModeType) *TxnLockRequest[LockModeType, ObjectIDType] {
+	return &TxnLockRequest[LockModeType, ObjectIDType]{
 		txnID:    txnID,
 		recordId: recordId,
 		lockMode: lockMode,
 	}
 }
 
-type TxnUnlockRequest struct {
+type TxnUnlockRequest[ObjectIDType comparable] struct {
 	txnID    TxnID
-	recordId RecordID
+	recordId ObjectIDType
 }
 
-func NewTxnUnlockRequest(txnID TxnID, recordId RecordID) *TxnUnlockRequest {
-	return &TxnUnlockRequest{
+func NewTxnUnlockRequest[ObjectIDType comparable](txnID TxnID, recordId ObjectIDType) *TxnUnlockRequest[ObjectIDType] {
+	return &TxnUnlockRequest[ObjectIDType]{
 		txnID:    txnID,
 		recordId: recordId,
 	}
