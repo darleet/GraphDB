@@ -1,4 +1,4 @@
-package transactions
+package txns
 
 import "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 
