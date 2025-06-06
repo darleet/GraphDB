@@ -81,7 +81,7 @@ func (q *txnQueue) processBatch(muGuardedHead *txnQueueEntry) {
 		return
 	}
 
-	seenLockModes := make(map[LockMode]struct{})
+	seenLockModes := make(map[RecordLockMode]struct{})
 outer:
 	for {
 		for seenMode := range seenLockModes {
@@ -107,7 +107,7 @@ func newTxnQueue() *txnQueue {
 	head := &txnQueueEntry{
 		r: TxnLockRequest{
 			txnID:    math.MaxUint64, // Needed for the deadlock prevention policy
-			lockMode: helper_ALLOW_ALL,
+			lockMode: helper_RECORD_LOCK_ALLOW_ALL,
 		},
 	}
 	tail := &txnQueueEntry{

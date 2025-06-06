@@ -7,25 +7,25 @@ type RecordID uint64
  *       in distributed systems that use this kind of transaction IDs */
 type TxnID uint64
 
-type LockMode int
+type RecordLockMode int
 
 const (
-	helper_ALLOW_ALL LockMode = iota
-	SHARED
-	EXCLUSIVE
+	helper_RECORD_LOCK_ALLOW_ALL RecordLockMode = iota
+	RECORD_LOCK_SHARED
+	RECORD_LOCK_EXCLUSIVE
 	helper_FORBID_ALL
 )
 
-func compatibleLockModes(l LockMode, r LockMode) bool {
+func compatibleLockModes(l RecordLockMode, r RecordLockMode) bool {
 	if l == helper_FORBID_ALL || r == helper_FORBID_ALL {
 		return false
 	}
 
-	if l == helper_ALLOW_ALL || r == helper_ALLOW_ALL {
+	if l == helper_RECORD_LOCK_ALLOW_ALL || r == helper_RECORD_LOCK_ALLOW_ALL {
 		return true
 	}
 
-	if l == SHARED && r == SHARED {
+	if l == RECORD_LOCK_SHARED && r == RECORD_LOCK_SHARED {
 		return true
 	}
 
@@ -35,10 +35,10 @@ func compatibleLockModes(l LockMode, r LockMode) bool {
 type TxnLockRequest struct {
 	txnID    TxnID
 	recordId RecordID
-	lockMode LockMode
+	lockMode RecordLockMode
 }
 
-func NewTxnLockRequest(txnID TxnID, recordId RecordID, lockMode LockMode) *TxnLockRequest {
+func NewTxnLockRequest(txnID TxnID, recordId RecordID, lockMode RecordLockMode) *TxnLockRequest {
 	return &TxnLockRequest{
 		txnID:    txnID,
 		recordId: recordId,
