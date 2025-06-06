@@ -1,5 +1,7 @@
 package transactions
 
+import "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+
 type RecordID uint64
 type TableID uint64
 
@@ -23,11 +25,11 @@ const (
 )
 
 const (
-	TABLE_LOCK_SHARED TableLockMode = iota
-	TABLE_LOCK_EXCLUSIVE
+	TABLE_LOCK_INTENTION_SHARED TableLockMode = iota
 	TABLE_LOCK_INTENTION_EXCLUSIVE
-	TABLE_LOCK_INTENTION_SHARED
+	TABLE_LOCK_SHARED
 	TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE
+	TABLE_LOCK_EXCLUSIVE
 )
 
 func (m RecordLockMode) Compatible(other RecordLockMode) bool {
@@ -38,7 +40,76 @@ func (m RecordLockMode) Compatible(other RecordLockMode) bool {
 }
 
 func (m TableLockMode) Compatible(other TableLockMode) bool {
-	panic("NOT IMPLEMENTED")
+	switch m {
+	case TABLE_LOCK_INTENTION_SHARED:
+		switch other {
+		case TABLE_LOCK_INTENTION_SHARED:
+			return true
+		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+			return true
+		case TABLE_LOCK_SHARED:
+			return true
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return true
+		case TABLE_LOCK_EXCLUSIVE:
+			return false
+		}
+	case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		switch other {
+		case TABLE_LOCK_INTENTION_SHARED:
+			return true
+		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+			return true
+		case TABLE_LOCK_SHARED:
+			return false
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return false
+		case TABLE_LOCK_EXCLUSIVE:
+			return false
+		}
+	case TABLE_LOCK_SHARED:
+		switch other {
+		case TABLE_LOCK_INTENTION_SHARED:
+			return true
+		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+			return false
+		case TABLE_LOCK_SHARED:
+			return true
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return false
+		case TABLE_LOCK_EXCLUSIVE:
+			return false
+		}
+	case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		switch other {
+		case TABLE_LOCK_INTENTION_SHARED:
+			return true
+		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+			return false
+		case TABLE_LOCK_SHARED:
+			return false
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return false
+		case TABLE_LOCK_EXCLUSIVE:
+			return false
+		}
+	case TABLE_LOCK_EXCLUSIVE:
+		switch other {
+		case TABLE_LOCK_INTENTION_SHARED:
+			return false
+		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+			return false
+		case TABLE_LOCK_SHARED:
+			return false
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return false
+		case TABLE_LOCK_EXCLUSIVE:
+			return false
+		}
+	}
+
+	assert.Assert(false, "unreachable")
+	return false
 }
 
 type TxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
