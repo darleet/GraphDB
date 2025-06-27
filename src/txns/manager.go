@@ -24,12 +24,16 @@ func NewManager[LockModeType LockMode[LockModeType], ObjectIDType comparable]() 
 	}
 }
 
-// Lock attempts to acquire a lock on the record specified in the TxnLockRequest.
+// Lock attempts to acquire a lock on the record specified in the
+// TxnLockRequest.
 // It ensures that a transaction does not lock the same record multiple times.
-// If the lock is available, it returns a channel that will be closed when the lock is acquired.
-// If the lock cannot be acquired immediately, the channel will be closed once the lock is available.
-// Returns nil if the lock cannot be acquired due to a deadlock prevention policy.
-func (m *Manager[LockModeType, ObjectIDType]) Lock(r TxnLockRequest[LockModeType, ObjectIDType]) <-chan struct{} {
+// If the lock is available, it returns a channel that will be closed when the
+// lock is acquired. If the lock cannot be acquired immediately, the channel
+// will be closed once the lock is available. Returns nil if the lock cannot be
+// acquired due to a deadlock prevention policy.
+func (m *Manager[LockModeType, ObjectIDType]) Lock(
+	r TxnLockRequest[LockModeType, ObjectIDType],
+) <-chan struct{} {
 	q := func() *txnQueue[LockModeType, ObjectIDType] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
@@ -70,18 +74,25 @@ func (m *Manager[LockModeType, ObjectIDType]) Lock(r TxnLockRequest[LockModeType
 	return notifier
 }
 
-// Upgrade attempts to upgrade the lock held by the transaction specified in the txnLockRequest `r`.
-// It checks that the lock is currently held and that the transaction is eligible for an upgrade.
-// If the upgrade cannot be performed immediately (due to lock contention), it returns nil and the caller should retry.
-// If the upgrade can proceed, it inserts a new entry into the transaction queue and returns a channel that will be closed
-// when the upgrade is granted. The function ensures proper synchronization and queue manipulation to maintain lock order and safety.
+// Upgrade attempts to upgrade the lock held by the transaction specified in the
+// txnLockRequest `r`. It checks that the lock is currently held and that the
+// transaction is eligible for an upgrade. If the upgrade cannot be performed
+// immediately (due to lock contention), it returns nil and the caller should
+// retry. If the upgrade can proceed, it inserts a new entry into the
+// transaction queue and returns a channel that will be closed when the upgrade
+// is granted. The function ensures proper synchronization and queue
+// manipulation to maintain lock order and safety.
 //
 // Parameters:
-//   - r: txnLockRequest containing the transaction and record identifiers for the upgrade request.
+// - r: txnLockRequest containing the transaction and record identifiers for the
+// upgrade request.
 //
 // Returns:
-//   - <-chan struct{}: A channel that will be closed when the lock upgrade is granted, or nil if the upgrade cannot be performed immediately.
-func (m *Manager[LockModeType, ObjectIDType]) Upgrade(r TxnLockRequest[LockModeType, ObjectIDType]) <-chan struct{} {
+// - <-chan struct{}: A channel that will be closed when the lock upgrade is
+// granted, or nil if the upgrade cannot be performed immediately.
+func (m *Manager[LockModeType, ObjectIDType]) Upgrade(
+	r TxnLockRequest[LockModeType, ObjectIDType],
+) <-chan struct{} {
 	q := func() *txnQueue[LockModeType, ObjectIDType] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
@@ -104,7 +115,9 @@ func (m *Manager[LockModeType, ObjectIDType]) Upgrade(r TxnLockRequest[LockModeT
 // it removes the record from the set of records locked by the transaction.
 // Panics if the record is not currently locked or if the transaction does not
 // have any locked records.
-func (m *Manager[LockModeType, ObjectIDType]) Unlock(r TxnUnlockRequest[ObjectIDType]) {
+func (m *Manager[LockModeType, ObjectIDType]) Unlock(
+	r TxnUnlockRequest[ObjectIDType],
+) {
 	q := func() *txnQueue[LockModeType, ObjectIDType] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
@@ -159,9 +172,11 @@ func (m *Manager[LockModeType, ObjectIDType]) UnlockAll(TransactionID TxnID) {
 			defer m.qsGuard.Unlock()
 
 			q, present := m.qs[r]
-			assert.Assert(present,
+			assert.Assert(
+				present,
 				"trying to unlock a transaction on an unlocked tuple. recordID: %+v",
-				r)
+				r,
+			)
 
 			return q
 		}()

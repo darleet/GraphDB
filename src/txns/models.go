@@ -118,7 +118,11 @@ type TxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable
 	lockMode LockModeType
 }
 
-func NewTxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable](txnID TxnID, recordId ObjectIDType, lockMode LockModeType) *TxnLockRequest[LockModeType, ObjectIDType] {
+func NewTxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable](
+	txnID TxnID,
+	recordId ObjectIDType,
+	lockMode LockModeType,
+) *TxnLockRequest[LockModeType, ObjectIDType] {
 	return &TxnLockRequest[LockModeType, ObjectIDType]{
 		txnID:    txnID,
 		recordId: recordId,
@@ -131,7 +135,10 @@ type TxnUnlockRequest[ObjectIDType comparable] struct {
 	recordId ObjectIDType
 }
 
-func NewTxnUnlockRequest[ObjectIDType comparable](txnID TxnID, recordId ObjectIDType) *TxnUnlockRequest[ObjectIDType] {
+func NewTxnUnlockRequest[ObjectIDType comparable](
+	txnID TxnID,
+	recordId ObjectIDType,
+) *TxnUnlockRequest[ObjectIDType] {
 	return &TxnUnlockRequest[ObjectIDType]{
 		txnID:    txnID,
 		recordId: recordId,
