@@ -65,8 +65,11 @@ func (c *TxnLogChain) Insert(
 	c.lastLocations[c.TransactionID], c.err = c.logger.AppendInsert(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
-		pageInfo,
-		slotNumber,
+		RecordID{
+			FileID:  pageInfo.FileID,
+			PageID:  pageInfo.PageID,
+			SlotNum: slotNumber,
+		},
 		value,
 	)
 
@@ -90,8 +93,11 @@ func (c *TxnLogChain) Update(
 	c.lastLocations[c.TransactionID], c.err = c.logger.AppendUpdate(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
-		pageInfo,
-		slotNumber,
+		RecordID{
+			FileID:  pageInfo.FileID,
+			PageID:  pageInfo.PageID,
+			SlotNum: slotNumber,
+		},
 		beforeValue,
 		afterValue,
 	)

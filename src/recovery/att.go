@@ -24,6 +24,7 @@ func NewATTEntry(
 	}
 }
 
+// Lecture #21: Database Crash Recovery @CMU
 type ActiveTransactionsTable struct {
 	table map[txns.TxnID]ATTEntry
 }
@@ -50,6 +51,7 @@ func (att *ActiveTransactionsTable) Insert(
 		att.table[id] = entry
 		return true
 	}
+
 	// https://stackoverflow.com/questions/42605337/cannot-assign-to-struct-field-in-a-map
 	if prevEntry.status == TxnStatusUndo {
 		prevEntry.status = entry.status
@@ -60,6 +62,5 @@ func (att *ActiveTransactionsTable) Insert(
 	}
 
 	att.table[id] = prevEntry
-
 	return false
 }

@@ -30,3 +30,20 @@ func Assert(condition bool, args ...any) {
 	m := fmt.Sprintf("Assertion failed at %s:%d\n", filename, line)
 	panic(m)
 }
+
+// Cast attempts to cast the provided value 'data' to the specified
+// type 'T'. If the cast is not possible, it triggers an assertion failure with
+// an error message.
+//
+// Example usage:
+//
+//	value := Cast[int](someAnyValue)
+//
+// Panics:
+//
+//	Panics if 'data' cannot be cast to type 'T'.
+func Cast[T any](data any) T {
+	castedData, ok := data.(T)
+	Assert(ok, "couldn't perform a type cast")
+	return castedData
+}

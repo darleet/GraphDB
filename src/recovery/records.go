@@ -26,6 +26,26 @@ type FileLocation struct {
 	SlotNum uint16
 }
 
+type RecordID struct {
+	FileID  uint64
+	PageID  uint64
+	SlotNum uint16
+}
+
+func (r RecordID) PageIdentity() bufferpool.PageIdentity {
+	return bufferpool.PageIdentity{
+		FileID: r.FileID,
+		PageID: r.PageID,
+	}
+}
+
+func (r RecordID) FileLocation() FileLocation {
+	return FileLocation{
+		PageID:  r.PageID,
+		SlotNum: r.SlotNum,
+	}
+}
+
 // is considered NIL iff lsn is NIL_LSN
 type LogRecordLocationInfo struct {
 	Lsn      LSN
@@ -44,13 +64,12 @@ func (p *LogRecordLocationInfo) isNil() bool {
 }
 
 type UpdateLogRecord struct {
-	lsn                  LSN
-	TransactionID        txns.TxnID
-	parentLogLocation    LogRecordLocationInfo
-	modifiedPageIdentity bufferpool.PageIdentity
-	modifiedSlotNumber   uint16
-	beforeValue          []byte
-	afterValue           []byte
+	lsn               LSN
+	TransactionID     txns.TxnID
+	parentLogLocation LogRecordLocationInfo
+	modifiedRecordID  RecordID
+	beforeValue       []byte
+	afterValue        []byte
 }
 
 func (r *UpdateLogRecord) Undo(
@@ -61,8 +80,7 @@ func (r *UpdateLogRecord) Undo(
 		lsn,
 		r.TransactionID,
 		parentLogLocation,
-		r.modifiedPageIdentity,
-		r.modifiedSlotNumber,
+		r.modifiedRecordID,
 		false,
 		r.parentLogLocation.Lsn,
 		r.afterValue,
@@ -74,46 +92,41 @@ func NewUpdateLogRecord(
 	lsn LSN,
 	TransactionID txns.TxnID,
 	parentLogLocation LogRecordLocationInfo,
-	modifiedPageIdentity bufferpool.PageIdentity,
-	modifiedSlotNumber uint16,
+	modifiedRecordID RecordID,
 	beforeValue []byte,
 	afterValue []byte,
 ) UpdateLogRecord {
 	return UpdateLogRecord{
-		lsn:                  lsn,
-		TransactionID:        TransactionID,
-		parentLogLocation:    parentLogLocation,
-		modifiedPageIdentity: modifiedPageIdentity,
-		modifiedSlotNumber:   modifiedSlotNumber,
-		beforeValue:          beforeValue,
-		afterValue:           afterValue,
+		lsn:               lsn,
+		TransactionID:     TransactionID,
+		parentLogLocation: parentLogLocation,
+		modifiedRecordID:  modifiedRecordID,
+		beforeValue:       beforeValue,
+		afterValue:        afterValue,
 	}
 }
 
 type InsertLogRecord struct {
-	lsn                  LSN
-	TransactionID        txns.TxnID
-	parentLogLocation    LogRecordLocationInfo
-	modifiedPageIdentity bufferpool.PageIdentity
-	modifiedSlotNumber   uint16
-	value                []byte
+	lsn               LSN
+	TransactionID     txns.TxnID
+	parentLogLocation LogRecordLocationInfo
+	modifiedRecordID  RecordID
+	value             []byte
 }
 
 func NewInsertLogRecord(
 	lsn LSN,
 	TransactionID txns.TxnID,
 	parentLogLocation LogRecordLocationInfo,
-	modifiedPageIdentity bufferpool.PageIdentity,
-	modifiedSlotNumber uint16,
+	modifiedRecordID RecordID,
 	value []byte,
 ) InsertLogRecord {
 	return InsertLogRecord{
-		lsn:                  lsn,
-		TransactionID:        TransactionID,
-		parentLogLocation:    parentLogLocation,
-		modifiedPageIdentity: modifiedPageIdentity,
-		modifiedSlotNumber:   modifiedSlotNumber,
-		value:                value,
+		lsn:               lsn,
+		TransactionID:     TransactionID,
+		parentLogLocation: parentLogLocation,
+		modifiedRecordID:  modifiedRecordID,
+		value:             value,
 	}
 }
 
@@ -125,8 +138,7 @@ func (r *InsertLogRecord) Undo(
 		lsn,
 		r.TransactionID,
 		parentLogLocation,
-		r.modifiedPageIdentity,
-		r.modifiedSlotNumber,
+		r.modifiedRecordID,
 		true,
 		r.parentLogLocation.Lsn,
 		r.value,
@@ -184,38 +196,35 @@ func NewTxnEndLogRecord(lsn LSN, TransactionID txns.TxnID,
 }
 
 type CompensationLogRecord struct {
-	lsn                  LSN
-	TransactionID        txns.TxnID
-	parentLogLocation    LogRecordLocationInfo
-	nextUndoLSN          LSN
-	isDelete             bool
-	modifiedPageIdentity bufferpool.PageIdentity
-	modifiedSlotNumber   uint16
-	beforeValue          []byte
-	afterValue           []byte
+	lsn               LSN
+	TransactionID     txns.TxnID
+	parentLogLocation LogRecordLocationInfo
+	nextUndoLSN       LSN
+	isDelete          bool
+	modifiedRecordID  RecordID
+	beforeValue       []byte
+	afterValue        []byte
 }
 
 func NewCompensationLogRecord(
 	lsn LSN,
 	TransactionID txns.TxnID,
 	parentLogLocation LogRecordLocationInfo,
-	modifiedPageIdentity bufferpool.PageIdentity,
-	modifiedSlotNumber uint16,
+	modifiedRecordID RecordID,
 	isDelete bool,
 	nextUndoLSN LSN,
 	beforeValue []byte,
 	afterValue []byte,
 ) CompensationLogRecord {
 	return CompensationLogRecord{
-		lsn:                  lsn,
-		TransactionID:        TransactionID,
-		parentLogLocation:    parentLogLocation,
-		modifiedPageIdentity: modifiedPageIdentity,
-		modifiedSlotNumber:   modifiedSlotNumber,
-		isDelete:             isDelete,
-		nextUndoLSN:          nextUndoLSN,
-		beforeValue:          beforeValue,
-		afterValue:           afterValue,
+		lsn:               lsn,
+		TransactionID:     TransactionID,
+		parentLogLocation: parentLogLocation,
+		modifiedRecordID:  modifiedRecordID,
+		isDelete:          isDelete,
+		nextUndoLSN:       nextUndoLSN,
+		beforeValue:       beforeValue,
+		afterValue:        afterValue,
 	}
 }
 

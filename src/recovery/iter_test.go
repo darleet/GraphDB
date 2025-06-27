@@ -14,6 +14,7 @@ import (
 )
 
 func generateSequence(
+	t *testing.T,
 	chain *TxnLogChain,
 	dataPageId bufferpool.PageIdentity,
 	length int,
@@ -49,6 +50,7 @@ func generateSequence(
 		res[len(res)-1] = TypeCommit
 	}
 
+	assert.NoError(t, chain.Err())
 	return res
 }
 
@@ -86,8 +88,8 @@ func TestIterSanity(t *testing.T) {
 	TransactionID := txns.TxnID(1)
 	chain := NewTxnLogChain(logger, TransactionID)
 
-	types := generateSequence(chain, dataPageId, 100)
-	iter, err := logger.Iter(FileLocation{
+	types := generateSequence(t, chain, dataPageId, 100)
+	iter, err := logger.iter(FileLocation{
 		PageID:  logPageId.PageID,
 		SlotNum: 0,
 	})

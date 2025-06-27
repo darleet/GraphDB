@@ -115,7 +115,7 @@ func TestFailedTxn(t *testing.T) {
 	logger.Recover(checkpoint)
 
 	// BEGIN
-	iter, err := logger.Iter(logStart.Location)
+	iter, err := logger.iter(logStart.Location)
 	require.NoError(t, err, "couldn't create an iterator")
 	{
 		tag, untypedRecord, err := iter.ReadRecord()
@@ -556,4 +556,124 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 	}
 
 	waitWg.Wait()
+}
+
+func TestLoggerRollback(t *testing.T) {
+	pool := bufferpool.NewBufferPoolMock()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+
+	logPageId := bufferpool.PageIdentity{
+		FileID: 42,
+		PageID: 321,
+	}
+
+	logger := &TxnLogger{
+		pool:            pool,
+		mu:              sync.Mutex{},
+		logRecordsCount: 0,
+		logfileID:       logPageId.FileID,
+		lastLogLocation: LogRecordLocationInfo{
+			Lsn: 0,
+			Location: FileLocation{
+				PageID:  logPageId.PageID,
+				SlotNum: 0,
+			},
+		},
+		getActiveTransactions: func() []txns.TxnID {
+			panic("TODO")
+		},
+	}
+
+	files := []uint64{}
+	for range 10 {
+		for {
+			fileID := rand.Uint64()
+			if fileID == logger.logfileID {
+				continue
+			}
+			files = append(files, fileID)
+			break
+		}
+	}
+
+	chain := NewTxnLogChain(logger, txns.TxnID(1)).Begin()
+	
+	
+
+	for k, v := range fillPages(t, logger.pool, chain, 100, files) {
+		chain.Update(bufferpool.PageIdentity{})
+	}
+}
+
+// fillPages fills a buffer pool with randomly generated pages and inserts
+// random integer values as byte slices into each page, recording the inserted
+// values and their corresponding RecordIDs. It operates within a transaction
+// chain, beginning and committing the transaction around the entire operation.
+// For each entry, it randomly selects a file ID and page ID, attempts to insert
+// a value, and records the result if successful. If a page is full, it retries
+// with a new page. The function asserts that no errors occur during the process
+// and returns a map
+// from RecordID to the inserted integer value.
+//
+// Parameters:
+//   - t: the testing context for assertions.
+//   - pool: the buffer pool to allocate and manage pages.
+//   - chain: the transaction log chain to record operations.
+//   - length: the number of records to insert.
+//   - fileIDs: a slice of file IDs to randomly select from.
+//
+// Returns:
+//   - A map from RecordID to the inserted integer value.
+func fillPages(
+	t *testing.T,
+	pool bufferpool.BufferPool[*page.SlottedPage],
+	chain *TxnLogChain,
+	length int,
+	fileIDs []uint64,
+) map[RecordID]int {
+	res := make(map[RecordID]int, length)
+
+	chain.Begin()
+	for range length {
+		for {
+			pageID := bufferpool.PageIdentity{
+				FileID: fileIDs[rand.Int()%len(fileIDs)],
+				PageID: rand.Uint64(),
+			}
+
+			p, err := pool.GetPage(pageID)
+			assert.NoError(t, err)
+
+			failed := func() bool {
+				p.Lock()
+				defer p.Unlock()
+
+				value := rand.Int()
+				insertedValue := []byte(strconv.Itoa(value))
+
+				slot, err := p.Insert(insertedValue)
+				chain.Insert(pageID, slot, insertedValue)
+
+				if err != nil {
+					assert.Error(t, err, page.ErrNoEnoughSpace)
+					return false
+				}
+
+				res[RecordID{
+					FileID:  pageID.FileID,
+					PageID:  pageID.PageID,
+					SlotNum: slot,
+				}] = value
+				return true
+			}()
+
+			if !failed {
+				break
+			}
+		}
+	}
+	chain.Commit()
+
+	assert.NoError(t, chain.Err())
+	return res
 }
