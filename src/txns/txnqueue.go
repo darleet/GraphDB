@@ -18,8 +18,9 @@ type txnQueueEntry[LockModeType LockMode[LockModeType], ObjectIDType comparable]
 }
 
 // SafeNext safely advances to the next txnQueueEntry in the queue.
-// It acquires the lock on the next entry before releasing the lock on the current entry,
-// ensuring that the transition between entries is thread-safe and prevents race conditions.
+// It acquires the lock on the next entry before releasing the lock on the
+// current entry, ensuring that the transition between entries is thread-safe
+// and prevents race conditions.
 // Returns a pointer to the next txnQueueEntry.
 func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeNext() *txnQueueEntry[LockModeType, ObjectIDType] {
 	next := lockedEntry.next
@@ -31,11 +32,14 @@ func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeNext() *txnQue
 	return next
 }
 
-// SafeInsert inserts the given txnQueueEntry 'n' immediately after the current (locked) entry in the queue.
-// It updates the necessary pointers to maintain the doubly-linked list structure.
-// The method assumes that the current entry is already locked, and it locks the 'next' entry
-// to safely update its 'prev' pointer, ensuring thread safety during the insertion.
-func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeInsert(n *txnQueueEntry[LockModeType, ObjectIDType]) {
+// SafeInsert inserts the given txnQueueEntry 'n' immediately after the current
+// (locked) entry in the queue. It updates the necessary pointers to maintain
+// the doubly-linked list structure. The method assumes that the current entry
+// is already locked, and it locks the 'next' entry to safely update its 'prev'
+// pointer, ensuring thread safety during the insertion.
+func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeInsert(
+	n *txnQueueEntry[LockModeType, ObjectIDType],
+) {
 	next := lockedEntry.next
 
 	n.prev = lockedEntry
@@ -56,12 +60,13 @@ type txnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable] stru
 	txnNodes map[TxnID]*txnQueueEntry[LockModeType, ObjectIDType]
 }
 
-// processBatch processes a batch of transactions in the txnQueue starting from the given
-// muGuardedHead entry. It iterates through the queue, granting locks to transactions whose
-// lock modes are compatible with all previously granted lock modes in the current batch.
-// For each compatible transaction, it marks the entry as acquired and notifies the waiting
-// transaction by closing its notifier channel. The function ensures that only a prefix of
-// the queue is in the locked state at any time, and stops processing when an incompatible
+// processBatch processes a batch of transactions in the txnQueue starting from
+// the given muGuardedHead entry. It iterates through the queue, granting locks
+// to transactions whose lock modes are compatible with all previously granted
+// lock modes in the current batch. For each compatible transaction, it marks
+// the entry as acquired and notifies the waiting transaction by closing its
+// notifier channel. The function ensures that only a prefix of the queue is in
+// the locked state at any time, and stops processing when an incompatible
 // lock mode is encountered or the end of the queue is reached.
 //
 // Preconditions:
@@ -69,9 +74,11 @@ type txnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable] stru
 //   - muGuardedHead.mu must be locked by the caller.
 //
 // Postconditions:
-//   - All compatible transactions in the batch are granted the lock and notified.
+// - All compatible transactions in the batch are granted the lock and notified.
 //   - Only the processed prefix of the queue is in the locked state.
-func (q *txnQueue[LockModeType, ObjectIDType]) processBatch(muGuardedHead *txnQueueEntry[LockModeType, ObjectIDType]) {
+func (q *txnQueue[LockModeType, ObjectIDType]) processBatch(
+	muGuardedHead *txnQueueEntry[LockModeType, ObjectIDType],
+) {
 	assert.Assert(!muGuardedHead.isRunning, "processBatch contract is violated")
 
 	cur := muGuardedHead
@@ -136,15 +143,19 @@ func checkDeadlockCondition(runnerID TxnID, waiterID TxnID) bool {
 	return runnerID < waiterID
 }
 
-// Lock attempts to acquire a lock for the given transaction lock request `r` in the transaction queue.
-// It enforces a deadlock prevention policy where only older transactions can wait for younger ones;
-// if a younger transaction attempts to wait for an older one, it is aborted (returns nil).
+// Lock attempts to acquire a lock for the given transaction lock request `r` in
+// the transaction queue. It enforces a deadlock prevention policy where only
+// older transactions can wait for younger ones; if a younger transaction
+// attempts to wait for an older one, it is aborted (returns nil).
 //
-// If the requested lock is compatible with all currently held locks, the lock is granted immediately
-// and a closed channel is returned. Otherwise, the request is queued and a channel is returned that
-// will be closed when the lock is eventually granted. The returned channel can be used to wait for
+// If the requested lock is compatible with all currently held locks, the lock
+// is granted immediately and a closed channel is returned. Otherwise, the
+// request is queued and a channel is returned that will be closed when the lock
+// is eventually granted. The returned channel can be used to wait for
 // lock acquisition.
-func (q *txnQueue[LockModeType, ObjectIDType]) Lock(r TxnLockRequest[LockModeType, ObjectIDType]) <-chan struct{} {
+func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
+	r TxnLockRequest[LockModeType, ObjectIDType],
+) <-chan struct{} {
 	// Fast path - locks are compatible
 	cur := q.head
 	cur.mu.Lock()
@@ -177,8 +188,10 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(r TxnLockRequest[LockModeTyp
 			r,
 		)
 
-		deadlockCondition = deadlockCondition || checkDeadlockCondition(cur.r.txnID, r.txnID)
-		locksAreCompatible = locksAreCompatible && r.lockMode.Compatible(cur.r.lockMode)
+		deadlockCondition = deadlockCondition ||
+			checkDeadlockCondition(cur.r.txnID, r.txnID)
+		locksAreCompatible = locksAreCompatible &&
+			r.lockMode.Compatible(cur.r.lockMode)
 		if !locksAreCompatible {
 			break
 		}
@@ -234,14 +247,26 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(r TxnLockRequest[LockModeTyp
 	return notifier
 }
 
-func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(r TxnLockRequest[LockModeType, ObjectIDType]) <-chan struct{} {
+func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
+	r TxnLockRequest[LockModeType, ObjectIDType],
+) <-chan struct{} {
 	q.mu.Lock()
 	cur, exists := q.txnNodes[r.txnID]
 	q.mu.Unlock()
 
-	assert.Assert(exists, "transaction %+v hasn't acquired the tuple with %+v record id. request: %+v", r.txnID, r.recordId, r)
+	assert.Assert(
+		exists,
+		"transaction %+v hasn't acquired the tuple with %+v record id. request: %+v",
+		r.txnID,
+		r.recordId,
+		r,
+	)
 	cur.mu.Lock()
-	assert.Assert(cur.isRunning, "can't upgrade a lock: it wasn't acquired yet. request: %+v", r)
+	assert.Assert(
+		cur.isRunning,
+		"can't upgrade a lock: it wasn't acquired yet. request: %+v",
+		r,
+	)
 
 	first := cur.prev
 	if !first.mu.TryLock() {
@@ -295,7 +320,9 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(r TxnLockRequest[LockMode
 	return c
 }
 
-func (q *txnQueue[LockModeType, ObjectIDType]) Unlock(r TxnUnlockRequest[ObjectIDType]) bool {
+func (q *txnQueue[LockModeType, ObjectIDType]) Unlock(
+	r TxnUnlockRequest[ObjectIDType],
+) bool {
 	q.mu.Lock()
 	deletingNode, present := q.txnNodes[r.txnID]
 	q.mu.Unlock()

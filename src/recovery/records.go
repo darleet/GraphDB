@@ -53,7 +53,10 @@ type UpdateLogRecord struct {
 	afterValue           []byte
 }
 
-func (r *UpdateLogRecord) Undo(lsn LSN, parentLogLocation LogRecordLocationInfo) CompensationLogRecord {
+func (r *UpdateLogRecord) Undo(
+	lsn LSN,
+	parentLogLocation LogRecordLocationInfo,
+) CompensationLogRecord {
 	return NewCompensationLogRecord(
 		lsn,
 		r.TransactionID,
@@ -114,7 +117,10 @@ func NewInsertLogRecord(
 	}
 }
 
-func (r *InsertLogRecord) Undo(lsn LSN, parentLogLocation LogRecordLocationInfo) CompensationLogRecord {
+func (r *InsertLogRecord) Undo(
+	lsn LSN,
+	parentLogLocation LogRecordLocationInfo,
+) CompensationLogRecord {
 	return NewCompensationLogRecord(
 		lsn,
 		r.TransactionID,
@@ -134,7 +140,11 @@ type CommitLogRecord struct {
 	parentLogLocation LogRecordLocationInfo
 }
 
-func NewCommitLogRecord(lsn LSN, TransactionID txns.TxnID, parentLogLocation LogRecordLocationInfo) CommitLogRecord {
+func NewCommitLogRecord(
+	lsn LSN,
+	TransactionID txns.TxnID,
+	parentLogLocation LogRecordLocationInfo,
+) CommitLogRecord {
 	return CommitLogRecord{
 		lsn:               lsn,
 		TransactionID:     TransactionID,
