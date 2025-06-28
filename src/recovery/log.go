@@ -782,12 +782,16 @@ func (l *TxnLogger) activateCLR(record *CompensationLogRecord) {
 	copy(slotData, record.afterValue)
 }
 
-func (l *TxnLogger) Rollback(lastRecordInfo LogRecordLocationInfo) {
-	assert.Assert(!lastRecordInfo.isNil(), "nil log record")
+func (l *TxnLogger) Rollback(abortLogRecord LogRecordLocationInfo) {
+	assert.Assert(!abortLogRecord.isNil(), "nil log record")
 
-	recordLocation := lastRecordInfo.Location
+	_, abordRecord, err := l.readLogRecord(abortLogRecord.Location)
+	assert.Assert(err == nil, "todo")
+
+	record := assert.Cast[AbortLogRecord](abordRecord)
+	recordLocation := record.parentLogLocation.Location
+
 	clrsFound := 0
-
 	for {
 		tag, record, err := l.readLogRecord(recordLocation)
 		assert.Assert(err == nil, "todo")
@@ -795,7 +799,7 @@ func (l *TxnLogger) Rollback(lastRecordInfo LogRecordLocationInfo) {
 		case TypeBegin:
 			record := assert.Cast[BeginLogRecord](record)
 			assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
-			_, err := l.AppendTxnEnd(record.TransactionID, lastRecordInfo)
+			_, err := l.AppendTxnEnd(record.TransactionID, abortLogRecord)
 			assert.Assert(err == nil, "todo")
 		case TypeInsert:
 			record := assert.Cast[InsertLogRecord](record)
@@ -826,8 +830,11 @@ func (l *TxnLogger) Rollback(lastRecordInfo LogRecordLocationInfo) {
 			assert.Assert(clrsFound == 0, "found CLRs for a commited txn")
 			assert.Assert(tag != TypeCommit, "cannot rollback a commited txn")
 		case TypeAbort:
-			record := assert.Cast[AbortLogRecord](record)
-			recordLocation = record.parentLogLocation.Location
+			_ = assert.Cast[AbortLogRecord](record)
+			assert.Assert(
+				tag != TypeAbort,
+				"found multiple abort messages",
+			)
 		case TypeTxnEnd:
 			_ = assert.Cast[TxnEndLogRecord](record)
 			assert.Assert(tag != TypeTxnEnd, "cannot rollback a commited txn")

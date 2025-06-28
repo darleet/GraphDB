@@ -3,6 +3,8 @@ package recovery
 import (
 	"bytes"
 	"errors"
+	"maps"
+	"math"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -558,6 +560,46 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 	waitWg.Wait()
 }
 
+type KVPair[K comparable, V any] struct {
+	key   K
+	value V
+}
+
+func mapBatch[K comparable, V any](
+	m map[K]V,
+	batchSize int,
+) <-chan []KVPair[K, V] {
+	c := make(chan []KVPair[K, V])
+	go func() {
+		innerC := make(chan KVPair[K, V])
+		go func() {
+			for k, v := range m {
+				innerC <- KVPair[K, V]{key: k, value: v}
+			}
+			close(innerC)
+		}()
+
+		res := make([]KVPair[K, V], 0, batchSize)
+	outer:
+		for {
+			for range batchSize {
+				pair, ok := <-innerC
+				if !ok {
+					break outer
+				}
+				res = append(res, pair)
+			}
+			c <- res
+			res = make([]KVPair[K, V], 0, batchSize)
+		}
+		if len(res) > 0 {
+			c <- res
+		}
+		close(c)
+	}()
+	return c
+}
+
 func TestLoggerRollback(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
@@ -596,43 +638,43 @@ func TestLoggerRollback(t *testing.T) {
 		}
 	}
 
-	chain := NewTxnLogChain(logger, txns.TxnID(1)).Begin()
-	
-	
+	recordValues := fillPages(t, logger, math.MaxUint64, 100, files)
+	updatedValues := make(map[RecordID]int, len(recordValues))
+	maps.Copy(updatedValues, recordValues)
 
-	for k, v := range fillPages(t, logger.pool, chain, 100, files) {
-		chain.Update(bufferpool.PageIdentity{})
+	c := mapBatch(recordValues, 5)
+	txnID := atomic.Uint64{}
+	for batch := range c {
+		go func() {
+			txnID := txns.TxnID(txnID.Add(1))
+			chain := NewTxnLogChain(logger, txnID).Begin()
+			for range len(batch) * 3 / 2 {
+				info := batch[rand.Int()%len(batch)]
+				oldValue := updatedValues[info.key]
+				newValue := rand.Int()
+				chain.Update(
+					info.key.PageIdentity(),
+					info.key.SlotNum,
+					[]byte(strconv.Itoa(oldValue)),
+					[]byte(strconv.Itoa(newValue)),
+				)
+			}
+			abortRecordLoc := chain.Abort().Loc()
+			logger.Rollback(abortRecordLoc)
+		}()
 	}
 }
 
-// fillPages fills a buffer pool with randomly generated pages and inserts
-// random integer values as byte slices into each page, recording the inserted
-// values and their corresponding RecordIDs. It operates within a transaction
-// chain, beginning and committing the transaction around the entire operation.
-// For each entry, it randomly selects a file ID and page ID, attempts to insert
-// a value, and records the result if successful. If a page is full, it retries
-// with a new page. The function asserts that no errors occur during the process
-// and returns a map
-// from RecordID to the inserted integer value.
-//
-// Parameters:
-//   - t: the testing context for assertions.
-//   - pool: the buffer pool to allocate and manage pages.
-//   - chain: the transaction log chain to record operations.
-//   - length: the number of records to insert.
-//   - fileIDs: a slice of file IDs to randomly select from.
-//
-// Returns:
-//   - A map from RecordID to the inserted integer value.
 func fillPages(
 	t *testing.T,
-	pool bufferpool.BufferPool[*page.SlottedPage],
-	chain *TxnLogChain,
+	logger *TxnLogger,
+	txnID txns.TxnID,
 	length int,
 	fileIDs []uint64,
 ) map[RecordID]int {
 	res := make(map[RecordID]int, length)
 
+	chain := NewTxnLogChain(logger, txnID)
 	chain.Begin()
 	for range length {
 		for {
@@ -641,7 +683,7 @@ func fillPages(
 				PageID: rand.Uint64(),
 			}
 
-			p, err := pool.GetPage(pageID)
+			p, err := logger.pool.GetPage(pageID)
 			assert.NoError(t, err)
 
 			failed := func() bool {
