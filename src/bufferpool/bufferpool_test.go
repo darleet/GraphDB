@@ -6,28 +6,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	"github.com/Blackdeer1524/GraphDB/src/bufferpool/mocks"
 )
 
 func TestGetPage_Cached(t *testing.T) {
-	mockDisk := new(mocks.MockDiskManager)
-	mockReplacer := new(mocks.MockReplacer)
+	mockDisk := new(MockDiskManager)
+	mockReplacer := new(MockReplacer)
 
 	manager, err := New(1, mockReplacer, mockDisk)
 	require.NoError(t, err)
 
 	fileID, pageID := uint64(1), uint64(0)
 
-	p := mocks.NewSlottedPage(fileID, pageID)
+	p := NewSlottedPage_mock()
 	p.SetData([]byte("cached data"))
 
 	frameID := uint64(0)
-	manager.frames[frameID] = frame[*mocks.SlottedPage]{
+	manager.frames[frameID] = frame[*SlottedPage_mock]{
 		Page:     p,
 		PinCount: 0,
-		FileID:   fileID,
-		PageID:   pageID,
+		PageIdent: PageIdentity{
+			FileID: fileID,
+			PageID: pageID,
+		},
 	}
 	manager.pageToFrame[PageIdentity{FileID: fileID, PageID: pageID}] = frameID
 
@@ -48,15 +48,15 @@ func TestGetPage_Cached(t *testing.T) {
 }
 
 func TestGetPage_LoadFromDisk(t *testing.T) {
-	mockDisk := new(mocks.MockDiskManager)
-	mockReplacer := new(mocks.MockReplacer)
+	mockDisk := new(MockDiskManager)
+	mockReplacer := new(MockReplacer)
 
 	manager, err := New(1, mockReplacer, mockDisk)
 	require.NoError(t, err)
 
 	fileID, pageID := uint64(1), uint64(0)
 
-	expectedPage := mocks.NewSlottedPage(fileID, pageID)
+	expectedPage := NewSlottedPage_mock()
 	expectedPage.SetData([]byte("disk data"))
 
 	mockDisk.On("ReadPage", fileID, pageID).Return(expectedPage, nil)
@@ -76,30 +76,34 @@ func TestGetPage_LoadFromDisk(t *testing.T) {
 }
 
 func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
-	mockDisk := new(mocks.MockDiskManager)
-	mockReplacer := new(mocks.MockReplacer)
+	mockDisk := new(MockDiskManager)
+	mockReplacer := new(MockReplacer)
 
 	// Создаем пул из 2 фреймов
 	manager, err := New(2, mockReplacer, mockDisk)
 	require.NoError(t, err)
 
 	existingFileID, existingPageID := uint64(1), uint64(0)
-	existingPage := mocks.NewSlottedPage(existingFileID, existingPageID)
+	existingPage := NewSlottedPage_mock()
 	existingPage.SetData([]byte("existing data"))
 
-	frameID := uint64(0)
-	manager.frames[frameID] = frame[*mocks.SlottedPage]{
-		Page:     existingPage,
-		PinCount: 1,
-		FileID:   existingFileID,
-		PageID:   existingPageID,
+	existingPageData := PageIdentity{
+		FileID: existingFileID,
+		PageID: existingPageID,
 	}
-	manager.pageToFrame[PageIdentity{FileID: existingFileID, PageID: existingPageID}] = frameID
+
+	frameID := uint64(0)
+	manager.frames[frameID] = frame[*SlottedPage_mock]{
+		Page:      existingPage,
+		PinCount:  1,
+		PageIdent: existingPageData,
+	}
+	manager.pageToFrame[existingPageData] = frameID
 	manager.emptyFrames = []uint64{1}
 
 	newFileID := uint64(2)
 	newPageID := uint64(1)
-	newPage := mocks.NewSlottedPage(newFileID, newPageID)
+	newPage := NewSlottedPage_mock()
 	newPage.SetData([]byte("new data"))
 
 	mockDisk.On("ReadPage", newFileID, newPageID).Return(newPage, nil)
@@ -126,29 +130,31 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 }
 
 func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
-	mockDisk := new(mocks.MockDiskManager)
-	mockReplacer := new(mocks.MockReplacer)
+	mockDisk := new(MockDiskManager)
+	mockReplacer := new(MockReplacer)
 
 	manager, err := New(1, mockReplacer, mockDisk)
 	require.NoError(t, err)
 
 	existingFileID, existingPageID := uint64(1), uint64(0)
-	existingPage := mocks.NewSlottedPage(existingFileID, existingPageID)
+	existingPage := NewSlottedPage_mock()
 	existingPage.SetData([]byte("old data"))
 	existingPage.SetDirtiness(true)
 
 	frameID := uint64(0)
-	manager.frames[frameID] = frame[*mocks.SlottedPage]{
+	manager.frames[frameID] = frame[*SlottedPage_mock]{
 		Page:     existingPage,
 		PinCount: 0,
-		FileID:   existingFileID,
-		PageID:   existingPageID,
+		PageIdent: PageIdentity{
+			FileID: existingFileID,
+			PageID: existingPageID,
+		},
 	}
 	manager.pageToFrame[PageIdentity{FileID: existingFileID, PageID: existingPageID}] = frameID
 	manager.emptyFrames = nil
 
 	newFileID, newPageID := uint64(2), uint64(1)
-	newPage := mocks.NewSlottedPage(newFileID, newPageID)
+	newPage := NewSlottedPage_mock()
 	newPage.SetData([]byte("new data"))
 
 	mockReplacer.On("ChooseVictim").Return(frameID, nil)

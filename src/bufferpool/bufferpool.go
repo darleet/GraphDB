@@ -26,9 +26,6 @@ type Page interface {
 	SetDirtiness(val bool)
 	IsDirty() bool
 
-	GetFileID() uint64
-	GetPageID() uint64
-
 	// latch methods
 	Lock()
 	Unlock()
@@ -48,16 +45,15 @@ type Replacer interface {
 }
 
 type DiskManager[T Page] interface {
-	ReadPage(fileID, pageID uint64) (T, error)
-	WritePage(page T) error
+	ReadPage(pageIdent PageIdentity) (T, error)
+	WritePage(page T, pageIdent PageIdentity) error
 }
 
 type frame[T Page] struct {
-	Page     T
-	Idx      uint64
-	PinCount int
-	FileID   uint64
-	PageID   uint64
+	Page      T
+	Idx       uint64
+	PinCount  int
+	PageIdent PageIdentity
 }
 
 type PageIdentity struct {
@@ -197,7 +193,10 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (T, error) {
 
 	frameID := m.reserveFrame()
 	if frameID != noFrame {
-		page, err := m.diskManager.ReadPage(pIdent.FileID, pIdent.PageID)
+		page, err := m.diskManager.ReadPage(PageIdentity{
+			FileID: pIdent.FileID,
+			PageID: pIdent.PageID,
+		})
 		if err != nil {
 			var zero T
 			return zero, err
@@ -206,8 +205,10 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (T, error) {
 		m.frames[frameID] = frame[T]{
 			Page:     page,
 			PinCount: 1,
-			FileID:   pIdent.FileID,
-			PageID:   pIdent.PageID,
+			PageIdent: PageIdentity{
+				FileID: pIdent.FileID,
+				PageID: pIdent.PageID,
+			},
 		}
 		m.pageToFrame[pIdent] = frameID
 
@@ -222,7 +223,10 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (T, error) {
 
 	victimFrame := m.frames[victimFrameID]
 	if victimFrame.Page.IsDirty() {
-		err = m.diskManager.WritePage(victimFrame.Page)
+		err = m.diskManager.WritePage(
+			victimFrame.Page,
+			victimFrame.PageIdent,
+		)
 		if err != nil {
 			var zero T
 			return zero, err
@@ -231,14 +235,12 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (T, error) {
 		delete(m.DirtyPageTable, pIdent)
 	}
 
-	oldIdent := PageIdentity{
-		FileID: victimFrame.FileID,
-		PageID: victimFrame.PageID,
-	}
+	delete(m.pageToFrame, victimFrame.PageIdent)
 
-	delete(m.pageToFrame, oldIdent)
-
-	page, err := m.diskManager.ReadPage(pIdent.FileID, pIdent.PageID)
+	page, err := m.diskManager.ReadPage(PageIdentity{
+		FileID: pIdent.FileID,
+		PageID: pIdent.PageID,
+	})
 	if err != nil {
 		var zero T
 		return zero, err
@@ -247,8 +249,10 @@ func (m *Manager[T]) GetPage(pIdent PageIdentity) (T, error) {
 	m.frames[victimFrameID] = frame[T]{
 		Page:     page,
 		PinCount: 1,
-		FileID:   pIdent.FileID,
-		PageID:   pIdent.PageID,
+		PageIdent: PageIdentity{
+			FileID: pIdent.FileID,
+			PageID: pIdent.PageID,
+		},
 	}
 
 	m.pageToFrame[pIdent] = victimFrameID
@@ -288,7 +292,7 @@ func (m *Manager[T]) FlushPage(pIdent PageIdentity) error {
 		return nil
 	}
 
-	err := m.diskManager.WritePage(frame.Page)
+	err := m.diskManager.WritePage(frame.Page, frame.PageIdent)
 	if err != nil {
 		return fmt.Errorf("failed to write page to disk: %w", err)
 	}
@@ -307,14 +311,11 @@ func (m *Manager[T]) FlushAllPages() error {
 	for i := range m.frames {
 		frame := &m.frames[i]
 		if frame.Page.IsDirty() {
-			_ = m.diskManager.WritePage(frame.Page)
+			_ = m.diskManager.WritePage(frame.Page, frame.PageIdent)
 
 			frame.Page.SetDirtiness(false)
 
-			delete(m.DirtyPageTable, PageIdentity{
-				FileID: frame.FileID,
-				PageID: frame.PageID,
-			})
+			delete(m.DirtyPageTable, frame.PageIdent)
 		}
 	}
 

@@ -62,10 +62,9 @@ func TestChainSanity(t *testing.T) {
 
 	// Begin
 	{
-		data, err := page.Get(0)
-		require.NoError(t, err)
-		tag, untypedRecord, err := readLogRecord(data)
+		data := page.Get(0)
 
+		tag, untypedRecord, err := readLogRecord(data)
 		require.NoError(t, err)
 		require.Equal(t, TypeBegin, tag)
 
@@ -75,7 +74,7 @@ func TestChainSanity(t *testing.T) {
 
 	// Insert
 	{
-		data, err := page.Get(1)
+		data := page.Get(1)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -88,7 +87,7 @@ func TestChainSanity(t *testing.T) {
 
 	// Update
 	{
-		data, err := page.Get(2)
+		data := page.Get(2)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -101,7 +100,7 @@ func TestChainSanity(t *testing.T) {
 
 	// Abort
 	{
-		data, err := page.Get(3)
+		data := page.Get(3)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -114,7 +113,7 @@ func TestChainSanity(t *testing.T) {
 
 	// TxnEnd
 	{
-		data, err := page.Get(4)
+		data := page.Get(4)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -182,7 +181,7 @@ func TestChain(t *testing.T) {
 	defer page.RUnlock()
 
 	{
-		data, err := page.Get(0)
+		data := page.Get(0)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -194,7 +193,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TransactionID_1, r.TransactionID)
 	}
 	{
-		data, err := page.Get(1)
+		data := page.Get(1)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -207,7 +206,7 @@ func TestChain(t *testing.T) {
 	}
 
 	{
-		data, err := page.Get(2)
+		data := page.Get(2)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -219,7 +218,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TransactionID_2, r.TransactionID)
 	}
 	{
-		data, err := page.Get(3)
+		data := page.Get(3)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -231,7 +230,7 @@ func TestChain(t *testing.T) {
 		require.Equal(t, TransactionID_2, r.TransactionID)
 	}
 	{
-		data, err := page.Get(4)
+		data := page.Get(4)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -244,7 +243,7 @@ func TestChain(t *testing.T) {
 	}
 
 	{
-		data, err := page.Get(5)
+		data := page.Get(5)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 

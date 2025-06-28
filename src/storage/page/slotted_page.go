@@ -1,8 +1,9 @@
 package page
 
 import (
-	"encoding/binary"
+	"encoding"
 	"errors"
+	"math"
 	"sync"
 	"unsafe"
 
@@ -17,18 +18,14 @@ var (
 // TODO добавить рисунок - иллюстрацию
 
 const (
-	Size = 4096
-	// numSlots (4) + freeStart (4) + freeEnd (4)
-	HeaderSize = uint16(unsafe.Sizeof(uint16(0))) * 3
-	// offset (2) + length (2)
-	SlotSize = uint16(unsafe.Sizeof(uint16(0))) * 2
+	PageSize = 4096
 )
 
 type SlottedPage struct {
-	data [Size]byte
+	data [PageSize]byte
 }
 
-type slot uint16
+type slotPointer uint16
 type slotInfo byte
 
 const (
@@ -43,173 +40,193 @@ const (
 	slotOffsetMask uint16 = (1 << slotOffsetSize) - 1
 )
 
-func (s slot) recordOffset() uint16 {
+func newSlot(info slotInfo, offset uint16) slotPointer {
+	assert.Assert(offset <= slotOffsetMask, "the offset is too big")
+	return slotPointer((uint16(info) << slotOffsetSize) | offset)
+}
+
+func (s slotPointer) recordOffset() uint16 {
 	return uint16(s) & slotOffsetMask
 }
 
-func (s slot) recordInfo() slotInfo {
+func (s slotPointer) recordInfo() slotInfo {
 	res := (uint16(s) & (^slotOffsetMask)) >> slotOffsetSize
 	return slotInfo(res)
 }
 
 type header struct {
-	mu sync.Mutex
+	latch sync.RWMutex
+
+	dirty bool
 
 	freeStart uint16
 	freeEnd   uint16
 
-	slotsNumber byte
-	slots       [0]slot
+	slotsCount uint16
+	slots      slotPointer
+}
+
+func (h *header) getSlots() []slotPointer {
+	return unsafe.Slice(&h.slots, h.slotsCount)
 }
 
 func (p *SlottedPage) getHeader() *header {
 	return (*header)(unsafe.Pointer(&p.data[0]))
 }
 
-func (p *SlottedPage) inset() {
-	header := p.getHeader()
+// func (p *SlottedPage) getDataFromOffset(offset uint16) (int, []byte) {
+// 	length := *(*int)(unsafe.Pointer(&p.data[offset]))
+// 	dst := unsafe.Slice(&p.data[offset+uint16(unsafe.Sizeof(int(0)))], length)
+// 	return length, dst
+// }
+//
+// func (p *SlottedPage) setDataByOffset(offset uint16, data []byte) {
+// 	ptrToLength := (*int)(unsafe.Pointer(&p.data[offset]))
+// 	*ptrToLength = len(data)
+// 	dst := unsafe.Slice(&p.data[offset+uint16(unsafe.Sizeof(int(0)))],
+// len(data))
+// 	copy(dst, data)
+// }
+
+type insertHandle uint16
+
+const INVALID_SLOT_NUMBER insertHandle = insertHandle(math.MaxUint16)
+
+func PrepareInsert[T encoding.BinaryMarshaler](
+	p *SlottedPage,
+	data T,
+) insertHandle {
+	bytes, err := data.MarshalBinary()
+	assert.Assert(err != nil)
+	return p.PrepareInsertBytes(bytes)
 }
 
-func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
-	p := &SlottedPage{
-		data:   make([]byte, Size),
-		fileID: fileID,
-		pageID: pageID,
+func (p *SlottedPage) CommitInsert(slotID insertHandle) uint16 {
+	header := p.getHeader()
+	assert.Assert(
+		uint16(slotID) < header.slotsCount,
+		"slot number is too large. actual: %d. slots count: %d",
+		slotID,
+		header.slotsCount,
+	)
+
+	slots := header.getSlots()
+	ptr := slots[slotID]
+	assert.Assert(
+		ptr.recordInfo() == slotStatusPrepareInsert,
+		"tried to commit an insert to a wrong slot",
+	)
+	slots[slotID] = newSlot(slotStatusInserted, ptr.recordOffset())
+	return uint16(slotID)
+}
+
+func (p *SlottedPage) PrepareInsertBytes(data []byte) insertHandle {
+	header := p.getHeader()
+	requiredLength := len(data) + int(unsafe.Sizeof(int(1)))
+	if header.freeEnd < uint16(requiredLength) {
+		return INVALID_SLOT_NUMBER
 	}
 
-	p.setNumSlots(0)
-	p.setFreeStart(HeaderSize)
-	p.setFreeEnd(Size)
+	pos := header.freeEnd - uint16(requiredLength)
+	if pos < header.freeStart+uint16(unsafe.Sizeof(slotPointer(0))) {
+		return INVALID_SLOT_NUMBER
+	}
+	defer func() {
+		header.freeEnd = pos
+	}()
 
+	ptrToLen := (*int)(unsafe.Pointer(&p.data[pos]))
+	*ptrToLen = len(data)
+
+	dst := unsafe.Slice(&p.data[pos+uint16(unsafe.Sizeof(int(1)))], len(data))
+	n := copy(dst, data)
+	assert.Assert(
+		n == int(len(data)),
+		"couldn't copy data. copied only %d bytes",
+		len(data),
+	)
+
+	curSlot := header.slotsCount
+	header.slotsCount++
+
+	slots := header.getSlots()
+	slots[curSlot] = newSlot(slotStatusPrepareInsert, pos)
+	return insertHandle(curSlot)
+}
+
+func NewSlottedPage() *SlottedPage {
+	p := &SlottedPage{
+		data: [PageSize]byte{},
+	}
+	head := p.getHeader()
+	head.freeStart = uint16(unsafe.Sizeof(header{}))
+	head.freeEnd = PageSize
 	return p
 }
 
 func (p *SlottedPage) NumSlots() uint16 {
-	return binary.LittleEndian.Uint16(p.data[0:2])
+	header := p.getHeader()
+	return header.slotsCount
 }
 
-func (p *SlottedPage) setNumSlots(n uint16) {
-	binary.LittleEndian.PutUint16(p.data[0:2], n)
+func Get[T encoding.BinaryUnmarshaler](
+	p *SlottedPage,
+	slotID uint16,
+	dst T,
+) error {
+	data := p.Get(slotID)
+	return dst.UnmarshalBinary(data)
 }
 
-func (p *SlottedPage) freeStart() uint16 {
-	return binary.LittleEndian.Uint16(p.data[2:4])
-}
+func (p *SlottedPage) Get(slotID uint16) []byte {
+	header := p.getHeader()
 
-func (p *SlottedPage) setFreeStart(n uint16) {
-	binary.LittleEndian.PutUint16(p.data[2:4], n)
-}
+	assert.Assert(slotID < p.NumSlots(), "invalid slotID")
+	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 
-func (p *SlottedPage) freeEnd() uint16 {
-	return binary.LittleEndian.Uint16(p.data[4:6])
-}
+	ptr := header.getSlots()[slotID]
+	assert.Assert(
+		ptr.recordInfo() == slotStatusInserted,
+		"tried to read from an invalid slot",
+	)
 
-func (p *SlottedPage) setFreeEnd(n uint16) {
-	binary.LittleEndian.PutUint16(p.data[4:6], n)
-}
-
-func (p *SlottedPage) getSlot(i uint16) (offset, length uint16) {
-	base := HeaderSize + i*SlotSize
-
-	offset = binary.LittleEndian.Uint16(p.data[base : base+2])
-	length = binary.LittleEndian.Uint16(p.data[base+2 : base+4])
-
-	return
-}
-
-func (p *SlottedPage) setSlot(i, offset, length uint16) {
-	base := HeaderSize + i*SlotSize
-	binary.LittleEndian.PutUint16(p.data[base:base+2], offset)
-	binary.LittleEndian.PutUint16(p.data[base+2:base+4], length)
-}
-
-// returns an error ONLY IF there is no free space left
-func (p *SlottedPage) Insert(record []byte) (slotID uint16, err error) {
-	defer func() { assert.Assert(err == nil || errors.Is(err, ErrNoEnoughSpace), "contract violation") }()
-
-	//nolint:gosec
-	recLen := uint16(len(record))
-	freeSpace := p.freeEnd() - p.freeStart()
-
-	if freeSpace < recLen+SlotSize {
-		return 0, ErrNoEnoughSpace
-	}
-
-	// Allocate space for the record
-	newOffset := p.freeEnd() - recLen
-	copy(p.data[newOffset:], record)
-
-	// Create slot
-	slotID = p.NumSlots()
-	p.setSlot(slotID, newOffset, recLen)
-
-	// Update header
-	p.setNumSlots(slotID + 1)
-	p.setFreeEnd(newOffset)
-	p.setFreeStart(HeaderSize + (slotID+1)*SlotSize)
-
-	return slotID, nil
-}
-
-func (p *SlottedPage) Get(slotID uint16) ([]byte, error) {
-	if slotID >= p.NumSlots() {
-		return nil, ErrInvalidSlotID
-	}
-
-	offset, length := p.getSlot(slotID)
-
-	return p.data[offset : offset+length], nil
-}
-
-func (p *SlottedPage) GetData() []byte {
-	assert.Assert(!p.locked.Load(), "GetData contract is violated")
-
-	return p.data
+	offset := ptr.recordOffset()
+	sliceLen := *(*int)(unsafe.Pointer(&p.data[offset]))
+	data := unsafe.Slice(
+		&p.data[offset+uint16(unsafe.Sizeof(int(0)))],
+		sliceLen,
+	)
+	return data
 }
 
 func (p *SlottedPage) Lock() {
-	p.latch.Lock()
-
-	p.locked.Store(true)
+	p.getHeader().latch.Lock()
 }
 
 func (p *SlottedPage) Unlock() {
-	p.locked.Store(false)
-
-	p.latch.Unlock()
+	p.getHeader().latch.Unlock()
 }
 
 func (p *SlottedPage) RLock() {
-	p.latch.RLock()
-
-	p.locked.Store(true)
+	p.getHeader().latch.RLock()
 }
 
 func (p *SlottedPage) RUnlock() {
-	p.locked.Store(false)
-
-	p.latch.RUnlock()
+	p.getHeader().latch.RUnlock()
 }
 
 func (p *SlottedPage) SetDirtiness(val bool) {
-	p.dirty.Store(val)
-}
-
-func (p *SlottedPage) GetFileID() uint64 {
-	return p.fileID
-}
-
-func (p *SlottedPage) GetPageID() uint64 {
-	return p.pageID
+	p.getHeader().dirty = val
 }
 
 func (p *SlottedPage) IsDirty() bool {
-	return p.dirty.Load()
+	return p.getHeader().dirty
 }
 
-func (p *SlottedPage) SetData(d []byte) {
-	assert.Assert(p.locked.Load(), "SetData contract is violated")
+func (p *SlottedPage) GetData() []byte {
+	return p.data[:]
+}
 
-	clear(p.data)
-	copy(p.data, d)
+func (p *SlottedPage) SetData(data []byte) {
+	copy(p.data[:], data)
 }
