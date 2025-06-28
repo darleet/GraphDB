@@ -28,6 +28,30 @@ type SlottedPage struct {
 	data [Size]byte
 }
 
+type slot uint16
+type slotInfo byte
+
+const (
+	slotStatusFree slotInfo = iota
+	slotStatusPrepareInsert
+	slotStatusInserted
+	slotStatusDeleted
+)
+
+const (
+	slotOffsetSize        = 12
+	slotOffsetMask uint16 = (1 << slotOffsetSize) - 1
+)
+
+func (s slot) recordOffset() uint16 {
+	return uint16(s) & slotOffsetMask
+}
+
+func (s slot) recordInfo() slotInfo {
+	res := (uint16(s) & (^slotOffsetMask)) >> slotOffsetSize
+	return slotInfo(res)
+}
+
 type header struct {
 	mu sync.Mutex
 
@@ -35,18 +59,15 @@ type header struct {
 	freeEnd   uint16
 
 	slotsNumber byte
-	slots       [0]uint16
+	slots       [0]slot
 }
 
-func (p *SlottedPage) getLatch() *sync.Mutex {
-	return (*sync.Mutex)(unsafe.Pointer(&p.data[0]))
+func (p *SlottedPage) getHeader() *header {
+	return (*header)(unsafe.Pointer(&p.data[0]))
 }
 
-func (p *SlottedPage) 
-
-
-func (p *SlottedPage) getSlotNumber() byte {
-	return p.data[unsafe.Sizeof(sync.Mutex{})]
+func (p *SlottedPage) inset() {
+	header := p.getHeader()
 }
 
 func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
@@ -192,4 +213,3 @@ func (p *SlottedPage) SetData(d []byte) {
 	clear(p.data)
 	copy(p.data, d)
 }
-
