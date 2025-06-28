@@ -1,6 +1,7 @@
 package page
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,13 +27,32 @@ func TestInsertAndGet(t *testing.T) {
 	}
 
 	for i, id := range slotIDs {
-		got := page.Get(id)
+		got := page.GetBytes(id)
 		assert.Equal(
 			t,
 			string(records[i]),
 			string(got),
 			"Retrieved record doesn't match",
 		)
+	}
+}
+
+func TestInsertAndGetLarger(t *testing.T) {
+	page := NewSlottedPage()
+	i := 0
+	for {
+		handle := page.PrepareInsertBytes([]byte(strconv.Itoa(i)))
+		if handle == INVALID_SLOT_NUMBER {
+			break
+		}
+		page.CommitInsert(handle)
+		i++
+	}
+
+	for j := range i {
+		data := page.GetBytes(uint16(j))
+		expected := []byte(strconv.Itoa(j))
+		assert.Equal(t, expected, data)
 	}
 }
 
@@ -59,7 +79,7 @@ func TestInvalidSlotID(t *testing.T) {
 	page := NewSlottedPage()
 	assert.Panicsf(t,
 		func() {
-			_ = page.Get(uint16(999))
+			_ = page.GetBytes(uint16(999))
 		},
 		"123",
 	)

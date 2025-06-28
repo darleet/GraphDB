@@ -337,7 +337,7 @@ func getSlotFromPage(
 	p.Lock()
 	defer p.Unlock()
 
-	data = p.Get(slotNum)
+	data = p.GetBytes(slotNum)
 
 	return
 }
@@ -441,7 +441,7 @@ func (l *TxnLogger) readLogRecord(
 	}
 
 	page.RLock()
-	record := page.Get(recordLocation.SlotNum)
+	record := page.GetBytes(recordLocation.SlotNum)
 	page.RUnlock()
 
 	// if err != nil {
@@ -479,23 +479,15 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 	if err != nil {
 		return NewNilLogRecordLocation(), err
 	}
-
-	func() {
-		p.Lock()
-		defer p.Unlock()
-
-		handle := p.PrepareInsertBytes(serializedRecord)
-		if handle != page.INVALID_SLOT_NUMBER {
-			slotNumber := p.CommitInsert(handle)
-			lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
-			return lockedLogger.lastLogLocation, nil
-		}
-	}()
-
-	assert.Assert(
-		errors.Is(err, page.ErrNoEnoughSpace),
-		"SlottedPage.Insert contract violation",
-	)
+	p.Lock()
+	handle := p.PrepareInsertBytes(serializedRecord)
+	if handle != page.INVALID_SLOT_NUMBER {
+		slotNumber := p.CommitInsert(handle)
+		lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
+		p.Unlock()
+		return lockedLogger.lastLogLocation, nil
+	}
+	p.Unlock()
 
 	lockedLogger.lastLogLocation.Location.PageID++
 	pageInfo = bufferpool.PageIdentity{
@@ -509,11 +501,10 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 	}
 
 	p.Lock()
-	handle := p.PrepareInsertBytes(serializedRecord)
+	handle = p.PrepareInsertBytes(serializedRecord)
+	assert.Assert(handle != page.INVALID_SLOT_NUMBER, "very strange")
 	slotNumber := p.CommitInsert(handle)
 	p.Unlock()
-	assert.Assert(!errors.Is(err, page.ErrNoEnoughSpace), "very strange")
-	assert.Assert(err == nil, "SlottedPage.Insert contract violation")
 
 	err = lockedLogger.pool.Unpin(pageInfo)
 	lockedLogger.lastLogLocation.Location.SlotNum = slotNumber

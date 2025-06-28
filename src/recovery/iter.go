@@ -69,7 +69,7 @@ func (iter *LogRecordsIter) MoveForward() (res bool, err error) {
 }
 
 func (iter *LogRecordsIter) ReadRecord() (LogRecordTypeTag, any, error) {
-	d := iter.lockedPage.Get(iter.curLoc.SlotNum)
+	d := iter.lockedPage.GetBytes(iter.curLoc.SlotNum)
 	// assert.Assert(err == nil, "LogIter invariant violated. err: %+v", err)
 
 	return readLogRecord(d)

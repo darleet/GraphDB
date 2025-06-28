@@ -73,7 +73,7 @@ func TestValidRecovery(t *testing.T) {
 		t.Fatalf("GetPage failed: %v", err)
 	}
 
-	data := p.Get(slotNum)
+	data := p.GetBytes(slotNum)
 	// if err != nil {
 	// 	t.Fatalf("Page.Get failed: %v", err)
 	// }
@@ -321,7 +321,7 @@ func TestMassiveRecovery(t *testing.T) {
 					p.Lock()
 					defer p.Unlock()
 
-					data := p.Get(recordLoc.SlotNum)
+					data := p.GetBytes(recordLoc.SlotNum)
 
 					clear(data)
 
@@ -359,7 +359,7 @@ func TestMassiveRecovery(t *testing.T) {
 			p.RLock()
 			defer p.RUnlock()
 
-			data := p.Get(location.SlotNum)
+			data := p.GetBytes(location.SlotNum)
 			require.Equal(t, len(INIT), len(data))
 
 			for i := range len(INIT) {
@@ -424,7 +424,7 @@ func assertLogRecordWithRetrieval(
 	require.NoError(t, err)
 	page.RLock()
 
-	data := page.Get(slotNum)
+	data := page.GetBytes(slotNum)
 
 	tag, untypedRecord, err := readLogRecord(data)
 	require.NoError(t, err)

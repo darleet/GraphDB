@@ -132,6 +132,7 @@ func (p *SlottedPage) PrepareInsertBytes(data []byte) InsertHandle {
 		return INVALID_SLOT_NUMBER
 	}
 	defer func() {
+		header.freeStart += uint16(unsafe.Sizeof(slotPointer(0)))
 		header.freeEnd = pos
 	}()
 
@@ -174,11 +175,11 @@ func Get[T encoding.BinaryUnmarshaler](
 	slotID uint16,
 	dst T,
 ) error {
-	data := p.Get(slotID)
+	data := p.GetBytes(slotID)
 	return dst.UnmarshalBinary(data)
 }
 
-func (p *SlottedPage) Get(slotID uint16) []byte {
+func (p *SlottedPage) GetBytes(slotID uint16) []byte {
 	header := p.getHeader()
 
 	assert.Assert(slotID < p.NumSlots(), "invalid slotID")
@@ -187,7 +188,7 @@ func (p *SlottedPage) Get(slotID uint16) []byte {
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
 		ptr.recordInfo() == slotStatusInserted,
-		"tried to read from an invalid slot",
+		"tried to read from a slot with status %d", ptr.recordInfo(),
 	)
 
 	offset := ptr.recordOffset()
