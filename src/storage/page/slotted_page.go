@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	assert "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
@@ -18,23 +17,36 @@ var (
 // TODO добавить рисунок - иллюстрацию
 
 const (
-	Size       = 4096
-	HeaderSize = uint16(
-		unsafe.Sizeof(uint16(0)),
-	) * 3 // numSlots (4) + freeStart (4) + freeEnd (4)
-	SlotSize = uint16(unsafe.Sizeof(uint16(0))) * 2 // offset (2) + length (2)
+	Size = 4096
+	// numSlots (4) + freeStart (4) + freeEnd (4)
+	HeaderSize = uint16(unsafe.Sizeof(uint16(0))) * 3
+	// offset (2) + length (2)
+	SlotSize = uint16(unsafe.Sizeof(uint16(0))) * 2
 )
 
 type SlottedPage struct {
-	data []byte
+	data [Size]byte
+}
 
-	locked atomic.Bool
-	latch  sync.RWMutex
+type header struct {
+	mu sync.Mutex
 
-	dirty atomic.Bool
+	freeStart uint16
+	freeEnd   uint16
 
-	fileID uint64
-	pageID uint64
+	slotsNumber byte
+	slots       [0]uint16
+}
+
+func (p *SlottedPage) getLatch() *sync.Mutex {
+	return (*sync.Mutex)(unsafe.Pointer(&p.data[0]))
+}
+
+func (p *SlottedPage) 
+
+
+func (p *SlottedPage) getSlotNumber() byte {
+	return p.data[unsafe.Sizeof(sync.Mutex{})]
 }
 
 func NewSlottedPage(fileID, pageID uint64) *SlottedPage {
@@ -180,3 +192,4 @@ func (p *SlottedPage) SetData(d []byte) {
 	clear(p.data)
 	copy(p.data, d)
 }
+
