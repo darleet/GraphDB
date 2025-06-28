@@ -202,11 +202,11 @@ func insertValue(
 	p.Lock()
 	defer p.Unlock()
 
-	insertHandle := p.PrepareInsertBytes(data)
-	if insertHandle == page.INVALID_SLOT_NUMBER {
+	insertHandle := p.InsertPrepare(data)
+	if insertHandle == page.INVALID_INSERT_HANDLE {
 		return 0, page.ErrNoEnoughSpace
 	}
-	return p.CommitInsert(insertHandle), nil
+	return p.InsertCommit(insertHandle), nil
 }
 
 func TestMassiveRecovery(t *testing.T) {

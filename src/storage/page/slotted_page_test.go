@@ -20,9 +20,9 @@ func TestInsertAndGet(t *testing.T) {
 	var slotIDs []uint16
 
 	for _, rec := range records {
-		handle := page.PrepareInsertBytes(rec)
-		require.NotEqual(t, handle, INVALID_SLOT_NUMBER)
-		slot := page.CommitInsert(handle)
+		handle := page.InsertPrepare(rec)
+		require.NotEqual(t, handle, INVALID_INSERT_HANDLE)
+		slot := page.InsertCommit(handle)
 		slotIDs = append(slotIDs, slot)
 	}
 
@@ -41,11 +41,11 @@ func TestInsertAndGetLarger(t *testing.T) {
 	page := NewSlottedPage()
 	i := 0
 	for {
-		handle := page.PrepareInsertBytes([]byte(strconv.Itoa(i)))
-		if handle == INVALID_SLOT_NUMBER {
+		handle := page.InsertPrepare([]byte(strconv.Itoa(i)))
+		if handle == INVALID_INSERT_HANDLE {
 			break
 		}
-		page.CommitInsert(handle)
+		page.InsertCommit(handle)
 		i++
 	}
 
@@ -60,8 +60,8 @@ func TestFreeSpaceReduction(t *testing.T) {
 	page := NewSlottedPage()
 	initialFree := page.getHeader().freeEnd - page.getHeader().freeStart
 
-	handle := page.PrepareInsertBytes([]byte("1234567890"))
-	_ = page.CommitInsert(handle)
+	handle := page.InsertPrepare([]byte("1234567890"))
+	_ = page.InsertCommit(handle)
 
 	used := page.getHeader().freeEnd - page.getHeader().freeStart
 	assert.Less(t, used, initialFree, "Free space did not reduce correctly")
@@ -71,8 +71,8 @@ func TestInsertTooLarge(t *testing.T) {
 	page := NewSlottedPage()
 
 	tooBig := make([]byte, PageSize)
-	handle := page.PrepareInsertBytes(tooBig)
-	assert.Equal(t, INVALID_SLOT_NUMBER, handle)
+	handle := page.InsertPrepare(tooBig)
+	assert.Equal(t, INVALID_INSERT_HANDLE, handle)
 }
 
 func TestInvalidSlotID(t *testing.T) {

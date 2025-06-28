@@ -480,9 +480,9 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 		return NewNilLogRecordLocation(), err
 	}
 	p.Lock()
-	handle := p.PrepareInsertBytes(serializedRecord)
-	if handle != page.INVALID_SLOT_NUMBER {
-		slotNumber := p.CommitInsert(handle)
+	handle := p.InsertPrepare(serializedRecord)
+	if handle != page.INVALID_INSERT_HANDLE {
+		slotNumber := p.InsertCommit(handle)
 		lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
 		p.Unlock()
 		return lockedLogger.lastLogLocation, nil
@@ -501,9 +501,9 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 	}
 
 	p.Lock()
-	handle = p.PrepareInsertBytes(serializedRecord)
-	assert.Assert(handle != page.INVALID_SLOT_NUMBER, "very strange")
-	slotNumber := p.CommitInsert(handle)
+	handle = p.InsertPrepare(serializedRecord)
+	assert.Assert(handle != page.INVALID_INSERT_HANDLE, "very strange")
+	slotNumber := p.InsertCommit(handle)
 	p.Unlock()
 
 	err = lockedLogger.pool.Unpin(pageInfo)

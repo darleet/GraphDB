@@ -38,9 +38,10 @@ const (
 const (
 	slotOffsetSize        = 12
 	slotOffsetMask uint16 = (1 << slotOffsetSize) - 1
+	slotPtrSize    uint16 = uint16(unsafe.Sizeof(slotPointer(1)))
 )
 
-func newSlot(info slotInfo, offset uint16) slotPointer {
+func newSlotPtr(info slotInfo, offset uint16) slotPointer {
 	assert.Assert(offset <= slotOffsetMask, "the offset is too big")
 	return slotPointer((uint16(info) << slotOffsetSize) | offset)
 }
@@ -74,34 +75,20 @@ func (p *SlottedPage) getHeader() *header {
 	return (*header)(unsafe.Pointer(&p.data[0]))
 }
 
-// func (p *SlottedPage) getDataFromOffset(offset uint16) (int, []byte) {
-// 	length := *(*int)(unsafe.Pointer(&p.data[offset]))
-// 	dst := unsafe.Slice(&p.data[offset+uint16(unsafe.Sizeof(int(0)))], length)
-// 	return length, dst
-// }
-//
-// func (p *SlottedPage) setDataByOffset(offset uint16, data []byte) {
-// 	ptrToLength := (*int)(unsafe.Pointer(&p.data[offset]))
-// 	*ptrToLength = len(data)
-// 	dst := unsafe.Slice(&p.data[offset+uint16(unsafe.Sizeof(int(0)))],
-// len(data))
-// 	copy(dst, data)
-// }
-
 type InsertHandle uint16
 
-const INVALID_SLOT_NUMBER InsertHandle = InsertHandle(math.MaxUint16)
+const INVALID_INSERT_HANDLE InsertHandle = InsertHandle(math.MaxUint16)
 
-func PrepareInsert[T encoding.BinaryMarshaler](
+func InsertSerializable[T encoding.BinaryMarshaler](
 	p *SlottedPage,
-	data T,
+	obj T,
 ) InsertHandle {
-	bytes, err := data.MarshalBinary()
+	bytes, err := obj.MarshalBinary()
 	assert.Assert(err != nil)
-	return p.PrepareInsertBytes(bytes)
+	return p.InsertPrepare(bytes)
 }
 
-func (p *SlottedPage) CommitInsert(slotHandle InsertHandle) uint16 {
+func (p *SlottedPage) InsertCommit(slotHandle InsertHandle) uint16 {
 	header := p.getHeader()
 	assert.Assert(
 		uint16(slotHandle) < header.slotsCount,
@@ -116,23 +103,23 @@ func (p *SlottedPage) CommitInsert(slotHandle InsertHandle) uint16 {
 		ptr.recordInfo() == slotStatusPrepareInsert,
 		"tried to commit an insert to a wrong slot",
 	)
-	slots[slotHandle] = newSlot(slotStatusInserted, ptr.recordOffset())
+	slots[slotHandle] = newSlotPtr(slotStatusInserted, ptr.recordOffset())
 	return uint16(slotHandle)
 }
 
-func (p *SlottedPage) PrepareInsertBytes(data []byte) InsertHandle {
+func (p *SlottedPage) InsertPrepare(data []byte) InsertHandle {
 	header := p.getHeader()
 	requiredLength := len(data) + int(unsafe.Sizeof(int(1)))
 	if header.freeEnd < uint16(requiredLength) {
-		return INVALID_SLOT_NUMBER
+		return INVALID_INSERT_HANDLE
 	}
 
 	pos := header.freeEnd - uint16(requiredLength)
-	if pos < header.freeStart+uint16(unsafe.Sizeof(slotPointer(0))) {
-		return INVALID_SLOT_NUMBER
+	if pos < header.freeStart+slotPtrSize {
+		return INVALID_INSERT_HANDLE
 	}
 	defer func() {
-		header.freeStart += uint16(unsafe.Sizeof(slotPointer(0)))
+		header.freeStart += slotPtrSize
 		header.freeEnd = pos
 	}()
 
@@ -151,7 +138,7 @@ func (p *SlottedPage) PrepareInsertBytes(data []byte) InsertHandle {
 	header.slotsCount++
 
 	slots := header.getSlots()
-	slots[curSlot] = newSlot(slotStatusPrepareInsert, pos)
+	slots[curSlot] = newSlotPtr(slotStatusPrepareInsert, pos)
 	return InsertHandle(curSlot)
 }
 
