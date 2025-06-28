@@ -88,39 +88,39 @@ func (p *SlottedPage) getHeader() *header {
 // 	copy(dst, data)
 // }
 
-type insertHandle uint16
+type InsertHandle uint16
 
-const INVALID_SLOT_NUMBER insertHandle = insertHandle(math.MaxUint16)
+const INVALID_SLOT_NUMBER InsertHandle = InsertHandle(math.MaxUint16)
 
 func PrepareInsert[T encoding.BinaryMarshaler](
 	p *SlottedPage,
 	data T,
-) insertHandle {
+) InsertHandle {
 	bytes, err := data.MarshalBinary()
 	assert.Assert(err != nil)
 	return p.PrepareInsertBytes(bytes)
 }
 
-func (p *SlottedPage) CommitInsert(slotID insertHandle) uint16 {
+func (p *SlottedPage) CommitInsert(slotHandle InsertHandle) uint16 {
 	header := p.getHeader()
 	assert.Assert(
-		uint16(slotID) < header.slotsCount,
+		uint16(slotHandle) < header.slotsCount,
 		"slot number is too large. actual: %d. slots count: %d",
-		slotID,
+		slotHandle,
 		header.slotsCount,
 	)
 
 	slots := header.getSlots()
-	ptr := slots[slotID]
+	ptr := slots[slotHandle]
 	assert.Assert(
 		ptr.recordInfo() == slotStatusPrepareInsert,
 		"tried to commit an insert to a wrong slot",
 	)
-	slots[slotID] = newSlot(slotStatusInserted, ptr.recordOffset())
-	return uint16(slotID)
+	slots[slotHandle] = newSlot(slotStatusInserted, ptr.recordOffset())
+	return uint16(slotHandle)
 }
 
-func (p *SlottedPage) PrepareInsertBytes(data []byte) insertHandle {
+func (p *SlottedPage) PrepareInsertBytes(data []byte) InsertHandle {
 	header := p.getHeader()
 	requiredLength := len(data) + int(unsafe.Sizeof(int(1)))
 	if header.freeEnd < uint16(requiredLength) {
@@ -151,7 +151,7 @@ func (p *SlottedPage) PrepareInsertBytes(data []byte) insertHandle {
 
 	slots := header.getSlots()
 	slots[curSlot] = newSlot(slotStatusPrepareInsert, pos)
-	return insertHandle(curSlot)
+	return InsertHandle(curSlot)
 }
 
 func NewSlottedPage() *SlottedPage {
