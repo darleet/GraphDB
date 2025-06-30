@@ -444,12 +444,7 @@ func (l *TxnLogger) readLogRecord(
 	record := page.GetBytes(recordLocation.SlotNum)
 	page.RUnlock()
 
-	// if err != nil {
-	// 	return TypeUnknown, nil, err
-	// }
-
 	tag, r, err = readLogRecord(record)
-
 	return tag, r, err
 }
 
@@ -502,7 +497,11 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 
 	p.Lock()
 	handle = p.InsertPrepare(serializedRecord)
-	assert.Assert(handle != page.INVALID_INSERT_HANDLE, "very strange")
+	assert.Assert(
+		handle != page.INVALID_INSERT_HANDLE,
+		"impossible, because (1) the logger is locked [no concurrent writes are possible] "+
+			"and (2) the newly allocated page should be empty",
+	)
 	slotNumber := p.InsertCommit(handle)
 	p.Unlock()
 

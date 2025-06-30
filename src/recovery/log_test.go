@@ -74,9 +74,6 @@ func TestValidRecovery(t *testing.T) {
 	}
 
 	data := p.GetBytes(slotNum)
-	// if err != nil {
-	// 	t.Fatalf("Page.Get failed: %v", err)
-	// }
 
 	if !bytes.Equal(data[:len(after)], after) {
 		t.Errorf(
@@ -161,31 +158,6 @@ func TestFailedTxn(t *testing.T) {
 	require.NoError(t, err, "couldn't move the iterator")
 	require.False(t, ok)
 }
-
-// func TestRecoveryATT(t *testing.T) {
-// 	pool := bufferpool.NewBufferPoolMock()
-// 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
-//
-// 	logger := &TxnLogger{
-// 		pool:      pool,
-// 		logfileID: 1,
-// 		lastLogLocation: LogRecordLocationInfo{
-// 			Lsn:      0,
-// 			Location: FileLocation{PageID: 0, SlotNum: 0},
-// 		},
-// 	}
-//
-// 	chain := NewTxnLogChain(logger, txns.TransactionID(1))
-// 	dataPageID := bufferpool.PageIdentity{
-// 		FileID: 52,
-// 		PageID: 43,
-// 	}
-//
-// 	chain.Begin().
-// 		Insert(dataPageID, 0, []byte("insert")).
-// 		Update
-//
-// }
 
 func insertValue(
 	t *testing.T,
