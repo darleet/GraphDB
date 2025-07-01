@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 )
 
@@ -70,9 +69,7 @@ func (iter *LogRecordsIter) MoveForward() (res bool, err error) {
 }
 
 func (iter *LogRecordsIter) ReadRecord() (LogRecordTypeTag, any, error) {
-	d, err := iter.lockedPage.Get(iter.curLoc.SlotNum)
-	assert.Assert(err == nil, "LogIter invariant violated. err: %+v", err)
-
+	d := iter.lockedPage.GetBytes(iter.curLoc.SlotNum)
 	return readLogRecord(d)
 }
 

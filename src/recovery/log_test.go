@@ -73,10 +73,7 @@ func TestValidRecovery(t *testing.T) {
 		t.Fatalf("GetPage failed: %v", err)
 	}
 
-	data, err := p.Get(slotNum)
-	if err != nil {
-		t.Fatalf("Page.Get failed: %v", err)
-	}
+	data := p.GetBytes(slotNum)
 
 	if !bytes.Equal(data[:len(after)], after) {
 		t.Errorf(
@@ -162,31 +159,6 @@ func TestFailedTxn(t *testing.T) {
 	require.False(t, ok)
 }
 
-// func TestRecoveryATT(t *testing.T) {
-// 	pool := bufferpool.NewBufferPoolMock()
-// 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
-//
-// 	logger := &TxnLogger{
-// 		pool:      pool,
-// 		logfileID: 1,
-// 		lastLogLocation: LogRecordLocationInfo{
-// 			Lsn:      0,
-// 			Location: FileLocation{PageID: 0, SlotNum: 0},
-// 		},
-// 	}
-//
-// 	chain := NewTxnLogChain(logger, txns.TransactionID(1))
-// 	dataPageID := bufferpool.PageIdentity{
-// 		FileID: 52,
-// 		PageID: 43,
-// 	}
-//
-// 	chain.Begin().
-// 		Insert(dataPageID, 0, []byte("insert")).
-// 		Update
-//
-// }
-
 func insertValue(
 	t *testing.T,
 	pool bufferpool.BufferPool[*page.SlottedPage],
@@ -202,9 +174,11 @@ func insertValue(
 	p.Lock()
 	defer p.Unlock()
 
-	slot, err := p.Insert(data)
-
-	return slot, err
+	insertHandle := p.InsertPrepare(data)
+	if insertHandle == page.INVALID_INSERT_HANDLE {
+		return 0, page.ErrNoEnoughSpace
+	}
+	return p.InsertCommit(insertHandle), nil
 }
 
 func TestMassiveRecovery(t *testing.T) {
@@ -319,8 +293,7 @@ func TestMassiveRecovery(t *testing.T) {
 					p.Lock()
 					defer p.Unlock()
 
-					data, err := p.Get(recordLoc.SlotNum)
-					require.NoError(t, err)
+					data := p.GetBytes(recordLoc.SlotNum)
 
 					clear(data)
 
@@ -358,9 +331,7 @@ func TestMassiveRecovery(t *testing.T) {
 			p.RLock()
 			defer p.RUnlock()
 
-			data, err := p.Get(location.SlotNum)
-			require.NoError(t, err)
-
+			data := p.GetBytes(location.SlotNum)
 			require.Equal(t, len(INIT), len(data))
 
 			for i := range len(INIT) {
@@ -425,8 +396,7 @@ func assertLogRecordWithRetrieval(
 	require.NoError(t, err)
 	page.RLock()
 
-	data, err := page.Get(slotNum)
-	require.NoError(t, err)
+	data := page.GetBytes(slotNum)
 
 	tag, untypedRecord, err := readLogRecord(data)
 	require.NoError(t, err)
