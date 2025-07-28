@@ -2,18 +2,11 @@ package page
 
 import (
 	"encoding"
-	"errors"
 	"sync"
 	"unsafe"
 
 	assert "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
-
-	. "github.com/Blackdeer1524/GraphDB/src/pkg/optional"
-)
-
-var (
-	ErrNoEnoughSpace = errors.New("not enough space")
-	ErrInvalidSlotID = errors.New("invalid slot ID")
+	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 )
 
 // TODO добавить рисунок - иллюстрацию
@@ -79,7 +72,7 @@ func (p *SlottedPage) getHeader() *header {
 func InsertSerializable[T encoding.BinaryMarshaler](
 	p *SlottedPage,
 	obj T,
-) Optional[uint16] {
+) optional.Optional[uint16] {
 	bytes, err := obj.MarshalBinary()
 	assert.Assert(err != nil)
 	return p.InsertPrepare(bytes)
@@ -103,16 +96,17 @@ func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	slots[slotHandle] = newSlotPtr(slotStatusInserted, ptr.recordOffset())
 }
 
-func (p *SlottedPage) InsertPrepare(data []byte) Optional[uint16] {
+func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
 	header := p.getHeader()
-	requiredLength := len(data) + int(unsafe.Sizeof(int(1)))
+	// space required to store both the array and it's length
+	requiredLength := int(unsafe.Sizeof(int(1))) + len(data)
 	if header.freeEnd < uint16(requiredLength) {
-		return None[uint16]()
+		return optional.None[uint16]()
 	}
 
 	pos := header.freeEnd - uint16(requiredLength)
 	if pos < header.freeStart+slotPtrSize {
-		return None[uint16]()
+		return optional.None[uint16]()
 	}
 	defer func() {
 		header.freeStart += slotPtrSize
@@ -135,7 +129,7 @@ func (p *SlottedPage) InsertPrepare(data []byte) Optional[uint16] {
 
 	slots := header.getSlots()
 	slots[curSlot] = newSlotPtr(slotStatusPrepareInsert, pos)
-	return Some(curSlot)
+	return optional.Some(curSlot)
 }
 
 func NewSlottedPage() *SlottedPage {
