@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	. "github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 )
 
 func TestInsertAndGet(t *testing.T) {
@@ -20,10 +22,10 @@ func TestInsertAndGet(t *testing.T) {
 	var slotIDs []uint16
 
 	for _, rec := range records {
-		handle := page.InsertPrepare(rec)
-		require.NotEqual(t, handle, INVALID_INSERT_HANDLE)
-		slot := page.InsertCommit(handle)
-		slotIDs = append(slotIDs, slot)
+		slot := page.InsertPrepare(rec)
+		require.NotEqual(t, slot, None[uint16]())
+		page.InsertCommit(slot.Unwrap())
+		slotIDs = append(slotIDs, slot.Unwrap())
 	}
 
 	for i, id := range slotIDs {
@@ -42,10 +44,10 @@ func TestInsertAndGetLarger(t *testing.T) {
 	i := 0
 	for {
 		handle := page.InsertPrepare([]byte(strconv.Itoa(i)))
-		if handle == INVALID_INSERT_HANDLE {
+		if handle.IsNone() {
 			break
 		}
-		page.InsertCommit(handle)
+		page.InsertCommit(handle.Unwrap())
 		i++
 	}
 
@@ -60,8 +62,8 @@ func TestFreeSpaceReduction(t *testing.T) {
 	page := NewSlottedPage()
 	initialFree := page.getHeader().freeEnd - page.getHeader().freeStart
 
-	handle := page.InsertPrepare([]byte("1234567890"))
-	_ = page.InsertCommit(handle)
+	slot := page.InsertPrepare([]byte("1234567890"))
+	page.InsertCommit(slot.Unwrap())
 
 	used := page.getHeader().freeEnd - page.getHeader().freeStart
 	assert.Less(t, used, initialFree, "Free space did not reduce correctly")
@@ -72,7 +74,7 @@ func TestInsertTooLarge(t *testing.T) {
 
 	tooBig := make([]byte, PageSize)
 	handle := page.InsertPrepare(tooBig)
-	assert.Equal(t, INVALID_INSERT_HANDLE, handle)
+	assert.Equal(t, None[uint16](), handle)
 }
 
 func TestInvalidSlotID(t *testing.T) {

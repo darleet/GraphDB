@@ -445,9 +445,10 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 		return NewNilLogRecordLocation(), err
 	}
 	p.Lock()
-	handle := p.InsertPrepare(serializedRecord)
-	if handle != page.INVALID_INSERT_HANDLE {
-		slotNumber := p.InsertCommit(handle)
+	slotNumberOpt := p.InsertPrepare(serializedRecord)
+	if slotNumberOpt.IsSome() {
+		slotNumber := slotNumberOpt.Unwrap()
+		p.InsertCommit(slotNumber)
 		lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
 		p.Unlock()
 		return lockedLogger.lastLogLocation, nil
@@ -466,17 +467,17 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 	}
 
 	p.Lock()
-	handle = p.InsertPrepare(serializedRecord)
+	slotNumberOpt = p.InsertPrepare(serializedRecord)
 	assert.Assert(
-		handle != page.INVALID_INSERT_HANDLE,
+		slotNumberOpt.IsSome(),
 		"impossible, because (1) the logger is locked [no concurrent writes are possible] "+
 			"and (2) the newly allocated page should be empty",
 	)
-	slotNumber := p.InsertCommit(handle)
+	p.InsertCommit(slotNumberOpt.Unwrap())
 	p.Unlock()
 
 	err = lockedLogger.pool.Unpin(pageInfo)
-	lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
+	lockedLogger.lastLogLocation.Location.SlotNum = slotNumberOpt.Unwrap()
 
 	return lockedLogger.lastLogLocation, err
 }

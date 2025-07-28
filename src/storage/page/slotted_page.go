@@ -3,11 +3,12 @@ package page
 import (
 	"encoding"
 	"errors"
-	"math"
 	"sync"
 	"unsafe"
 
 	assert "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+
+	. "github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 )
 
 var (
@@ -75,20 +76,16 @@ func (p *SlottedPage) getHeader() *header {
 	return (*header)(unsafe.Pointer(&p.data[0]))
 }
 
-type InsertHandle uint16
-
-const INVALID_INSERT_HANDLE InsertHandle = InsertHandle(math.MaxUint16)
-
 func InsertSerializable[T encoding.BinaryMarshaler](
 	p *SlottedPage,
 	obj T,
-) InsertHandle {
+) Optional[uint16] {
 	bytes, err := obj.MarshalBinary()
 	assert.Assert(err != nil)
 	return p.InsertPrepare(bytes)
 }
 
-func (p *SlottedPage) InsertCommit(slotHandle InsertHandle) uint16 {
+func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	header := p.getHeader()
 	assert.Assert(
 		uint16(slotHandle) < header.slotsCount,
@@ -104,19 +101,18 @@ func (p *SlottedPage) InsertCommit(slotHandle InsertHandle) uint16 {
 		"tried to commit an insert to a wrong slot",
 	)
 	slots[slotHandle] = newSlotPtr(slotStatusInserted, ptr.recordOffset())
-	return uint16(slotHandle)
 }
 
-func (p *SlottedPage) InsertPrepare(data []byte) InsertHandle {
+func (p *SlottedPage) InsertPrepare(data []byte) Optional[uint16] {
 	header := p.getHeader()
 	requiredLength := len(data) + int(unsafe.Sizeof(int(1)))
 	if header.freeEnd < uint16(requiredLength) {
-		return INVALID_INSERT_HANDLE
+		return None[uint16]()
 	}
 
 	pos := header.freeEnd - uint16(requiredLength)
 	if pos < header.freeStart+slotPtrSize {
-		return INVALID_INSERT_HANDLE
+		return None[uint16]()
 	}
 	defer func() {
 		header.freeStart += slotPtrSize
@@ -139,7 +135,7 @@ func (p *SlottedPage) InsertPrepare(data []byte) InsertHandle {
 
 	slots := header.getSlots()
 	slots[curSlot] = newSlotPtr(slotStatusPrepareInsert, pos)
-	return InsertHandle(curSlot)
+	return Some(curSlot)
 }
 
 func NewSlottedPage() *SlottedPage {
