@@ -325,7 +325,7 @@ func getSlotFromPage(
 		PageID: recordID.PageID,
 	}
 	p, err := pool.GetPage(pageID)
-	defer func() { err = pool.Unpin(pageID) }()
+	defer func() { err = errors.Join(err, pool.Unpin(pageID)) }()
 	assert.NoError(err)
 
 	p.Lock()
@@ -415,8 +415,6 @@ func (l *TxnLogger) readLogRecord(
 // there is not enough space on the current page, it advances to the next page
 // and retries the insertion. The function returns the location information of
 // the written log record or an error if the operation fails.
-//
-// WARN: l has to be locked!
 //
 // Parameters:
 //
@@ -634,10 +632,7 @@ func (l *TxnLogger) AppendCheckpointEnd(
 
 // TODO: handle insertion and deletion UNDOs
 func (l *TxnLogger) activateCLR(record *CompensationLogRecord) {
-	slotData, err := getSlotFromPage(
-		l.pool,
-		record.modifiedRecordID,
-	)
+	panic("special case handling not implemented for different clr types")
 
 	assert.NoError(err)
 	assert.Assert(

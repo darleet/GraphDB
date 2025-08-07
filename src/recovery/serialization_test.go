@@ -294,7 +294,7 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 			FileID:  192021,
 			SlotNum: 22224,
 		},
-		true,
+		CLRtypeUpdate,
 		252627,
 		[]byte("before value"),
 		[]byte("after value123"),
@@ -493,4 +493,105 @@ func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
 	if err := recovered.UnmarshalBinary(data); err == nil {
 		t.Fatal("Expected error for invalid type tag, got nil")
 	}
+}
+func TestDeleteLogRecord_MarshalUnmarshal(t *testing.T) {
+	original := NewDeleteLogRecord(
+		123,
+		txns.TxnID(456),
+		LogRecordLocationInfo{789, FileLocation{101112, 13141}},
+		RecordID{
+			PageID:  161718,
+			FileID:  192021,
+			SlotNum: 2224,
+		},
+		[]byte("before value"),
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.NoError(t, err)
+
+	assert.Equal(t, original.lsn, recovered.lsn)
+	assert.Equal(t, original.txnID, recovered.txnID)
+	assert.Equal(t, original.parentLogLocation, recovered.parentLogLocation)
+	assert.Equal(t, original.modifiedRecordID, recovered.modifiedRecordID)
+	assert.Equal(t, original.beforeValue, recovered.beforeValue)
+}
+
+func TestDeleteLogRecord_MarshalBinary_EmptyBeforeValue(t *testing.T) {
+	original := NewDeleteLogRecord(
+		1,
+		txns.TxnID(2),
+		LogRecordLocationInfo{3, FileLocation{4, 5}},
+		RecordID{
+			PageID:  6,
+			FileID:  7,
+			SlotNum: 8,
+		},
+		[]byte{},
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.NoError(t, err)
+	assert.Empty(t, recovered.beforeValue)
+}
+
+func TestDeleteLogRecord_UnmarshalBinary_InvalidTypeTag(t *testing.T) {
+	original := NewDeleteLogRecord(
+		1,
+		txns.TxnID(2),
+		LogRecordLocationInfo{3, FileLocation{4, 5}},
+		RecordID{
+			PageID:  6,
+			FileID:  7,
+			SlotNum: 8,
+		},
+		[]byte("before"),
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	data[0] = 0xFF // Corrupt the type tag
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.Error(t, err)
+}
+
+func TestDeleteLogRecord_UnmarshalBinary_EmptyData(t *testing.T) {
+	var recovered DeleteLogRecord
+	err := recovered.UnmarshalBinary([]byte{})
+	assert.Error(t, err)
+}
+
+func TestDeleteLogRecord_UnmarshalBinary_TruncatedData(t *testing.T) {
+	original := NewDeleteLogRecord(
+		1,
+		txns.TxnID(2),
+		LogRecordLocationInfo{3, FileLocation{4, 5}},
+		RecordID{
+			PageID:  6,
+			FileID:  7,
+			SlotNum: 8,
+		},
+		[]byte("before"),
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	// Truncate the data
+	data = data[:len(data)-2]
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.Error(t, err)
 }

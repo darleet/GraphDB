@@ -19,6 +19,7 @@ const (
 	TypeBegin LogRecordTypeTag = iota + 1
 	TypeUpdate
 	TypeInsert
+	TypeDelete
 	TypeCommit
 	TypeAbort
 	TypeTxnEnd
@@ -251,6 +252,71 @@ func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+func (r *DeleteLogRecord) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(byte(TypeDelete))
+
+	if err := binary.Write(buf, binary.BigEndian, r.lsn); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.BigEndian, r.txnID); err != nil {
+		return nil, err
+	}
+
+	d, err := r.parentLogLocation.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(d)
+
+	if err := binary.Write(buf, binary.BigEndian, r.modifiedRecordID); err != nil {
+		return nil, err
+	}
+
+	//nolint:gosec
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(r.beforeValue))); err != nil {
+		return nil, err
+	}
+
+	buf.Write(r.beforeValue)
+
+	return buf.Bytes(), nil
+}
+
+func (r *DeleteLogRecord) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 || data[0] != byte(TypeDelete) {
+		return errors.New("invalid type tag for DeleteLogRecord")
+	}
+
+	reader := bytes.NewReader(data[1:])
+
+	if err := binary.Read(reader, binary.BigEndian, &r.lsn); err != nil {
+		return err
+	}
+
+	if err := binary.Read(reader, binary.BigEndian, &r.txnID); err != nil {
+		return err
+	}
+
+	if err := binary.Read(reader, binary.BigEndian, &r.parentLogLocation); err != nil {
+		return err
+	}
+
+	if err := binary.Read(reader, binary.BigEndian, &r.modifiedRecordID); err != nil {
+		return err
+	}
+
+	var beforeLen uint32
+	if err := binary.Read(reader, binary.BigEndian, &beforeLen); err != nil {
+		return err
+	}
+
+	r.beforeValue = make([]byte, beforeLen)
+	_, err := io.ReadFull(reader, r.beforeValue)
+	return err
+}
+
 // MarshalBinary for CommitLogRecord.
 func (c *CommitLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
@@ -410,7 +476,7 @@ func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, c.isDelete); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, c.clrType); err != nil {
 		return nil, err
 	}
 
@@ -458,7 +524,7 @@ func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &c.isDelete); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.clrType); err != nil {
 		return err
 	}
 

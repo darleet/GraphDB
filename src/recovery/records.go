@@ -71,6 +71,7 @@ var (
 	_ LogRecord           = &BeginLogRecord{}
 	_ RevertableLogRecord = &InsertLogRecord{}
 	_ RevertableLogRecord = &UpdateLogRecord{}
+	_ RevertableLogRecord = &DeleteLogRecord{}
 	_ LogRecord           = &CommitLogRecord{}
 	_ LogRecord           = &AbortLogRecord{}
 	_ LogRecord           = &CheckpointBeginLogRecord{}
@@ -116,7 +117,7 @@ func (r *UpdateLogRecord) Undo(
 		r.txnID,
 		parentLogLocation,
 		r.modifiedRecordID,
-		false,
+		CLRtypeUpdate,
 		r.parentLogLocation.Lsn,
 		r.afterValue,
 		r.beforeValue,
@@ -178,10 +179,54 @@ func (r *InsertLogRecord) Undo(
 		r.txnID,
 		parentLogLocation,
 		r.modifiedRecordID,
-		true,
+		CLRtypeInsert,
 		r.parentLogLocation.Lsn,
 		r.value,
 		make([]byte, len(r.value)),
+	)
+}
+
+type DeleteLogRecord struct {
+	lsn               LSN
+	txnID             txns.TxnID
+	parentLogLocation LogRecordLocationInfo
+	modifiedRecordID  RecordID
+	beforeValue       []byte
+}
+
+func NewDeleteLogRecord(
+	lsn LSN,
+	txnID txns.TxnID,
+	parentLogLocation LogRecordLocationInfo,
+	modifiedRecordID RecordID,
+	beforeValue []byte,
+) DeleteLogRecord {
+	return DeleteLogRecord{
+		lsn:               lsn,
+		txnID:             txnID,
+		parentLogLocation: parentLogLocation,
+		modifiedRecordID:  modifiedRecordID,
+		beforeValue:       beforeValue,
+	}
+}
+
+func (r *DeleteLogRecord) LSN() LSN {
+	return r.lsn
+}
+
+func (r *DeleteLogRecord) Undo(
+	lsn LSN,
+	parentLogLocation LogRecordLocationInfo,
+) CompensationLogRecord {
+	return NewCompensationLogRecord(
+		lsn,
+		r.txnID,
+		parentLogLocation,
+		r.modifiedRecordID,
+		CLRtypeDelete,
+		r.parentLogLocation.Lsn,
+		make([]byte, len(r.beforeValue)),
+		r.beforeValue,
 	)
 }
 
@@ -246,12 +291,20 @@ func NewTxnEndLogRecord(lsn LSN, txnID txns.TxnID,
 	}
 }
 
+type CLRtype byte
+
+const (
+	CLRtypeInsert CLRtype = iota
+	CLRtypeUpdate
+	CLRtypeDelete
+)
+
 type CompensationLogRecord struct {
 	lsn               LSN
 	txnID             txns.TxnID
 	parentLogLocation LogRecordLocationInfo
 	nextUndoLSN       LSN
-	isDelete          bool
+	clrType           CLRtype
 	modifiedRecordID  RecordID
 	beforeValue       []byte
 	afterValue        []byte
@@ -266,7 +319,7 @@ func NewCompensationLogRecord(
 	txnID txns.TxnID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedRecordID RecordID,
-	isDelete bool,
+	clrType CLRtype,
 	nextUndoLSN LSN,
 	beforeValue []byte,
 	afterValue []byte,
@@ -276,11 +329,15 @@ func NewCompensationLogRecord(
 		txnID:             txnID,
 		parentLogLocation: parentLogLocation,
 		modifiedRecordID:  modifiedRecordID,
-		isDelete:          isDelete,
+		clrType:           clrType,
 		nextUndoLSN:       nextUndoLSN,
 		beforeValue:       beforeValue,
 		afterValue:        afterValue,
 	}
+}
+
+func (r *CompensationLogRecord) Activate() {
+
 }
 
 type CheckpointBeginLogRecord struct {
