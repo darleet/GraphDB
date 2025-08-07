@@ -28,11 +28,11 @@ type TxnLogger struct {
 
 }
 
-func (lockedLogger *TxnLogger) iter(
+func (l *TxnLogger) iter(
 	start FileLocation,
 ) (*LogRecordsIter, error) {
-	p, err := lockedLogger.pool.GetPageNoCreate(bufferpool.PageIdentity{
-		FileID: lockedLogger.logfileID,
+	p, err := l.pool.GetPageNoCreate(bufferpool.PageIdentity{
+		FileID: l.logfileID,
 		PageID: start.PageID,
 	})
 	if err != nil {
@@ -41,9 +41,9 @@ func (lockedLogger *TxnLogger) iter(
 
 	p.RLock()
 	iter := newLogRecordIter(
-		lockedLogger.logfileID,
+		l.logfileID,
 		start,
-		lockedLogger.pool,
+		l.pool,
 		p,
 	)
 
@@ -62,16 +62,16 @@ func NewTxnLogger() {
 	panic("not implemented")
 }
 
-func (lockedLogger *TxnLogger) Recover(checkpointLocation FileLocation) {
-	ATT, DPT := lockedLogger.recoverAnalyze(checkpointLocation)
-	earliestLog := lockedLogger.recoverPrepareCLRs(ATT, DPT)
-	lockedLogger.recoverRedo(earliestLog.Location)
+func (l *TxnLogger) Recover(checkpointLocation FileLocation) {
+	ATT, DPT := l.recoverAnalyze(checkpointLocation)
+	earliestLog := l.recoverPrepareCLRs(ATT, DPT)
+	l.recoverRedo(earliestLog.Location)
 }
 
-func (lockedLogger *TxnLogger) recoverAnalyze(
+func (l *TxnLogger) recoverAnalyze(
 	checkpointLocation FileLocation,
 ) (ActiveTransactionsTable, map[bufferpool.PageIdentity]LogRecordLocationInfo) {
-	iter, err := lockedLogger.iter(FileLocation{
+	iter, err := l.iter(FileLocation{
 		PageID:  checkpointLocation.PageID,
 		SlotNum: checkpointLocation.SlotNum,
 	})
@@ -230,7 +230,7 @@ func (lockedLogger *TxnLogger) recoverAnalyze(
 	return ATT, DPT
 }
 
-func (lockedLogger *TxnLogger) recoverPrepareCLRs(
+func (l *TxnLogger) recoverPrepareCLRs(
 	ATT ActiveTransactionsTable,
 	DPT map[bufferpool.PageIdentity]LogRecordLocationInfo,
 ) LogRecordLocationInfo {
@@ -244,52 +244,46 @@ func (lockedLogger *TxnLogger) recoverPrepareCLRs(
 			continue
 		}
 
-		recordLocation := entry.logLocationInfo.Location
+		recordLocation := entry.logLocationInfo
+		lastInsertedRecordLocation := recordLocation
 		clrsFound := 0
 	outer:
 		for {
-			tag, record, err := lockedLogger.readLogRecord(recordLocation)
+			tag, record, err := l.readLogRecord(recordLocation.Location)
 			assert.NoError(err)
 			switch tag {
 			case TypeBegin:
 				record := assert.Cast[BeginLogRecord](record)
 
 				if earliestLogLocation.Lsn > record.lsn {
-					earliestLogLocation.Lsn = record.lsn
-					earliestLogLocation.Location = recordLocation
+					earliestLogLocation = recordLocation
 				}
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 
-				_, err := lockedLogger.AppendTxnEnd(record.TransactionID, entry.logLocationInfo)
+				_, err := l.AppendTxnEnd(record.TransactionID, entry.logLocationInfo)
 				assert.NoError(err)
 				break outer
 			case TypeInsert:
 				record := assert.Cast[InsertLogRecord](record)
 
-				DPT[record.modifiedRecordID.PageIdentity()] = LogRecordLocationInfo{
-					Lsn:      record.lsn,
-					Location: recordLocation,
-				}
-				recordLocation = record.parentLogLocation.Location
+				DPT[record.modifiedRecordID.PageIdentity()] = recordLocation
+				recordLocation = record.parentLogLocation
 				if clrsFound > 0 {
 					clrsFound--
 					continue
 				}
-				_, err := lockedLogger.undoInsert(&record)
+				_, lastInsertedRecordLocation, err = loggerUndoRecord(l, &record, lastInsertedRecordLocation)
 				assert.NoError(err)
 			case TypeUpdate:
 				record := assert.Cast[UpdateLogRecord](record)
 
-				DPT[record.modifiedRecordID.PageIdentity()] = LogRecordLocationInfo{
-					Lsn:      record.lsn,
-					Location: recordLocation,
-				}
-				recordLocation = record.parentLogLocation.Location
+				DPT[record.modifiedRecordID.PageIdentity()] = recordLocation
+				recordLocation = record.parentLogLocation
 				if clrsFound > 0 {
 					clrsFound--
 					continue
 				}
-				_, err := lockedLogger.undoUpdate(&record)
+				_, lastInsertedRecordLocation, err = loggerUndoRecord(l, &record, lastInsertedRecordLocation)
 				assert.NoError(err)
 			case TypeCommit:
 				_ = assert.Cast[CommitLogRecord](record)
@@ -298,14 +292,14 @@ func (lockedLogger *TxnLogger) recoverPrepareCLRs(
 				break outer
 			case TypeAbort:
 				record := assert.Cast[AbortLogRecord](record)
-				recordLocation = record.parentLogLocation.Location
+				recordLocation = record.parentLogLocation
 			case TypeTxnEnd:
 				_ = assert.Cast[TxnEndLogRecord](record)
 				assert.Assert(tag != TypeTxnEnd, "unreachable: ATT shouldn't have log records with TxnEnd logs")
 			case TypeCompensation:
 				record := assert.Cast[CompensationLogRecord](record)
 				clrsFound++
-				recordLocation = record.parentLogLocation.Location
+				recordLocation = record.parentLogLocation
 			case TypeCheckpointBegin:
 				_ = assert.Cast[CheckpointBeginLogRecord](record)
 				assert.Assert(tag != TypeCheckpointBegin, "unreachable: ATT shouldn't have CheckpointBegin records")
@@ -341,8 +335,8 @@ func getSlotFromPage(
 	return
 }
 
-func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
-	iter, err := lockedLogger.iter(earliestLog)
+func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
+	iter, err := l.iter(earliestLog)
 	assert.NoError(err)
 
 	for {
@@ -354,7 +348,7 @@ func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 			record := assert.Cast[InsertLogRecord](record)
 
 			slotData, err := getSlotFromPage(
-				lockedLogger.pool,
+				l.pool,
 				record.modifiedRecordID,
 			)
 			assert.NoError(err)
@@ -369,7 +363,7 @@ func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 			record := assert.Cast[UpdateLogRecord](record)
 
 			slotData, err := getSlotFromPage(
-				lockedLogger.pool,
+				l.pool,
 				record.modifiedRecordID,
 			)
 			assert.NoError(err)
@@ -382,7 +376,7 @@ func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 			copy(slotData, record.afterValue)
 		case TypeCompensation:
 			record := assert.Cast[CompensationLogRecord](record)
-			lockedLogger.activateCLR(&record)
+			l.activateCLR(&record)
 		}
 
 		success, err := iter.MoveForward()
@@ -394,15 +388,15 @@ func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 	}
 }
 
-func (lockedLogger *TxnLogger) readLogRecord(
+func (l *TxnLogger) readLogRecord(
 	recordLocation FileLocation,
 ) (tag LogRecordTypeTag, r any, err error) {
 	pageIdent := bufferpool.PageIdentity{
-		FileID: lockedLogger.logfileID,
+		FileID: l.logfileID,
 		PageID: recordLocation.PageID,
 	}
-	page, err := lockedLogger.pool.GetPage(pageIdent)
-	defer func() { err = errors.Join(err, lockedLogger.pool.Unpin(pageIdent)) }()
+	page, err := l.pool.GetPage(pageIdent)
+	defer func() { err = errors.Join(err, l.pool.Unpin(pageIdent)) }()
 
 	if err != nil {
 		return TypeUnknown, nil, err
@@ -421,6 +415,8 @@ func (lockedLogger *TxnLogger) readLogRecord(
 // there is not enough space on the current page, it advances to the next page
 // and retries the insertion. The function returns the location information of
 // the written log record or an error if the operation fails.
+//
+// WARN: l has to be locked!
 //
 // Parameters:
 //
@@ -482,9 +478,9 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 	return lockedLogger.lastLogLocation.Location, err
 }
 
-func (lockedLogger *TxnLogger) NewLSN() LSN {
-	lockedLogger.logRecordsCount++
-	lsn := LSN(lockedLogger.logRecordsCount)
+func (l *TxnLogger) NewLSN() LSN {
+	l.logRecordsCount++
+	lsn := LSN(l.logRecordsCount)
 	return lsn
 }
 
@@ -510,177 +506,136 @@ func marshalRecordAndWrite[T LogRecord](
 	return logInfo, nil
 }
 
-func (lockedLogger *TxnLogger) AppendBegin(
+func (l *TxnLogger) AppendBegin(
 	TransactionID txns.TxnID,
 ) (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	r := NewBeginLogRecord(lockedLogger.NewLSN(), TransactionID)
-	return marshalRecordAndWrite(lockedLogger, &r)
+	r := NewBeginLogRecord(l.NewLSN(), TransactionID)
+	return marshalRecordAndWrite(l, &r)
 }
 
-func (lockedLogger *TxnLogger) AppendUpdate(
+func (l *TxnLogger) AppendUpdate(
 	TransactionID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 	recordID RecordID,
 	beforeValue []byte,
 	afterValue []byte,
 ) (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	r := NewUpdateLogRecord(
-		lockedLogger.NewLSN(),
+		l.NewLSN(),
 		TransactionID,
 		prevLog,
 		recordID,
 		beforeValue,
 		afterValue,
 	)
-	return marshalRecordAndWrite(lockedLogger, &r)
+	return marshalRecordAndWrite(l, &r)
 }
 
-func (lockedLogger *TxnLogger) undoUpdate(
-	updateRecord *UpdateLogRecord,
-) (*CompensationLogRecord, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+func loggerUndoRecord[T RevertableLogRecord](
+	l *TxnLogger,
+	record T,
+	parentLocation LogRecordLocationInfo,
+) (*CompensationLogRecord, LogRecordLocationInfo, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	clr := NewCompensationLogRecord(
-		lockedLogger.NewLSN(),
-		updateRecord.TransactionID,
-		lockedLogger.lastLogLocation,
-		updateRecord.modifiedRecordID,
-		false,
-		updateRecord.parentLogLocation.Lsn,
-		updateRecord.afterValue,
-		updateRecord.beforeValue,
+	clr := record.Undo(
+		l.NewLSN(),
+		parentLocation,
 	)
-
-	bytes, err := clr.MarshalBinary()
+	location, err := marshalRecordAndWrite(l, &clr)
 	if err != nil {
-		return nil, err
+		return nil, LogRecordLocationInfo{}, err
 	}
 
-	_, err = lockedLogger.writeLogRecord(bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	return &clr, nil
+	return &clr, location, nil
 }
 
-func (lockedLogger *TxnLogger) AppendInsert(
+func (l *TxnLogger) AppendInsert(
 	TransactionID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 	recordID RecordID,
 	value []byte,
 ) (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	r := NewInsertLogRecord(
-		lockedLogger.NewLSN(),
+		l.NewLSN(),
 		TransactionID,
 		prevLog,
 		recordID,
 		value,
 	)
-
-	return marshalRecordAndWrite(lockedLogger, &r)
+	return marshalRecordAndWrite(l, &r)
 }
 
-func (lockedLogger *TxnLogger) undoInsert(
-	insertRecord *InsertLogRecord,
-) (*CompensationLogRecord, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
-
-	clr := NewCompensationLogRecord(
-		lockedLogger.NewLSN(),
-		insertRecord.TransactionID,
-		lockedLogger.lastLogLocation,
-		insertRecord.modifiedRecordID,
-		true,
-		insertRecord.parentLogLocation.Lsn,
-		insertRecord.value,
-		[]byte{},
-	)
-
-	bytes, err := clr.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = lockedLogger.writeLogRecord(bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	return &clr, nil
-}
-
-func (lockedLogger *TxnLogger) AppendCommit(
+func (l *TxnLogger) AppendCommit(
 	TransactionID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	r := NewCommitLogRecord(lockedLogger.NewLSN(), TransactionID, prevLog)
-	return marshalRecordAndWrite(lockedLogger, &r)
+	r := NewCommitLogRecord(l.NewLSN(), TransactionID, prevLog)
+	return marshalRecordAndWrite(l, &r)
 }
 
-func (lockedLogger *TxnLogger) AppendAbort(
+func (l *TxnLogger) AppendAbort(
 	TransactionID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	r := NewAbortLogRecord(lockedLogger.NewLSN(), TransactionID, prevLog)
-	return marshalRecordAndWrite(lockedLogger, &r)
+	r := NewAbortLogRecord(l.NewLSN(), TransactionID, prevLog)
+	return marshalRecordAndWrite(l, &r)
 }
 
-func (lockedLogger *TxnLogger) AppendTxnEnd(
+func (l *TxnLogger) AppendTxnEnd(
 	TransactionID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	r := NewTxnEndLogRecord(lockedLogger.NewLSN(), TransactionID, prevLog)
-	return marshalRecordAndWrite(lockedLogger, &r)
+	r := NewTxnEndLogRecord(l.NewLSN(), TransactionID, prevLog)
+	return marshalRecordAndWrite(l, &r)
 }
 
-func (lockedLogger *TxnLogger) AppendCheckpointBegin() (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+func (l *TxnLogger) AppendCheckpointBegin() (LogRecordLocationInfo, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	r := NewCheckpointBegin(lockedLogger.NewLSN())
-	return marshalRecordAndWrite(lockedLogger, &r)
+	r := NewCheckpointBegin(l.NewLSN())
+	return marshalRecordAndWrite(l, &r)
 }
 
-func (lockedLogger *TxnLogger) AppendCheckpointEnd(
+func (l *TxnLogger) AppendCheckpointEnd(
 	activeTransacitons []txns.TxnID,
 	dirtyPageTable map[bufferpool.PageIdentity]LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
-	lockedLogger.mu.Lock()
-	defer lockedLogger.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	r := NewCheckpointEnd(
-		lockedLogger.NewLSN(),
+		l.NewLSN(),
 		activeTransacitons,
 		dirtyPageTable,
 	)
-	return marshalRecordAndWrite(lockedLogger, &r)
+	return marshalRecordAndWrite(l, &r)
 }
 
 // TODO: handle insertion and deletion UNDOs
-func (lockedLogger *TxnLogger) activateCLR(record *CompensationLogRecord) {
+func (l *TxnLogger) activateCLR(record *CompensationLogRecord) {
 	slotData, err := getSlotFromPage(
-		lockedLogger.pool,
+		l.pool,
 		record.modifiedRecordID,
 	)
 
@@ -694,51 +649,54 @@ func (lockedLogger *TxnLogger) activateCLR(record *CompensationLogRecord) {
 	copy(slotData, record.afterValue)
 }
 
-func (lockedLogger *TxnLogger) Rollback(abortLogRecord LogRecordLocationInfo) {
+func (l *TxnLogger) Rollback(abortLogRecord LogRecordLocationInfo) {
 	assert.Assert(!abortLogRecord.isNil(), "nil log record")
 
-	_, abordRecord, err := lockedLogger.readLogRecord(abortLogRecord.Location)
+	_, abordRecord, err := l.readLogRecord(abortLogRecord.Location)
 	assert.NoError(err)
 
 	record := assert.Cast[AbortLogRecord](abordRecord)
-	recordLocation := record.parentLogLocation.Location
+	revertingRecordlocation := record.parentLogLocation
+	lastInsertedRecordLocation := abortLogRecord
 
 	clrsFound := 0
 outer:
 	for {
-		tag, record, err := lockedLogger.readLogRecord(recordLocation)
+		tag, record, err := l.readLogRecord(revertingRecordlocation.Location)
 		assert.NoError(err)
 		switch tag {
 		case TypeBegin:
 			record := assert.Cast[BeginLogRecord](record)
 			assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
-			_, err := lockedLogger.AppendTxnEnd(record.TransactionID, abortLogRecord)
+			_, err := l.AppendTxnEnd(record.TransactionID, abortLogRecord)
 			assert.NoError(err)
 			break outer
 		case TypeInsert:
 			record := assert.Cast[InsertLogRecord](record)
 
-			recordLocation = record.parentLogLocation.Location
+			revertingRecordlocation = record.parentLogLocation
 			if clrsFound > 0 {
 				clrsFound--
 				continue
 			}
 
-			clr, err := lockedLogger.undoInsert(&record)
+			var clr *CompensationLogRecord
+			clr, lastInsertedRecordLocation, err = loggerUndoRecord(l, &record, lastInsertedRecordLocation)
 			assert.NoError(err)
-			lockedLogger.activateCLR(clr)
+			l.activateCLR(clr)
 		case TypeUpdate:
 			record := assert.Cast[UpdateLogRecord](record)
 
-			recordLocation = record.parentLogLocation.Location
+			revertingRecordlocation = record.parentLogLocation
 			if clrsFound > 0 {
 				clrsFound--
 				continue
 			}
 
-			clr, err := lockedLogger.undoUpdate(&record)
+			var clr *CompensationLogRecord
+			clr, lastInsertedRecordLocation, err = loggerUndoRecord(l, &record, lastInsertedRecordLocation)
 			assert.NoError(err)
-			lockedLogger.activateCLR(clr)
+			l.activateCLR(clr)
 		case TypeCommit:
 			_ = assert.Cast[CommitLogRecord](record)
 			assert.Assert(clrsFound == 0, "found CLRs for a commited txn")
@@ -754,9 +712,9 @@ outer:
 			assert.Assert(tag != TypeTxnEnd, "cannot rollback a commited txn")
 		case TypeCompensation:
 			record := assert.Cast[CompensationLogRecord](record)
-			lockedLogger.activateCLR(&record)
+			l.activateCLR(&record)
 			clrsFound++
-			recordLocation = record.parentLogLocation.Location
+			revertingRecordlocation = record.parentLogLocation
 		case TypeCheckpointBegin:
 			_ = assert.Cast[CheckpointBeginLogRecord](record)
 			assert.Assert(

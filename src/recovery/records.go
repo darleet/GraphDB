@@ -59,15 +59,23 @@ type LogRecord interface {
 	encoding.BinaryUnmarshaler
 }
 
+type RevertableLogRecord interface {
+	LogRecord
+	Undo(
+		newLSN LSN,
+		parentLogLocation LogRecordLocationInfo,
+	) CompensationLogRecord
+}
+
 var (
-	_ LogRecord = &BeginLogRecord{}
-	_ LogRecord = &InsertLogRecord{}
-	_ LogRecord = &UpdateLogRecord{}
-	_ LogRecord = &CommitLogRecord{}
-	_ LogRecord = &AbortLogRecord{}
-	_ LogRecord = &CheckpointBeginLogRecord{}
-	_ LogRecord = &CheckpointEndLogRecord{}
-	_ LogRecord = &CompensationLogRecord{}
+	_ LogRecord           = &BeginLogRecord{}
+	_ RevertableLogRecord = &InsertLogRecord{}
+	_ RevertableLogRecord = &UpdateLogRecord{}
+	_ LogRecord           = &CommitLogRecord{}
+	_ LogRecord           = &AbortLogRecord{}
+	_ LogRecord           = &CheckpointBeginLogRecord{}
+	_ LogRecord           = &CheckpointEndLogRecord{}
+	_ LogRecord           = &CompensationLogRecord{}
 )
 
 type BeginLogRecord struct {
