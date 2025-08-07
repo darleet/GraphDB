@@ -32,7 +32,6 @@ func (c *TxnLogChain) SwitchTransactionID(
 	}
 
 	c.TransactionID = TransactionID
-
 	return c
 }
 

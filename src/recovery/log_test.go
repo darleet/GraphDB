@@ -2,7 +2,6 @@ package recovery
 
 import (
 	"bytes"
-	"errors"
 	"maps"
 	"math"
 	"math/rand"
@@ -15,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
@@ -33,7 +33,9 @@ func TestValidRecovery(t *testing.T) {
 	}
 
 	dataPageID := bufferpool.PageIdentity{FileID: 42, PageID: 123}
-	slotNum, err := insertValue(t, pool, dataPageID, []byte("bef000"))
+	slotNumOpt, err := insertValueNoLogs(t, pool, dataPageID, []byte("bef000"))
+	require.True(t, slotNumOpt.IsSome())
+	slotNum := slotNumOpt.Unwrap()
 	require.NoError(t, err)
 
 	TransactionID := txns.TxnID(100)
@@ -103,8 +105,10 @@ func TestFailedTxn(t *testing.T) {
 	TransactionID := txns.TxnID(100)
 	before := []byte("before")
 
-	slotNum, err := insertValue(t, pool, pageID, before)
+	slotNumOpt, err := insertValueNoLogs(t, pool, pageID, before)
 	require.NoError(t, err, "couldn't insert a record")
+	require.True(t, slotNumOpt.IsSome())
+	slotNum := slotNumOpt.Unwrap()
 
 	// Simulate a transaction: **Begin -> Insert -> CRASH**
 	chain := NewTxnLogChain(logger, TransactionID).
@@ -161,12 +165,12 @@ func TestFailedTxn(t *testing.T) {
 	require.False(t, ok)
 }
 
-func insertValue(
+func insertValueNoLogs(
 	t *testing.T,
 	pool bufferpool.BufferPool[*page.SlottedPage],
 	pageId bufferpool.PageIdentity,
 	data []byte,
-) (uint16, error) {
+) (optional.Optional[uint16], error) {
 	p, err := pool.GetPage(pageId)
 	require.NoError(t, err)
 	defer func(pgID bufferpool.PageIdentity) { require.NoError(t, pool.Unpin(pgID)) }(
@@ -178,11 +182,11 @@ func insertValue(
 
 	insertHandle := p.InsertPrepare(data)
 	if insertHandle.IsNone() {
-		return 0, page.ErrNoEnoughSpace
+		return optional.None[uint16](), nil
 	}
 
 	p.InsertCommit(insertHandle.Unwrap())
-	return insertHandle.Unwrap(), nil
+	return insertHandle, nil
 }
 
 func TestMassiveRecovery(t *testing.T) {
@@ -220,7 +224,7 @@ func TestMassiveRecovery(t *testing.T) {
 		FileID: DataFileID,
 		PageID: 321,
 	}
-	slot := uint16(0)
+	slot := optional.Some(uint16(0))
 
 	N := 100
 	i := 0
@@ -231,8 +235,8 @@ func TestMassiveRecovery(t *testing.T) {
 		succ := func() bool {
 			var err error
 
-			slot, err = insertValue(t, pool, dataPageId, INIT)
-			if errors.Is(err, page.ErrNoEnoughSpace) {
+			slot, err = insertValueNoLogs(t, pool, dataPageId, INIT)
+			if slot.IsNone() {
 				dataPageId.PageID++
 				return false
 			}
@@ -245,7 +249,7 @@ func TestMassiveRecovery(t *testing.T) {
 		if succ {
 			index2pageID[i] = FileLocation{
 				PageID:  dataPageId.PageID,
-				SlotNum: slot,
+				SlotNum: slot.Unwrap(),
 			}
 			i++
 		}
@@ -629,9 +633,9 @@ func TestLoggerRollback(t *testing.T) {
 	}
 
 	files := []uint64{}
-	for range 10 {
+	for range 1 {
 		for {
-			fileID := rand.Uint64()
+			fileID := rand.Uint64() % 1024
 			if fileID == logger.logfileID {
 				continue
 			}
@@ -640,13 +644,14 @@ func TestLoggerRollback(t *testing.T) {
 		}
 	}
 
-	recordValues := fillPages(t, logger, math.MaxUint64, 100, files)
+	recordValues := fillPages(t, logger, math.MaxUint64, 100000, files)
+	require.NoError(t, pool.EnsureAllPagesUnpinned())
+
 	updatedValues := make(map[RecordID]int, len(recordValues))
 	maps.Copy(updatedValues, recordValues)
 
-	c := mapBatch(recordValues, 5)
 	txnID := atomic.Uint64{}
-	for batch := range c {
+	for batch := range mapBatch(recordValues, 2000) {
 		go func() {
 			txnID := txns.TxnID(txnID.Add(1))
 			chain := NewTxnLogChain(logger, txnID).Begin()
@@ -662,7 +667,23 @@ func TestLoggerRollback(t *testing.T) {
 				)
 			}
 			abortRecordLoc := chain.Abort().Loc()
+			require.NoError(t, chain.Err())
 			logger.Rollback(abortRecordLoc)
+		}()
+	}
+
+	for k, v := range recordValues {
+		defer func() {
+			pageID := bufferpool.PageIdentity{
+				FileID: k.FileID,
+				PageID: k.PageID,
+			}
+			page, err := pool.GetPageNoCreate(pageID)
+			assert.NoError(t, err)
+			defer func() { assert.NoError(t, pool.Unpin(pageID)) }()
+
+			data := page.GetBytes(k.SlotNum)
+			assert.Equal(t, data, []byte(strconv.Itoa(v)))
 		}()
 	}
 }
@@ -682,13 +703,13 @@ func fillPages(
 		for {
 			pageID := bufferpool.PageIdentity{
 				FileID: fileIDs[rand.Int()%len(fileIDs)],
-				PageID: rand.Uint64(),
+				PageID: rand.Uint64() % 1024,
 			}
 
 			p, err := logger.pool.GetPage(pageID)
-			assert.NoError(t, err)
-
-			failed := func() bool {
+			require.NoError(t, err)
+			success := func() bool {
+				defer func() { require.NoError(t, logger.pool.Unpin(pageID)) }()
 				p.Lock()
 				defer p.Unlock()
 
@@ -699,7 +720,6 @@ func fillPages(
 				if slotOpt.IsNone() {
 					return false
 				}
-				require.True(t, slotOpt.IsSome())
 				slot := slotOpt.Unwrap()
 				chain.Insert(pageID, slot, insertedValue)
 				p.InsertCommit(slot)
@@ -712,13 +732,13 @@ func fillPages(
 				return true
 			}()
 
-			if !failed {
+			if success {
 				break
 			}
 		}
 	}
 	chain.Commit()
 
-	assert.NoError(t, chain.Err())
+	require.NoError(t, chain.Err())
 	return res
 }

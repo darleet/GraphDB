@@ -1,6 +1,8 @@
 package recovery
 
 import (
+	"encoding"
+
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
@@ -8,18 +10,6 @@ import (
 type LSN uint64
 
 var NIL_LSN LSN = LSN(0)
-
-type BeginLogRecord struct {
-	lsn           LSN
-	TransactionID txns.TxnID
-}
-
-func NewBeginLogRecord(lsn LSN, TransactionID txns.TxnID) BeginLogRecord {
-	return BeginLogRecord{
-		lsn:           lsn,
-		TransactionID: TransactionID,
-	}
-}
 
 type FileLocation struct {
 	PageID  uint64
@@ -63,6 +53,39 @@ func (p *LogRecordLocationInfo) isNil() bool {
 	return p.Lsn == NIL_LSN
 }
 
+type LogRecord interface {
+	LSN() LSN
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
+}
+
+var (
+	_ LogRecord = &BeginLogRecord{}
+	_ LogRecord = &InsertLogRecord{}
+	_ LogRecord = &UpdateLogRecord{}
+	_ LogRecord = &CommitLogRecord{}
+	_ LogRecord = &AbortLogRecord{}
+	_ LogRecord = &CheckpointBeginLogRecord{}
+	_ LogRecord = &CheckpointEndLogRecord{}
+	_ LogRecord = &CompensationLogRecord{}
+)
+
+type BeginLogRecord struct {
+	lsn           LSN
+	TransactionID txns.TxnID
+}
+
+func NewBeginLogRecord(lsn LSN, TransactionID txns.TxnID) BeginLogRecord {
+	return BeginLogRecord{
+		lsn:           lsn,
+		TransactionID: TransactionID,
+	}
+}
+
+func (l *BeginLogRecord) LSN() LSN {
+	return l.lsn
+}
+
 type UpdateLogRecord struct {
 	lsn               LSN
 	TransactionID     txns.TxnID
@@ -70,6 +93,10 @@ type UpdateLogRecord struct {
 	modifiedRecordID  RecordID
 	beforeValue       []byte
 	afterValue        []byte
+}
+
+func (r *UpdateLogRecord) LSN() LSN {
+	return r.lsn
 }
 
 func (r *UpdateLogRecord) Undo(
@@ -114,6 +141,10 @@ type InsertLogRecord struct {
 	value             []byte
 }
 
+func (r *InsertLogRecord) LSN() LSN {
+	return r.lsn
+}
+
 func NewInsertLogRecord(
 	lsn LSN,
 	TransactionID txns.TxnID,
@@ -152,6 +183,10 @@ type CommitLogRecord struct {
 	parentLogLocation LogRecordLocationInfo
 }
 
+func (r *CommitLogRecord) LSN() LSN {
+	return r.lsn
+}
+
 func NewCommitLogRecord(
 	lsn LSN,
 	TransactionID txns.TxnID,
@@ -170,6 +205,10 @@ type AbortLogRecord struct {
 	parentLogLocation LogRecordLocationInfo
 }
 
+func (r *AbortLogRecord) LSN() LSN {
+	return r.lsn
+}
+
 func NewAbortLogRecord(lsn LSN, TransactionID txns.TxnID,
 	parentLogLocation LogRecordLocationInfo,
 ) AbortLogRecord {
@@ -184,6 +223,10 @@ type TxnEndLogRecord struct {
 	lsn               LSN
 	TransactionID     txns.TxnID
 	parentLogLocation LogRecordLocationInfo
+}
+
+func (r *TxnEndLogRecord) LSN() LSN {
+	return r.lsn
 }
 
 func NewTxnEndLogRecord(lsn LSN, TransactionID txns.TxnID,
@@ -204,6 +247,10 @@ type CompensationLogRecord struct {
 	modifiedRecordID  RecordID
 	beforeValue       []byte
 	afterValue        []byte
+}
+
+func (r *CompensationLogRecord) LSN() LSN {
+	return r.lsn
 }
 
 func NewCompensationLogRecord(
@@ -236,6 +283,10 @@ func NewCheckpointBegin(lsn LSN) CheckpointBeginLogRecord {
 	return CheckpointBeginLogRecord{lsn: lsn}
 }
 
+func (l *CheckpointBeginLogRecord) LSN() LSN {
+	return l.lsn
+}
+
 type CheckpointEndLogRecord struct {
 	lsn                LSN
 	activeTransactions []txns.TxnID
@@ -252,4 +303,8 @@ func NewCheckpointEnd(
 		activeTransactions: activeTransacitons,
 		dirtyPageTable:     dirtyPageTable,
 	}
+}
+
+func (l *CheckpointEndLogRecord) LSN() LSN {
+	return l.lsn
 }
