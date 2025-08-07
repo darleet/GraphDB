@@ -20,10 +20,10 @@ type SlottedPage struct {
 }
 
 type slotPointer uint16
-type slotInfo byte
+type slotStatus byte
 
 const (
-	slotStatusFree slotInfo = iota
+	slotStatusFree slotStatus = iota
 	slotStatusPrepareInsert
 	slotStatusInserted
 	slotStatusDeleted
@@ -35,18 +35,18 @@ const (
 	slotPtrSize    uint16 = uint16(unsafe.Sizeof(slotPointer(1)))
 )
 
-func newSlotPtr(info slotInfo, offset uint16) slotPointer {
+func newSlotPtr(status slotStatus, offset uint16) slotPointer {
 	assert.Assert(offset <= slotOffsetMask, "the offset is too big")
-	return slotPointer((uint16(info) << slotOffsetSize) | offset)
+	return slotPointer((uint16(status) << slotOffsetSize) | offset)
 }
 
 func (s slotPointer) recordOffset() uint16 {
 	return uint16(s) & slotOffsetMask
 }
 
-func (s slotPointer) recordInfo() slotInfo {
+func (s slotPointer) recordInfo() slotStatus {
 	res := (uint16(s) & (^slotOffsetMask)) >> slotOffsetSize
-	return slotInfo(res)
+	return slotStatus(res)
 }
 
 type header struct {

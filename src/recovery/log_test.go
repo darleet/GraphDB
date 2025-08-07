@@ -242,7 +242,6 @@ func TestMassiveRecovery(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-
 			return true
 		}()
 
