@@ -71,7 +71,7 @@ func (b *BeginLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, b.TransactionID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, b.txnID); err != nil {
 		return nil, err
 	}
 
@@ -92,7 +92,7 @@ func (b *BeginLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	return binary.Read(reader, binary.BigEndian, &b.TransactionID)
+	return binary.Read(reader, binary.BigEndian, &b.txnID)
 }
 
 // MarshalBinary for UpdateLogRecord.
@@ -104,7 +104,7 @@ func (u *UpdateLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, u.TransactionID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, u.txnID); err != nil {
 		return nil, err
 	}
 
@@ -150,7 +150,7 @@ func (u *UpdateLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &u.TransactionID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &u.txnID); err != nil {
 		return err
 	}
 
@@ -192,7 +192,7 @@ func (i *InsertLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, i.TransactionID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, i.txnID); err != nil {
 		return nil, err
 	}
 
@@ -228,7 +228,7 @@ func (i *InsertLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &i.TransactionID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &i.txnID); err != nil {
 		return err
 	}
 
@@ -260,7 +260,7 @@ func (c *CommitLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, c.TransactionID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, c.txnID); err != nil {
 		return nil, err
 	}
 
@@ -285,7 +285,7 @@ func (c *CommitLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &c.TransactionID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.txnID); err != nil {
 		return err
 	}
 
@@ -305,7 +305,7 @@ func (a *AbortLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, a.TransactionID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, a.txnID); err != nil {
 		return nil, err
 	}
 
@@ -330,7 +330,7 @@ func (a *AbortLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &a.TransactionID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &a.txnID); err != nil {
 		return err
 	}
 
@@ -350,7 +350,7 @@ func (t *TxnEndLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, t.TransactionID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, t.txnID); err != nil {
 		return nil, err
 	}
 
@@ -375,7 +375,7 @@ func (t *TxnEndLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &t.TransactionID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &t.txnID); err != nil {
 		return err
 	}
 
@@ -395,7 +395,7 @@ func (c *CompensationLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if err := binary.Write(buf, binary.BigEndian, c.TransactionID); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, c.txnID); err != nil {
 		return nil, err
 	}
 
@@ -446,7 +446,7 @@ func (c *CompensationLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	if err := binary.Read(reader, binary.BigEndian, &c.TransactionID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &c.txnID); err != nil {
 		return err
 	}
 

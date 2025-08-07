@@ -27,11 +27,11 @@ func TestBeginLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 }
@@ -65,11 +65,11 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -134,11 +134,11 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -189,11 +189,11 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -228,11 +228,11 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -267,11 +267,11 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 

@@ -190,7 +190,7 @@ func TestChain(t *testing.T) {
 
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
-		require.Equal(t, TransactionID_1, r.TransactionID)
+		require.Equal(t, TransactionID_1, r.txnID)
 	}
 	{
 		data := page.GetBytes(1)
@@ -202,7 +202,7 @@ func TestChain(t *testing.T) {
 
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
-		require.Equal(t, TransactionID_1, r.TransactionID)
+		require.Equal(t, TransactionID_1, r.txnID)
 	}
 
 	{
@@ -215,7 +215,7 @@ func TestChain(t *testing.T) {
 
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
-		require.Equal(t, TransactionID_2, r.TransactionID)
+		require.Equal(t, TransactionID_2, r.txnID)
 	}
 	{
 		data := page.GetBytes(3)
@@ -227,7 +227,7 @@ func TestChain(t *testing.T) {
 
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
-		require.Equal(t, TransactionID_2, r.TransactionID)
+		require.Equal(t, TransactionID_2, r.txnID)
 	}
 	{
 		data := page.GetBytes(4)
@@ -239,7 +239,7 @@ func TestChain(t *testing.T) {
 
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
-		require.Equal(t, TransactionID_2, r.TransactionID)
+		require.Equal(t, TransactionID_2, r.txnID)
 	}
 
 	{
@@ -252,6 +252,6 @@ func TestChain(t *testing.T) {
 
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
-		require.Equal(t, TransactionID_1, r.TransactionID)
+		require.Equal(t, TransactionID_1, r.txnID)
 	}
 }

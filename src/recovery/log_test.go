@@ -361,31 +361,31 @@ func assertLogRecord(
 	case TypeBegin:
 		r, ok := untypedRecord.(BeginLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTransactionID, r.TransactionID)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	case TypeUpdate:
 		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTransactionID, r.TransactionID)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	case TypeInsert:
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTransactionID, r.TransactionID)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	case TypeCommit:
 		r, ok := untypedRecord.(CommitLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTransactionID, r.TransactionID)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	case TypeAbort:
 		r, ok := untypedRecord.(AbortLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTransactionID, r.TransactionID)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	case TypeTxnEnd:
 		r, ok := untypedRecord.(TxnEndLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTransactionID, r.TransactionID)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	case TypeCompensation:
 		r, ok := untypedRecord.(CompensationLogRecord)
 		require.True(t, ok)
-		require.Equal(t, expectedTransactionID, r.TransactionID)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	default:
 		require.Less(t, actualTag, TypeUnknown)
 	}

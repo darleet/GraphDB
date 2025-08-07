@@ -88,7 +88,7 @@ func (l *TxnLogger) recoverAnalyze(
 		case TypeBegin:
 			record := assert.Cast[BeginLogRecord](untypedRecord)
 			assert.Assert(ATT.Insert(
-				record.TransactionID,
+				record.txnID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -96,12 +96,12 @@ func (l *TxnLogger) recoverAnalyze(
 						Lsn:      record.lsn,
 						Location: iter.Location(),
 					}),
-			), "Found a `begin` record for the already running transaction. TransactionID: %d", record.TransactionID)
+			), "Found a `begin` record for the already running transaction. TransactionID: %d", record.txnID)
 		case TypeInsert:
 			record := assert.Cast[InsertLogRecord](untypedRecord)
 
 			ATT.Insert(
-				record.TransactionID,
+				record.txnID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -127,7 +127,7 @@ func (l *TxnLogger) recoverAnalyze(
 			}
 
 			ATT.Insert(
-				record.TransactionID,
+				record.txnID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -143,7 +143,7 @@ func (l *TxnLogger) recoverAnalyze(
 		case TypeCommit:
 			record := assert.Cast[CommitLogRecord](untypedRecord)
 			ATT.Insert(
-				record.TransactionID,
+				record.txnID,
 				tag,
 				NewATTEntry(
 					TxnStatusCommit,
@@ -156,7 +156,7 @@ func (l *TxnLogger) recoverAnalyze(
 			record := assert.Cast[AbortLogRecord](untypedRecord)
 
 			ATT.Insert(
-				record.TransactionID,
+				record.txnID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -167,7 +167,7 @@ func (l *TxnLogger) recoverAnalyze(
 			)
 		case TypeTxnEnd:
 			record := assert.Cast[TxnEndLogRecord](untypedRecord)
-			delete(ATT.table, record.TransactionID)
+			delete(ATT.table, record.txnID)
 		case TypeCheckpointBegin:
 			_ = assert.Cast[CheckpointBeginLogRecord](untypedRecord)
 		case TypeCheckpointEnd:
@@ -201,7 +201,7 @@ func (l *TxnLogger) recoverAnalyze(
 			record := assert.Cast[CompensationLogRecord](untypedRecord)
 
 			ATT.Insert(
-				record.TransactionID,
+				record.txnID,
 				tag,
 				NewATTEntry(
 					TxnStatusUndo,
@@ -260,7 +260,7 @@ func (l *TxnLogger) recoverPrepareCLRs(
 				}
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 
-				_, err := l.AppendTxnEnd(record.TransactionID, entry.logLocationInfo)
+				_, err := l.AppendTxnEnd(record.txnID, entry.logLocationInfo)
 				assert.NoError(err)
 				break outer
 			case TypeInsert:
@@ -668,7 +668,7 @@ outer:
 		case TypeBegin:
 			record := assert.Cast[BeginLogRecord](record)
 			assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
-			_, err := l.AppendTxnEnd(record.TransactionID, abortLogRecord)
+			_, err := l.AppendTxnEnd(record.txnID, abortLogRecord)
 			assert.NoError(err)
 			break outer
 		case TypeInsert:
