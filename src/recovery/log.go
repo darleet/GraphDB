@@ -220,7 +220,7 @@ func (lockedLogger *TxnLogger) recoverAnalyze(
 		}
 
 		success, err := iter.MoveForward()
-		assert.Assert(err == nil, "%+v", err)
+		assert.NoError(err)
 
 		if !success {
 			break
@@ -249,7 +249,7 @@ func (lockedLogger *TxnLogger) recoverPrepareCLRs(
 	outer:
 		for {
 			tag, record, err := lockedLogger.readLogRecord(recordLocation)
-			assert.Assert(err == nil, "todo")
+			assert.NoError(err)
 			switch tag {
 			case TypeBegin:
 				record := assert.Cast[BeginLogRecord](record)
@@ -261,7 +261,7 @@ func (lockedLogger *TxnLogger) recoverPrepareCLRs(
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 
 				_, err := lockedLogger.AppendTxnEnd(record.TransactionID, entry.logLocationInfo)
-				assert.Assert(err == nil, "todo")
+				assert.NoError(err)
 				break outer
 			case TypeInsert:
 				record := assert.Cast[InsertLogRecord](record)
@@ -276,7 +276,7 @@ func (lockedLogger *TxnLogger) recoverPrepareCLRs(
 					continue
 				}
 				_, err := lockedLogger.undoInsert(&record)
-				assert.Assert(err == nil, "todo")
+				assert.NoError(err)
 			case TypeUpdate:
 				record := assert.Cast[UpdateLogRecord](record)
 
@@ -290,7 +290,7 @@ func (lockedLogger *TxnLogger) recoverPrepareCLRs(
 					continue
 				}
 				_, err := lockedLogger.undoUpdate(&record)
-				assert.Assert(err == nil, "todo")
+				assert.NoError(err)
 			case TypeCommit:
 				_ = assert.Cast[CommitLogRecord](record)
 
@@ -332,7 +332,7 @@ func getSlotFromPage(
 	}
 	p, err := pool.GetPage(pageID)
 	defer func() { err = pool.Unpin(pageID) }()
-	assert.Assert(err == nil, "todo")
+	assert.NoError(err)
 
 	p.Lock()
 	defer p.Unlock()
@@ -343,11 +343,11 @@ func getSlotFromPage(
 
 func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 	iter, err := lockedLogger.iter(earliestLog)
-	assert.Assert(err == nil, "todo")
+	assert.NoError(err)
 
 	for {
 		tag, record, err := iter.ReadRecord()
-		assert.Assert(err == nil, "todo")
+		assert.NoError(err)
 
 		switch tag {
 		case TypeInsert:
@@ -357,7 +357,7 @@ func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 				lockedLogger.pool,
 				record.modifiedRecordID,
 			)
-			assert.Assert(err == nil, "todo")
+			assert.NoError(err)
 			assert.Assert(
 				len(record.value) <= len(slotData),
 				"new item len should be at most len of the old one",
@@ -372,7 +372,7 @@ func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 				lockedLogger.pool,
 				record.modifiedRecordID,
 			)
-			assert.Assert(err == nil, "todo")
+			assert.NoError(err)
 			assert.Assert(
 				len(record.afterValue) <= len(slotData),
 				"length should be the same",
@@ -386,7 +386,7 @@ func (lockedLogger *TxnLogger) recoverRedo(earliestLog FileLocation) {
 		}
 
 		success, err := iter.MoveForward()
-		assert.Assert(err == nil, "todo")
+		assert.NoError(err)
 
 		if !success {
 			break
@@ -684,7 +684,7 @@ func (lockedLogger *TxnLogger) activateCLR(record *CompensationLogRecord) {
 		record.modifiedRecordID,
 	)
 
-	assert.Assert(err == nil, "todo")
+	assert.NoError(err)
 	assert.Assert(
 		len(record.afterValue) <= len(slotData),
 		"lengths should be the same",
@@ -698,7 +698,7 @@ func (lockedLogger *TxnLogger) Rollback(abortLogRecord LogRecordLocationInfo) {
 	assert.Assert(!abortLogRecord.isNil(), "nil log record")
 
 	_, abordRecord, err := lockedLogger.readLogRecord(abortLogRecord.Location)
-	assert.Assert(err == nil, "todo")
+	assert.NoError(err)
 
 	record := assert.Cast[AbortLogRecord](abordRecord)
 	recordLocation := record.parentLogLocation.Location
@@ -707,13 +707,13 @@ func (lockedLogger *TxnLogger) Rollback(abortLogRecord LogRecordLocationInfo) {
 outer:
 	for {
 		tag, record, err := lockedLogger.readLogRecord(recordLocation)
-		assert.Assert(err == nil, "todo")
+		assert.NoError(err)
 		switch tag {
 		case TypeBegin:
 			record := assert.Cast[BeginLogRecord](record)
 			assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 			_, err := lockedLogger.AppendTxnEnd(record.TransactionID, abortLogRecord)
-			assert.Assert(err == nil, "todo")
+			assert.NoError(err)
 			break outer
 		case TypeInsert:
 			record := assert.Cast[InsertLogRecord](record)
@@ -725,7 +725,7 @@ outer:
 			}
 
 			clr, err := lockedLogger.undoInsert(&record)
-			assert.Assert(err == nil, "todo")
+			assert.NoError(err)
 			lockedLogger.activateCLR(clr)
 		case TypeUpdate:
 			record := assert.Cast[UpdateLogRecord](record)
@@ -737,7 +737,7 @@ outer:
 			}
 
 			clr, err := lockedLogger.undoUpdate(&record)
-			assert.Assert(err == nil, "todo")
+			assert.NoError(err)
 			lockedLogger.activateCLR(clr)
 		case TypeCommit:
 			_ = assert.Cast[CommitLogRecord](record)

@@ -36,6 +36,14 @@ func Assert(condition bool, args ...any) {
 	panic(m)
 }
 
+func NoError(err error) {
+	Assert(err == nil, "expected no error, got: %v", err)
+}
+
+func NoErrorWithMessage(err error, message string) {
+	Assert(err == nil, message, err)
+}
+
 // Cast attempts to cast the provided value 'data' to the specified
 // type 'T'. If the cast is not possible, it triggers an assertion failure with
 // an error message.
