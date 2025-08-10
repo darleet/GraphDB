@@ -213,3 +213,86 @@ func TestLockFairness(t *testing.T) {
 		"waiting imcompatible lock -> can't grant the lock immediately",
 	)
 }
+
+func TestLockcpgradeAlwaysAllowIfSingle(t *testing.T) {
+	q := newTxnQueue[RecordLockMode, RecordID]()
+	req := TxnLockRequest[RecordLockMode, RecordID]{
+		txnID:    10,
+		recordId: 1,
+		lockMode: RECORD_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	// Upgrade the lock
+	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	notifier = q.Upgrade(req)
+	expectClosedChannel(
+		t,
+		notifier,
+		"single transaction -> upgrade should be allowed",
+	)
+}
+
+func TestLockUpgradeAllowIfSingleWhenNoPendingUpgrades(t *testing.T) {
+	q := newTxnQueue[RecordLockMode, RecordID]()
+	req := TxnLockRequest[RecordLockMode, RecordID]{
+		txnID:    10,
+		recordId: 1,
+		lockMode: RECORD_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	req2 := TxnLockRequest[RecordLockMode, RecordID]{
+		txnID:    2,
+		recordId: 1,
+		lockMode: RECORD_LOCK_EXCLUSIVE,
+	}
+	blockedReqNotifier := q.Lock(req2)
+	expectOpenChannel(
+		t,
+		blockedReqNotifier,
+		"incompatible lock -> should be blocked",
+	)
+
+	// Upgrade the lock
+	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	notifier = q.Upgrade(req)
+	expectClosedChannel(
+		t,
+		notifier,
+		"single transaction -> upgrade should be allowed",
+	)
+}
+
+func TestLockUpgradeForbidUpgradeIfDeadlock(t *testing.T) {
+	q := newTxnQueue[RecordLockMode, RecordID]()
+	req := TxnLockRequest[RecordLockMode, RecordID]{
+		txnID:    3,
+		recordId: 1,
+		lockMode: RECORD_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	req2 := TxnLockRequest[RecordLockMode, RecordID]{
+		txnID:    2,
+		recordId: 1,
+		lockMode: RECORD_LOCK_SHARED,
+	}
+	blockedReqNotifier := q.Lock(req2)
+	expectClosedChannel(
+		t,
+		blockedReqNotifier,
+		"compatible lock -> grant the lock",
+	)
+
+	// Upgrade the lock
+	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	notifier = q.Upgrade(req)
+	require.Nil(t, notifier, "deadlock detected -> upgrade should be forbidden")
+}
