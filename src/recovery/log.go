@@ -331,7 +331,7 @@ func getSlotFromPage(
 	p.Lock()
 	defer p.Unlock()
 
-	data = p.GetBytes(recordID.SlotNum)
+	data = p.Read(recordID.SlotNum)
 	return
 }
 
@@ -403,7 +403,7 @@ func (l *TxnLogger) readLogRecord(
 	}
 
 	page.RLock()
-	record := page.GetBytes(recordLocation.SlotNum)
+	record := page.Read(recordLocation.SlotNum)
 	page.RUnlock()
 
 	tag, r, err = readLogRecord(record)
@@ -574,6 +574,23 @@ func (l *TxnLogger) AppendInsert(
 	return marshalRecordAndWrite(l, &r)
 }
 
+func (l *TxnLogger) AppendDelete(
+	TransactionID txns.TxnID,
+	prevLog LogRecordLocationInfo,
+	recordID RecordID,
+) (LogRecordLocationInfo, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	r := NewDeleteLogRecord(
+		l.NewLSN(),
+		TransactionID,
+		prevLog,
+		recordID,
+	)
+	return marshalRecordAndWrite(l, &r)
+}
+
 func (l *TxnLogger) AppendCommit(
 	TransactionID txns.TxnID,
 	prevLog LogRecordLocationInfo,
@@ -632,16 +649,22 @@ func (l *TxnLogger) AppendCheckpointEnd(
 
 // TODO: handle insertion and deletion UNDOs
 func (l *TxnLogger) activateCLR(record *CompensationLogRecord) {
-	panic("special case handling not implemented for different clr types")
-
+	pageID := record.modifiedRecordID.PageIdentity()
+	page, err := l.pool.GetPageNoCreate(pageID)
 	assert.NoError(err)
-	assert.Assert(
-		len(record.afterValue) <= len(slotData),
-		"lengths should be the same",
-	)
+	defer func() { assert.NoError(l.pool.Unpin(pageID)) }()
 
-	clear(slotData)
-	copy(slotData, record.afterValue)
+	page.Lock()
+	defer page.Unlock()
+
+	switch record.clrType {
+	case CLRtypeInsert:
+		page.Delete(record.modifiedRecordID.SlotNum)
+	case CLRtypeUpdate:
+		page.Update(record.modifiedRecordID.SlotNum, record.afterValue)
+	case CLRtypeDelete:
+		page.UndoDelete(record.modifiedRecordID.SlotNum, record.afterValue)
+	}
 }
 
 func (l *TxnLogger) Rollback(abortLogRecord LogRecordLocationInfo) {
@@ -668,6 +691,19 @@ outer:
 			break outer
 		case TypeInsert:
 			record := assert.Cast[InsertLogRecord](record)
+
+			revertingRecordlocation = record.parentLogLocation
+			if clrsFound > 0 {
+				clrsFound--
+				continue
+			}
+
+			var clr *CompensationLogRecord
+			clr, lastInsertedRecordLocation, err = loggerUndoRecord(l, &record, lastInsertedRecordLocation)
+			assert.NoError(err)
+			l.activateCLR(clr)
+		case TypeDelete:
+			record := assert.Cast[DeleteLogRecord](record)
 
 			revertingRecordlocation = record.parentLogLocation
 			if clrsFound > 0 {

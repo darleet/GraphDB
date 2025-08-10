@@ -4,6 +4,7 @@ import (
 	"encoding"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
@@ -132,6 +133,8 @@ func NewUpdateLogRecord(
 	beforeValue []byte,
 	afterValue []byte,
 ) UpdateLogRecord {
+	assert.Assert(len(afterValue) <= len(beforeValue))
+
 	return UpdateLogRecord{
 		lsn:               lsn,
 		txnID:             txnID,
@@ -191,7 +194,6 @@ type DeleteLogRecord struct {
 	txnID             txns.TxnID
 	parentLogLocation LogRecordLocationInfo
 	modifiedRecordID  RecordID
-	beforeValue       []byte
 }
 
 func NewDeleteLogRecord(
@@ -199,14 +201,12 @@ func NewDeleteLogRecord(
 	txnID txns.TxnID,
 	parentLogLocation LogRecordLocationInfo,
 	modifiedRecordID RecordID,
-	beforeValue []byte,
 ) DeleteLogRecord {
 	return DeleteLogRecord{
 		lsn:               lsn,
 		txnID:             txnID,
 		parentLogLocation: parentLogLocation,
 		modifiedRecordID:  modifiedRecordID,
-		beforeValue:       beforeValue,
 	}
 }
 
@@ -225,8 +225,8 @@ func (r *DeleteLogRecord) Undo(
 		r.modifiedRecordID,
 		CLRtypeDelete,
 		r.parentLogLocation.Lsn,
-		make([]byte, len(r.beforeValue)),
-		r.beforeValue,
+		make([]byte, 0),
+		make([]byte, 0),
 	)
 }
 

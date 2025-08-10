@@ -692,6 +692,11 @@ func readLogRecord(data []byte) (LogRecordTypeTag, any, error) {
 		err := r.UnmarshalBinary(data)
 
 		return TypeInsert, r, err
+	case TypeDelete:
+		r := DeleteLogRecord{}
+		err := r.UnmarshalBinary(data)
+
+		return TypeDelete, r, err
 	case TypeCommit:
 		r := CommitLogRecord{}
 		err := r.UnmarshalBinary(data)

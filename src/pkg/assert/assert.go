@@ -6,9 +6,9 @@ import (
 	"runtime"
 )
 
-func Assert(condition bool, args ...any) {
+func Assert(condition bool, args ...any) bool {
 	if condition {
-		return
+		return true
 	}
 
 	// Get caller info (skip 1 frame to get the caller of Assert)

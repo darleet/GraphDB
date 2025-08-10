@@ -17,6 +17,7 @@ type TableLockMode TaggedLockMode[TableID]
 
 type LockMode[T any] interface {
 	Compatible(T) bool
+	Upgradable(T) bool
 }
 
 const (
@@ -32,9 +33,29 @@ const (
 	TABLE_LOCK_EXCLUSIVE
 )
 
+var (
+	_ LockMode[RecordLockMode] = RecordLockMode(0)
+	_ LockMode[TableLockMode]  = TableLockMode(0)
+)
+
 func (m RecordLockMode) Compatible(other RecordLockMode) bool {
 	if m == RECORD_LOCK_SHARED && other == RECORD_LOCK_SHARED {
 		return true
+	}
+	return false
+}
+
+func (m RecordLockMode) Upgradable(to RecordLockMode) bool {
+	switch m {
+	case RECORD_LOCK_SHARED:
+		switch to {
+		case RECORD_LOCK_SHARED:
+			return true
+		case RECORD_LOCK_EXCLUSIVE:
+			return true
+		}
+	case RECORD_LOCK_EXCLUSIVE:
+		return to == RECORD_LOCK_EXCLUSIVE
 	}
 	return false
 }
@@ -110,6 +131,52 @@ func (m TableLockMode) Compatible(other TableLockMode) bool {
 
 	assert.Assert(false, "unreachable")
 	return false
+}
+
+func (m TableLockMode) Upgradable(to TableLockMode) bool {
+	switch m {
+	case TABLE_LOCK_INTENTION_SHARED:
+		switch to {
+		case TABLE_LOCK_INTENTION_SHARED:
+			return true
+		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+			return true
+		case TABLE_LOCK_SHARED:
+			return true
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return true
+		case TABLE_LOCK_EXCLUSIVE:
+			return true
+		default:
+			return false
+		}
+	case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		return false // Cannot upgrade from intention exclusive in 2PL
+	case TABLE_LOCK_SHARED:
+		switch to {
+		case TABLE_LOCK_SHARED:
+			return true
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return true
+		case TABLE_LOCK_EXCLUSIVE:
+			return true
+		default:
+			return false
+		}
+	case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		switch to {
+		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+			return true
+		case TABLE_LOCK_EXCLUSIVE:
+			return true
+		default:
+			return false
+		}
+	case TABLE_LOCK_EXCLUSIVE:
+		return false // Already exclusive, cannot upgrade
+	default:
+		return false
+	}
 }
 
 type TxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {

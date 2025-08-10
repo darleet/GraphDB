@@ -77,7 +77,7 @@ func TestValidRecovery(t *testing.T) {
 		t.Fatalf("GetPage failed: %v", err)
 	}
 
-	data := p.GetBytes(uint16(slotNum))
+	data := p.Read(uint16(slotNum))
 
 	if !bytes.Equal(data[:len(after)], after) {
 		t.Errorf(
@@ -254,8 +254,6 @@ func TestMassiveRecovery(t *testing.T) {
 		}
 	}
 
-	TransactionIDCounter := atomic.Uint64{}
-
 	left := N - N/10
 	inc := N * 6 / 10
 	right := (left + inc) % N
@@ -267,6 +265,7 @@ func TestMassiveRecovery(t *testing.T) {
 		"step must divide inc. otherwise, it would cause an infinite loop",
 	)
 
+	TransactionIDCounter := atomic.Uint64{}
 	wg := sync.WaitGroup{}
 	for i := left; i != right; i = (i + STEP) % N {
 		wg.Add(1)
@@ -287,9 +286,15 @@ func TestMassiveRecovery(t *testing.T) {
 					FileID: DataFileID,
 					PageID: recordLoc.PageID,
 				}
-				chain.
-					Update(pageID, recordLoc.SlotNum, INIT, NEW).
-					Update(pageID, recordLoc.SlotNum, NEW, NEW2)
+
+				switch rand.Int() % 2 {
+				case 0:
+					chain.
+						Update(pageID, recordLoc.SlotNum, INIT, NEW).
+						Update(pageID, recordLoc.SlotNum, NEW, NEW2)
+				case 1:
+					chain.Delete(pageID, recordLoc.SlotNum)
+				}
 
 				func() {
 					p, err := pool.GetPageNoCreate(pageID)
@@ -300,7 +305,7 @@ func TestMassiveRecovery(t *testing.T) {
 					p.Lock()
 					defer p.Unlock()
 
-					data := p.GetBytes(recordLoc.SlotNum)
+					data := p.Read(recordLoc.SlotNum)
 
 					clear(data)
 
@@ -338,7 +343,7 @@ func TestMassiveRecovery(t *testing.T) {
 			p.RLock()
 			defer p.RUnlock()
 
-			data := p.GetBytes(location.SlotNum)
+			data := p.Read(location.SlotNum)
 			require.Equal(t, len(INIT), len(data))
 
 			for i := range len(INIT) {
@@ -394,16 +399,15 @@ func assertLogRecord(
 func assertLogRecordWithRetrieval(
 	t *testing.T,
 	pool bufferpool.BufferPool[*page.SlottedPage],
-	pageID bufferpool.PageIdentity,
-	slotNum uint16,
+	recordID RecordID,
 	expectedRecordType LogRecordTypeTag,
 	expectedTransactionID txns.TxnID,
 ) {
-	page, err := pool.GetPage(pageID)
+	page, err := pool.GetPage(recordID.PageIdentity())
 	require.NoError(t, err)
 	page.RLock()
 
-	data := page.GetBytes(slotNum)
+	data := page.Read(recordID.SlotNum)
 
 	tag, untypedRecord, err := readLogRecord(data)
 	require.NoError(t, err)
@@ -417,7 +421,7 @@ func assertLogRecordWithRetrieval(
 	)
 
 	page.RUnlock()
-	require.NoError(t, pool.Unpin(pageID))
+	require.NoError(t, pool.Unpin(recordID.PageIdentity()))
 }
 
 func TestLoggerValidConcurrentWrites(t *testing.T) {
@@ -656,14 +660,22 @@ func TestLoggerRollback(t *testing.T) {
 			chain := NewTxnLogChain(logger, txnID).Begin()
 			for range len(batch) * 3 / 2 {
 				info := batch[rand.Int()%len(batch)]
-				oldValue := updatedValues[info.key]
-				newValue := rand.Int()
-				chain.Update(
-					info.key.PageIdentity(),
-					info.key.SlotNum,
-					[]byte(strconv.Itoa(oldValue)),
-					[]byte(strconv.Itoa(newValue)),
-				)
+				switch rand.Int() % 2 {
+				case 0:
+					newValue := rand.Int()
+					oldValue := updatedValues[info.key]
+					chain.Update(
+						info.key.PageIdentity(),
+						info.key.SlotNum,
+						[]byte(strconv.Itoa(oldValue)),
+						[]byte(strconv.Itoa(newValue)),
+					)
+				case 1:
+					chain.Delete(
+						info.key.PageIdentity(),
+						info.key.SlotNum,
+					)
+				}
 			}
 			abortRecordLoc := chain.Abort().Loc()
 			require.NoError(t, chain.Err())
@@ -681,10 +693,18 @@ func TestLoggerRollback(t *testing.T) {
 			assert.NoError(t, err)
 			defer func() { assert.NoError(t, pool.Unpin(pageID)) }()
 
-			data := page.GetBytes(k.SlotNum)
+			data := page.Read(k.SlotNum)
 			assert.Equal(t, data, []byte(strconv.Itoa(v)))
 		}()
 	}
+}
+
+func workload(
+	t *testing.T,
+	logger *TxnLogger,
+) {
+
+
 }
 
 func fillPages(

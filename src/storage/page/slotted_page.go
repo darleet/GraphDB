@@ -12,7 +12,10 @@ import (
 // TODO добавить рисунок - иллюстрацию
 
 const (
-	PageSize = 4096
+	slotOffsetSize        = 12
+	PageSize              = (1 << slotOffsetSize)
+	slotOffsetMask uint16 = PageSize - 1
+	slotPtrSize    uint16 = uint16(unsafe.Sizeof(slotPointer(1)))
 )
 
 type SlottedPage struct {
@@ -23,21 +26,14 @@ type slotPointer uint16
 type slotStatus byte
 
 const (
-	slotStatusFree slotStatus = iota
-	slotStatusPrepareInsert
+	slotStatusPrepareInsert slotStatus = iota
 	slotStatusInserted
 	slotStatusDeleted
 )
 
-const (
-	slotOffsetSize        = 12
-	slotOffsetMask uint16 = (1 << slotOffsetSize) - 1
-	slotPtrSize    uint16 = uint16(unsafe.Sizeof(slotPointer(1)))
-)
-
-func newSlotPtr(status slotStatus, offset uint16) slotPointer {
-	assert.Assert(offset <= slotOffsetMask, "the offset is too big")
-	return slotPointer((uint16(status) << slotOffsetSize) | offset)
+func newSlotPtr(status slotStatus, recordOffset uint16) slotPointer {
+	assert.Assert(recordOffset <= slotOffsetMask, "the offset is too big")
+	return slotPointer((uint16(status) << slotOffsetSize) | recordOffset)
 }
 
 func (s slotPointer) recordOffset() uint16 {
@@ -78,6 +74,45 @@ func InsertSerializable[T encoding.BinaryMarshaler](
 	return p.InsertPrepare(bytes)
 }
 
+func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
+	header := p.getHeader()
+	// space required to store both the array and it's length
+	requiredLength := int(unsafe.Sizeof(uint16(1))) + len(data)
+	if int(header.freeEnd) < requiredLength {
+		// uint16 overflow check
+		return optional.None[uint16]()
+	}
+
+	pos := header.freeEnd - uint16(requiredLength)
+	if pos < header.freeStart+slotPtrSize {
+		return optional.None[uint16]()
+	}
+
+	defer func() {
+		header.freeStart += slotPtrSize
+		header.freeEnd = pos
+	}()
+
+	ptrToLen := (*uint16)(unsafe.Pointer(&p.data[pos]))
+	*ptrToLen = uint16(len(data))
+	ptr := newSlotPtr(slotStatusPrepareInsert, pos)
+
+	dst := p.getBytesUnsafe(ptr)
+	n := copy(dst, data)
+	assert.Assert(
+		n == len(data),
+		"couldn't copy data. copied only %d bytes",
+		len(data),
+	)
+
+	curSlot := header.slotsCount
+	header.slotsCount++
+	slots := header.getSlots()
+	slots[curSlot] = ptr
+
+	return optional.Some(curSlot)
+}
+
 func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	header := p.getHeader()
 	assert.Assert(
@@ -94,42 +129,6 @@ func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 		"tried to commit an insert to a wrong slot",
 	)
 	slots[slotHandle] = newSlotPtr(slotStatusInserted, ptr.recordOffset())
-}
-
-func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
-	header := p.getHeader()
-	// space required to store both the array and it's length
-	requiredLength := int(unsafe.Sizeof(int(1))) + len(data)
-	if header.freeEnd < uint16(requiredLength) {
-		return optional.None[uint16]()
-	}
-
-	pos := header.freeEnd - uint16(requiredLength)
-	if pos < header.freeStart+slotPtrSize {
-		return optional.None[uint16]()
-	}
-	defer func() {
-		header.freeStart += slotPtrSize
-		header.freeEnd = pos
-	}()
-
-	ptrToLen := (*int)(unsafe.Pointer(&p.data[pos]))
-	*ptrToLen = len(data)
-
-	dst := unsafe.Slice(&p.data[pos+uint16(unsafe.Sizeof(int(1)))], len(data))
-	n := copy(dst, data)
-	assert.Assert(
-		n == int(len(data)),
-		"couldn't copy data. copied only %d bytes",
-		len(data),
-	)
-
-	curSlot := header.slotsCount
-	header.slotsCount++
-
-	slots := header.getSlots()
-	slots[curSlot] = newSlotPtr(slotStatusPrepareInsert, pos)
-	return optional.Some(curSlot)
 }
 
 func NewSlottedPage() *SlottedPage {
@@ -152,29 +151,73 @@ func Get[T encoding.BinaryUnmarshaler](
 	slotID uint16,
 	dst T,
 ) error {
-	data := p.GetBytes(slotID)
+	data := p.Read(slotID)
 	return dst.UnmarshalBinary(data)
 }
 
-func (p *SlottedPage) GetBytes(slotID uint16) []byte {
+func (p *SlottedPage) getBytesUnsafe(ptr slotPointer) []byte {
+	offset := ptr.recordOffset()
+	sliceLen := *(*uint16)(unsafe.Pointer(&p.data[offset]))
+	data := unsafe.Slice(
+		&p.data[offset+uint16(unsafe.Sizeof(uint16(0)))],
+		sliceLen,
+	)
+	return data
+}
+
+func (p *SlottedPage) assertSlotInserted(slotID uint16) slotPointer {
 	header := p.getHeader()
-
-	assert.Assert(slotID < p.NumSlots(), "invalid slotID")
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
-
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
 		ptr.recordInfo() == slotStatusInserted,
 		"tried to read from a slot with status %d", ptr.recordInfo(),
 	)
+	return ptr
+}
 
-	offset := ptr.recordOffset()
-	sliceLen := *(*int)(unsafe.Pointer(&p.data[offset]))
-	data := unsafe.Slice(
-		&p.data[offset+uint16(unsafe.Sizeof(int(0)))],
-		sliceLen,
+func (p *SlottedPage) Read(slotID uint16) []byte {
+	ptr := p.assertSlotInserted(slotID)
+	return p.getBytesUnsafe(ptr)
+}
+
+func (p *SlottedPage) Delete(slotID uint16) {
+	ptr := p.assertSlotInserted(slotID)
+	p.getHeader().getSlots()[slotID] = newSlotPtr(
+		slotStatusDeleted,
+		ptr.recordOffset(),
 	)
-	return data
+}
+
+func (p *SlottedPage) UndoDelete(slotID uint16, oldData []byte) {
+	header := p.getHeader()
+	assert.Assert(slotID < header.slotsCount, "slotID is too large")
+	ptr := header.getSlots()[slotID]
+	assert.Assert(
+		ptr.recordInfo() == slotStatusDeleted,
+		"tried to UndoDelete from a slot with status %d", ptr.recordInfo(),
+	)
+
+	data := p.getBytesUnsafe(ptr)
+	assert.Assert(len(data) >= len(oldData))
+	clear(data)
+	copy(data, oldData)
+
+	p.getHeader().getSlots()[slotID] = newSlotPtr(
+		slotStatusInserted,
+		ptr.recordOffset(),
+	)
+}
+
+func (p *SlottedPage) Update(slotID uint16, newData []byte) bool {
+	data := p.Read(slotID)
+	if len(data) < len(newData) {
+		return false
+	}
+
+	clear(data)
+	copy(data, newData)
+	return true
 }
 
 func (p *SlottedPage) Lock() {

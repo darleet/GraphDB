@@ -104,6 +104,32 @@ func (c *TxnLogChain) Update(
 	return c
 }
 
+func (c *TxnLogChain) Delete(
+	pageInfo bufferpool.PageIdentity,
+	slotNumber uint16,
+) *TxnLogChain {
+	if c.err != nil {
+		return c
+	}
+
+	if _, ok := c.lastLocations[c.TransactionID]; !ok {
+		c.err = fmt.Errorf("no last location found for %d", c.TransactionID)
+		return c
+	}
+
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendDelete(
+		c.TransactionID,
+		c.lastLocations[c.TransactionID],
+		RecordID{
+			FileID:  pageInfo.FileID,
+			PageID:  pageInfo.PageID,
+			SlotNum: slotNumber,
+		},
+	)
+
+	return c
+}
+
 func (c *TxnLogChain) Commit() *TxnLogChain {
 	if c.err != nil {
 		return c
