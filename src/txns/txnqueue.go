@@ -324,7 +324,8 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 
 		cur.mu.Unlock()
 		cur = next
-		next = next.SafeNext()
+		next = next.next
+		next.mu.Lock()
 	}
 
 	assert.Assert(cur.status == entryStatusRunning)
