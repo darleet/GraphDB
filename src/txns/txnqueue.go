@@ -296,24 +296,24 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 	deadlockCond := false
 	compatible := true
 
-	var entryBeforeTheUpgradingOne *txnQueueEntry[LockModeType, ObjectIDType] = nil
+	var entryBeforeUpgradingOne *txnQueueEntry[LockModeType, ObjectIDType] = nil
 	cur := q.head
 	cur.mu.Lock()
 	for {
-		entryBeforeTheUpgradingOne = cur
+		entryBeforeUpgradingOne = cur
 		cur = cur.next
 		cur.mu.Lock()
 		if cur.r.txnID == r.txnID {
 			break
 		}
-		entryBeforeTheUpgradingOne.mu.Unlock()
+		entryBeforeUpgradingOne.mu.Unlock()
 
 		deadlockCond = deadlockCond ||
 			checkDeadlockCondition(cur.r.txnID, r.txnID)
 		compatible = compatible && cur.r.lockMode.Compatible(r.lockMode)
 	}
-	assert.Assert(entryBeforeTheUpgradingOne != nil)
-	defer entryBeforeTheUpgradingOne.mu.Unlock()
+	assert.Assert(entryBeforeUpgradingOne != nil)
+	defer entryBeforeUpgradingOne.mu.Unlock()
 
 	var next *txnQueueEntry[LockModeType, ObjectIDType] = nil
 	if cur.next != q.tail {
@@ -338,17 +338,24 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 		}
 	}
 
-	if cur.next == q.tail && assert.Assert(next == nil) ||
-		next.status == entryStatusWaitAcquire {
-		if compatible { // Grant the upgrade immediately
-			upgradingEntry.mu.Lock()
-			upgradingEntry.notifier = make(chan struct{})
-			upgradingEntry.r.lockMode = r.lockMode
-			upgradingEntry.mu.Unlock()
+	assert.Assert(cur.status == entryStatusRunning)
+	if cur.next == q.tail && assert.Assert(cur == upgradingEntry) &&
+		assert.Assert(next == nil) ||
+		next.status == entryStatusWaitAcquire { // no upgrades pending
+		if compatible {
+			if cur == upgradingEntry {
+				upgradingEntry.notifier = make(chan struct{})
+				upgradingEntry.r.lockMode = r.lockMode
+			} else {
+				upgradingEntry.mu.Lock()
+				upgradingEntry.notifier = make(chan struct{})
+				upgradingEntry.r.lockMode = r.lockMode
+				upgradingEntry.mu.Unlock()
 
-			cur.mu.Unlock()
-			if next != nil {
-				next.mu.Unlock()
+				cur.mu.Unlock()
+				if next != nil {
+					next.mu.Unlock()
+				}
 			}
 
 			return upgradingEntry.notifier
@@ -359,14 +366,14 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 			if next != nil {
 				next.mu.Unlock()
 			}
-			if entryBeforeTheUpgradingOne == q.head {
+			if entryBeforeUpgradingOne == q.head {
 				upgradingEntry.mu.Lock()
 				next := upgradingEntry.SafeNext()
 				if next.status != entryStatusRunning {
 					q.processBatch(next.SafeNext())
 				}
 			}
-			entryBeforeTheUpgradingOne.SafeDeleteNext()
+			entryBeforeUpgradingOne.SafeDeleteNext()
 			q.mu.Lock()
 			delete(q.txnNodes, r.txnID)
 			q.mu.Unlock()
@@ -389,7 +396,7 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 	assert.Assert(next.status == entryStatusWaitUpgrade)
 	defer func() {
 		cur.mu.Unlock()
-		entryBeforeTheUpgradingOne.SafeDeleteNext()
+		entryBeforeUpgradingOne.SafeDeleteNext()
 	}()
 
 	cur.mu.Unlock()
