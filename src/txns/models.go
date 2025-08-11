@@ -10,7 +10,7 @@ type TableID uint64
  *       in distributed systems that use this kind of transaction IDs */
 type TxnID uint64
 
-type TaggedType[T any] struct{ _ T } // this trick forbids casting one lock mode to another
+type TaggedType[T any] struct{ v T } // this trick forbids casting one lock mode to another
 
 type RecordLockMode TaggedType[uint8]
 type GranularLockMode TaggedType[uint16]
