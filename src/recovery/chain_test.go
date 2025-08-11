@@ -168,7 +168,7 @@ func TestChain(t *testing.T) {
 		Insert(dataPageId, 1, []byte("second")).
 		Update(dataPageId, 1, []byte("second"), []byte("sec0nd")).
 		SwitchTransactionID(TransactionID_1).
-		Update(dataPageId, 0, []byte("first"), []byte("update"))
+		Update(dataPageId, 0, []byte("first"), []byte("updat"))
 
 	require.NoError(t, chain.Err())
 

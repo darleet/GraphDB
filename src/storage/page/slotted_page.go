@@ -26,9 +26,9 @@ type slotPointer uint16
 type slotStatus byte
 
 const (
-	slotStatusPrepareInsert slotStatus = iota
-	slotStatusInserted
-	slotStatusDeleted
+	SlotStatusPrepareInsert slotStatus = iota
+	SlotStatusInserted
+	SlotStatusDeleted
 )
 
 func newSlotPtr(status slotStatus, recordOffset uint16) slotPointer {
@@ -36,11 +36,11 @@ func newSlotPtr(status slotStatus, recordOffset uint16) slotPointer {
 	return slotPointer((uint16(status) << slotOffsetSize) | recordOffset)
 }
 
-func (s slotPointer) recordOffset() uint16 {
+func (s slotPointer) RecordOffset() uint16 {
 	return uint16(s) & slotOffsetMask
 }
 
-func (s slotPointer) recordInfo() slotStatus {
+func (s slotPointer) RecordInfo() slotStatus {
 	res := (uint16(s) & (^slotOffsetMask)) >> slotOffsetSize
 	return slotStatus(res)
 }
@@ -95,7 +95,7 @@ func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
 
 	ptrToLen := (*uint16)(unsafe.Pointer(&p.data[pos]))
 	*ptrToLen = uint16(len(data))
-	ptr := newSlotPtr(slotStatusPrepareInsert, pos)
+	ptr := newSlotPtr(SlotStatusPrepareInsert, pos)
 
 	dst := p.getBytesUnsafe(ptr)
 	n := copy(dst, data)
@@ -125,10 +125,10 @@ func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	slots := header.getSlots()
 	ptr := slots[slotHandle]
 	assert.Assert(
-		ptr.recordInfo() == slotStatusPrepareInsert,
+		ptr.RecordInfo() == SlotStatusPrepareInsert,
 		"tried to commit an insert to a wrong slot",
 	)
-	slots[slotHandle] = newSlotPtr(slotStatusInserted, ptr.recordOffset())
+	slots[slotHandle] = newSlotPtr(SlotStatusInserted, ptr.RecordOffset())
 }
 
 func NewSlottedPage() *SlottedPage {
@@ -156,7 +156,7 @@ func Get[T encoding.BinaryUnmarshaler](
 }
 
 func (p *SlottedPage) getBytesUnsafe(ptr slotPointer) []byte {
-	offset := ptr.recordOffset()
+	offset := ptr.RecordOffset()
 	sliceLen := *(*uint16)(unsafe.Pointer(&p.data[offset]))
 	data := unsafe.Slice(
 		&p.data[offset+uint16(unsafe.Sizeof(uint16(0)))],
@@ -170,8 +170,8 @@ func (p *SlottedPage) assertSlotInserted(slotID uint16) slotPointer {
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
-		ptr.recordInfo() == slotStatusInserted,
-		"tried to read from a slot with status %d", ptr.recordInfo(),
+		ptr.RecordInfo() == SlotStatusInserted,
+		"tried to read from a slot with status %d", ptr.RecordInfo(),
 	)
 	return ptr
 }
@@ -184,9 +184,29 @@ func (p *SlottedPage) Read(slotID uint16) []byte {
 func (p *SlottedPage) Delete(slotID uint16) {
 	ptr := p.assertSlotInserted(slotID)
 	p.getHeader().getSlots()[slotID] = newSlotPtr(
-		slotStatusDeleted,
-		ptr.recordOffset(),
+		SlotStatusDeleted,
+		ptr.RecordOffset(),
 	)
+}
+
+func (p *SlottedPage) UnsafeRead(slotNumber uint16) []byte {
+	assert.Assert(slotNumber < p.NumSlots(), "slotNumber is too large")
+
+	header := p.getHeader()
+	ptr := header.getSlots()[slotNumber]
+	return p.getBytesUnsafe(ptr)
+}
+
+func (p *SlottedPage) UnsafeOverrideSlotStatus(
+	slotNumber uint16,
+	newStatus slotStatus,
+) {
+	assert.Assert(slotNumber < p.NumSlots(), "slotNumber is too large")
+
+	header := p.getHeader()
+	slot := header.getSlots()[slotNumber]
+
+	header.getSlots()[slotNumber] = newSlotPtr(newStatus, slot.RecordOffset())
 }
 
 func (p *SlottedPage) UndoDelete(slotID uint16, oldData []byte) {
@@ -194,8 +214,8 @@ func (p *SlottedPage) UndoDelete(slotID uint16, oldData []byte) {
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
-		ptr.recordInfo() == slotStatusDeleted,
-		"tried to UndoDelete from a slot with status %d", ptr.recordInfo(),
+		ptr.RecordInfo() == SlotStatusDeleted,
+		"tried to UndoDelete from a slot with status %d", ptr.RecordInfo(),
 	)
 
 	data := p.getBytesUnsafe(ptr)
@@ -204,20 +224,17 @@ func (p *SlottedPage) UndoDelete(slotID uint16, oldData []byte) {
 	copy(data, oldData)
 
 	p.getHeader().getSlots()[slotID] = newSlotPtr(
-		slotStatusInserted,
-		ptr.recordOffset(),
+		SlotStatusInserted,
+		ptr.RecordOffset(),
 	)
 }
 
-func (p *SlottedPage) Update(slotID uint16, newData []byte) bool {
+func (p *SlottedPage) Update(slotID uint16, newData []byte) {
 	data := p.Read(slotID)
-	if len(data) < len(newData) {
-		return false
-	}
+	assert.Assert(len(data) >= len(newData))
 
 	clear(data)
 	copy(data, newData)
-	return true
 }
 
 func (p *SlottedPage) Lock() {

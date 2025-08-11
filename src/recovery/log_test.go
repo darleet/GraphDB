@@ -376,6 +376,10 @@ func assertLogRecord(
 		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
 		require.Equal(t, expectedTransactionID, r.txnID)
+	case TypeDelete:
+		r, ok := untypedRecord.(DeleteLogRecord)
+		require.True(t, ok)
+		require.Equal(t, expectedTransactionID, r.txnID)
 	case TypeCommit:
 		r, ok := untypedRecord.(CommitLogRecord)
 		require.True(t, ok)
@@ -657,7 +661,7 @@ func TestLoggerRollback(t *testing.T) {
 		}
 	}
 
-	recordValues := fillPages(t, logger, math.MaxUint64, 100000, files)
+	recordValues := fillPages(t, logger, math.MaxUint64, 100000, files, 1024)
 	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
 	updatedValues := make(map[RecordID]uint32, len(recordValues))
@@ -709,8 +713,9 @@ func TestLoggerRollback(t *testing.T) {
 	}
 }
 
-// fillPages generates test data by filling pages with random values and logging the operations.
-// It creates a transaction log chain and inserts random values into random pages within the given file IDs.
+// fillPages generates test data by filling pages with random values and logging
+// the operations. It creates a transaction log chain and inserts random values
+// into random pages within the given file IDs.
 //
 // Parameters:
 //   - t: Testing context for assertions
@@ -723,8 +728,9 @@ func TestLoggerRollback(t *testing.T) {
 // Returns:
 //   - map[RecordID]uint32: Mapping of inserted record locations to their values
 //
-// The function ensures each insert operation is successful by retrying on full pages.
-// All operations are performed within a single transaction that is committed at the end.
+// The function ensures each insert operation is successful by retrying on full
+// pages. All operations are performed within a single transaction that is
+// committed at the end.
 func fillPages(
 	t *testing.T,
 	logger *TxnLogger,

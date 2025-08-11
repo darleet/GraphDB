@@ -94,8 +94,7 @@ func TestUpdateSuccess(t *testing.T) {
 	page.InsertCommit(slot.Unwrap())
 
 	newData := []byte("changed")
-	ok := page.Update(slot.Unwrap(), newData)
-	assert.True(t, ok, "Update should succeed when newData fits")
+	page.Update(slot.Unwrap(), newData)
 
 	got := page.Read(slot.Unwrap())
 	assert.Equal(t, newData, got[:len(newData)])
@@ -109,8 +108,9 @@ func TestUpdateTooLarge(t *testing.T) {
 	page.InsertCommit(slot.Unwrap())
 
 	newData := []byte("this is too long")
-	ok := page.Update(slot.Unwrap(), newData)
-	assert.False(t, ok, "Update should fail when newData is too large")
+	require.Panics(t, func() {
+		page.Update(slot.Unwrap(), newData)
+	}, "Update should fail when newData is too large")
 
 	got := page.Read(slot.Unwrap())
 	assert.NotEqual(t, newData, got)
@@ -125,8 +125,7 @@ func TestUpdateEmptyData(t *testing.T) {
 	page.InsertCommit(slot.Unwrap())
 
 	newData := []byte{}
-	ok := page.Update(slot.Unwrap(), newData)
-	assert.True(t, ok, "Update should succeed with empty newData")
+	page.Update(slot.Unwrap(), newData)
 
 	got := page.Read(slot.Unwrap())
 	assert.Equal(t, newData, got[:len(newData)])
@@ -146,8 +145,8 @@ func TestDeleteRemovesData(t *testing.T) {
 	ptr := header.getSlots()[slot.Unwrap()]
 	assert.Equal(
 		t,
-		slotStatusDeleted,
-		ptr.recordInfo(),
+		SlotStatusDeleted,
+		ptr.RecordInfo(),
 		"Slot status should be Deleted",
 	)
 
@@ -246,8 +245,8 @@ func TestUndoDelete_RestoresDataAndStatus(t *testing.T) {
 	ptr := header.getSlots()[slot.Unwrap()]
 	assert.Equal(
 		t,
-		slotStatusInserted,
-		ptr.recordInfo(),
+		SlotStatusInserted,
+		ptr.RecordInfo(),
 		"Slot status should be Inserted after UndoDelete",
 	)
 

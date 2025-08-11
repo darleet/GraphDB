@@ -140,6 +140,27 @@ func (l *TxnLogger) recoverAnalyze(
 			if !alreadyExists {
 				DPT[pageID] = recordLocation
 			}
+		case TypeDelete:
+			record := assert.Cast[DeleteLogRecord](untypedRecord)
+			recordLocation := LogRecordLocationInfo{
+				Lsn:      record.lsn,
+				Location: iter.Location(),
+			}
+
+			ATT.Insert(
+				record.txnID,
+				tag,
+				NewATTEntry(
+					TxnStatusUndo,
+					recordLocation,
+				),
+			)
+
+			pageID := record.modifiedRecordID.PageIdentity()
+			_, alreadyExists := DPT[pageID]
+			if !alreadyExists {
+				DPT[pageID] = recordLocation
+			}
 		case TypeCommit:
 			record := assert.Cast[CommitLogRecord](untypedRecord)
 			ATT.Insert(
@@ -285,6 +306,17 @@ func (l *TxnLogger) recoverPrepareCLRs(
 				}
 				_, lastInsertedRecordLocation, err = loggerUndoRecord(l, &record, lastInsertedRecordLocation)
 				assert.NoError(err)
+			case TypeDelete:
+				record := assert.Cast[DeleteLogRecord](record)
+
+				DPT[record.modifiedRecordID.PageIdentity()] = recordLocation
+				recordLocation = record.parentLogLocation
+				if clrsFound > 0 {
+					clrsFound--
+					continue
+				}
+				_, lastInsertedRecordLocation, err = loggerUndoRecord(l, &record, lastInsertedRecordLocation)
+				assert.NoError(err)
 			case TypeCommit:
 				_ = assert.Cast[CommitLogRecord](record)
 
@@ -316,25 +348,6 @@ func (l *TxnLogger) recoverPrepareCLRs(
 	return earliestLogLocation
 }
 
-func getSlotFromPage(
-	pool bufferpool.BufferPool[*page.SlottedPage],
-	recordID RecordID,
-) (data []byte, err error) {
-	pageID := bufferpool.PageIdentity{
-		FileID: recordID.FileID,
-		PageID: recordID.PageID,
-	}
-	p, err := pool.GetPage(pageID)
-	defer func() { err = errors.Join(err, pool.Unpin(pageID)) }()
-	assert.NoError(err)
-
-	p.Lock()
-	defer p.Unlock()
-
-	data = p.Read(recordID.SlotNum)
-	return
-}
-
 func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 	iter, err := l.iter(earliestLog)
 	assert.NoError(err)
@@ -346,34 +359,66 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 		switch tag {
 		case TypeInsert:
 			record := assert.Cast[InsertLogRecord](record)
+			func() {
+				modifiedPage, err := l.pool.GetPageNoCreate(
+					record.modifiedRecordID.PageIdentity(),
+				)
+				assert.NoError(err)
+				modifiedPage.Lock()
+				defer modifiedPage.Unlock()
 
-			slotData, err := getSlotFromPage(
-				l.pool,
-				record.modifiedRecordID,
-			)
-			assert.NoError(err)
-			assert.Assert(
-				len(record.value) <= len(slotData),
-				"new item len should be at most len of the old one",
-			)
+				modifiedPage.UnsafeOverrideSlotStatus(
+					record.modifiedRecordID.SlotNum,
+					page.SlotStatusInserted,
+				)
+				slotData := modifiedPage.Read(
+					record.modifiedRecordID.SlotNum,
+				)
 
-			clear(slotData)
-			copy(slotData, record.value)
+				assert.Assert(
+					len(record.value) <= len(slotData),
+					"new item len should be at most len of the old one",
+				)
+
+				clear(slotData)
+				copy(slotData, record.value)
+			}()
 		case TypeUpdate:
 			record := assert.Cast[UpdateLogRecord](record)
+			func() {
+				modifiedPage, err := l.pool.GetPageNoCreate(
+					record.modifiedRecordID.PageIdentity(),
+				)
+				assert.NoError(err)
+				modifiedPage.Lock()
+				defer modifiedPage.Unlock()
 
-			slotData, err := getSlotFromPage(
-				l.pool,
-				record.modifiedRecordID,
-			)
-			assert.NoError(err)
-			assert.Assert(
-				len(record.afterValue) <= len(slotData),
-				"length should be the same",
-			)
+				slotData := modifiedPage.Read(
+					record.modifiedRecordID.SlotNum,
+				)
+				assert.Assert(
+					len(record.afterValue) <= len(slotData),
+					"new item len should be at most len of the old one",
+				)
 
-			clear(slotData)
-			copy(slotData, record.afterValue)
+				clear(slotData)
+				copy(slotData, record.afterValue)
+			}()
+		case TypeDelete:
+			record := assert.Cast[DeleteLogRecord](record)
+			func() {
+				modifiedPage, err := l.pool.GetPageNoCreate(
+					record.modifiedRecordID.PageIdentity(),
+				)
+				assert.NoError(err)
+
+				modifiedPage.Lock()
+				defer modifiedPage.Unlock()
+				modifiedPage.UnsafeOverrideSlotStatus(
+					record.modifiedRecordID.SlotNum,
+					page.SlotStatusDeleted,
+				)
+			}()
 		case TypeCompensation:
 			record := assert.Cast[CompensationLogRecord](record)
 			l.activateCLR(&record)
