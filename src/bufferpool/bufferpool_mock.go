@@ -68,7 +68,8 @@ func (b *BufferPool_mock) GetPage(
 		return p, nil
 	}
 
-	b.pages[pageID] = page.NewSlottedPage()
+	p = page.NewSlottedPage()
+	b.pages[pageID] = p
 
 	b.pinCountMu.Lock()
 	b.pinCounts[pageID] = 1
@@ -102,10 +103,10 @@ func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
 	b.pinCountMu.RLock()
 	defer b.pinCountMu.RUnlock()
 
-	pinnedIDs := []PageIdentity{}
+	pinnedIDs := map[PageIdentity]int{}
 	for pageID, pinCount := range b.pinCounts {
 		if pinCount > 0 {
-			pinnedIDs = append(pinnedIDs, pageID)
+			pinnedIDs[pageID] = pinCount
 		}
 	}
 
