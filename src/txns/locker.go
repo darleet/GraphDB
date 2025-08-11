@@ -2,91 +2,52 @@ package txns
 
 import (
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 )
 
 type PageID uint64
 type FileID uint64
 
 type Locker struct {
-	catalogLockManager Manager[GranularLockMode, struct{}]
-	fileLockManager    Manager[GranularLockMode, FileID] // for indexes and tables
-	pageLockManager    Manager[PageLockMode, bufferpool.PageIdentity]
+	catalogLockManager *Manager[GranularLockMode, struct{}]
+	fileLockManager    *Manager[GranularLockMode, FileID] // for indexes and tables
+	pageLockManager    *Manager[PageLockMode, bufferpool.PageIdentity]
+}
+
+func NewLocker() *Locker {
+	return &Locker{
+		catalogLockManager: NewManager[GranularLockMode, struct{}](),
+		fileLockManager:    NewManager[GranularLockMode, FileID](),
+		pageLockManager:    NewManager[PageLockMode, bufferpool.PageIdentity](),
+	}
 }
 
 type catalogLockToken struct {
-	valid bool
 	txnID TxnID
-
-	child *tableLockToken
 }
 
 func newCatalogLockToken(txnID TxnID) *catalogLockToken {
 	return &catalogLockToken{
-		valid: true,
-		child: nil,
 		txnID: txnID,
 	}
 }
 
-func (t *catalogLockToken) registerChild(tt *tableLockToken) {
-	assert.Assert(t.isValid())
-	assert.Assert(tt.isValid())
-
-	tt.sibling = t.child
-	t.child = tt
-}
-
-func (t *catalogLockToken) isValid() bool {
-	return t.valid
-}
-
-func (t *catalogLockToken) invalidate() {
-	t.valid = false
-}
-
 type tableLockToken struct {
-	valid   bool
 	txnID   TxnID
 	tableID FileID
-
-	sibling *tableLockToken
-	child   *pageLockToken
 }
 
 func newTableLockToken(txnID TxnID, tableID FileID) *tableLockToken {
 	return &tableLockToken{
-		valid:   true,
 		tableID: tableID,
 		txnID:   txnID,
-		sibling: nil,
-		child:   nil,
 	}
 }
 
-func (t *tableLockToken) registerChild(pt *pageLockToken) {
-	assert.Assert(t.isValid())
-	assert.Assert(pt.isValid())
-
-	pt.sibling = t.child
-	t.child = pt
-}
-
-func (t *tableLockToken) isValid() bool {
-	return t.valid
-}
-
-func (t *tableLockToken) invalidate() {
-	t.valid = false
-}
-
 type pageLockToken struct {
-	valid  bool
 	txnID  TxnID
 	pageID bufferpool.PageIdentity
-
-	sibling *pageLockToken
 }
 
 func newPageLockToken(
@@ -94,38 +55,30 @@ func newPageLockToken(
 	pageID bufferpool.PageIdentity,
 ) *pageLockToken {
 	return &pageLockToken{
-		valid:   true,
-		pageID:  pageID,
-		txnID:   txnID,
-		sibling: nil,
+		pageID: pageID,
+		txnID:  txnID,
 	}
-}
-
-func (t *pageLockToken) isValid() bool {
-	return t.valid
-}
-
-func (t *pageLockToken) invalidate() {
-	t.valid = false
-}
-
-type Pair[T, K any] struct {
-	First  T
-	Second K
 }
 
 func (l *Locker) LockCatalog(
-	r TxnLockRequest[GranularLockMode, struct{}],
-) optional.Optional[Pair[<-chan struct{}, *catalogLockToken]] {
+	txnID TxnID,
+	lockMode GranularLockMode,
+) optional.Optional[utils.Pair[<-chan struct{}, *catalogLockToken]] {
+	r := TxnLockRequest[GranularLockMode, struct{}]{
+		txnID:    txnID,
+		objectId: struct{}{},
+		lockMode: lockMode,
+	}
+
 	n := l.catalogLockManager.Lock(r)
 	if n == nil {
-		return optional.None[Pair[<-chan struct{}, *catalogLockToken]]()
+		return optional.None[utils.Pair[<-chan struct{}, *catalogLockToken]]()
 	}
 
 	return optional.Some(
-		Pair[<-chan struct{}, *catalogLockToken]{
-			n,
-			newCatalogLockToken(r.txnID),
+		utils.Pair[<-chan struct{}, *catalogLockToken]{
+			First:  n,
+			Second: newCatalogLockToken(r.txnID),
 		},
 	)
 }
@@ -134,25 +87,22 @@ func (l *Locker) LockTable(
 	t *catalogLockToken,
 	tableID FileID,
 	lockMode GranularLockMode,
-) optional.Optional[Pair[<-chan struct{}, *tableLockToken]] {
-	assert.Assert(t.isValid())
-
+) optional.Optional[utils.Pair[<-chan struct{}, *tableLockToken]] {
 	n := l.fileLockManager.Lock(TxnLockRequest[GranularLockMode, FileID]{
 		txnID:    t.txnID,
 		objectId: tableID,
 		lockMode: lockMode,
 	})
 	if n == nil {
-		return optional.None[Pair[<-chan struct{}, *tableLockToken]]()
+		return optional.None[utils.Pair[<-chan struct{}, *tableLockToken]]()
 	}
 
 	tt := newTableLockToken(t.txnID, tableID)
-	t.registerChild(tt)
 
 	return optional.Some(
-		Pair[<-chan struct{}, *tableLockToken]{
-			n,
-			tt,
+		utils.Pair[<-chan struct{}, *tableLockToken]{
+			First:  n,
+			Second: tt,
 		},
 	)
 }
@@ -161,9 +111,7 @@ func (l *Locker) LockPage(
 	t *tableLockToken,
 	pageID PageID,
 	lockMode PageLockMode,
-) optional.Optional[Pair[<-chan struct{}, *pageLockToken]] {
-	assert.Assert(t.isValid())
-
+) optional.Optional[utils.Pair[<-chan struct{}, *pageLockToken]] {
 	pageIdent := bufferpool.PageIdentity{
 		FileID: uint64(t.tableID),
 		PageID: uint64(pageID),
@@ -177,59 +125,19 @@ func (l *Locker) LockPage(
 
 	n := l.pageLockManager.Lock(lockRequest)
 	if n == nil {
-		return optional.None[Pair[<-chan struct{}, *pageLockToken]]()
+		return optional.None[utils.Pair[<-chan struct{}, *pageLockToken]]()
 	}
-	pt := newPageLockToken(t.txnID, pageIdent)
-	t.registerChild(pt)
 
 	return optional.Some(
-		Pair[<-chan struct{}, *pageLockToken]{
-			n,
-			pt,
+		utils.Pair[<-chan struct{}, *pageLockToken]{
+			First:  n,
+			Second: newPageLockToken(t.txnID, pageIdent),
 		},
 	)
 }
 
 func (l *Locker) Unlock(t *catalogLockToken) {
-	assert.Assert(t.isValid())
-
-	unlockReq := TxnUnlockRequest[struct{}]{
-		txnID:    t.txnID,
-		objectId: struct{}{},
-	}
-	l.catalogLockManager.Unlock(unlockReq)
-
-	for child := t.child; child != nil; child = child.sibling {
-		assert.Assert(child.isValid())
-		l.unlockTable(child)
-	}
-	t.invalidate()
-}
-
-func (l *Locker) unlockTable(t *tableLockToken) {
-	assert.Assert(t.isValid())
-
-	unlockReq := TxnUnlockRequest[FileID]{
-		txnID:    t.txnID,
-		objectId: t.tableID,
-	}
-	l.fileLockManager.Unlock(unlockReq)
-
-	for child := t.child; child != nil; child = child.sibling {
-		assert.Assert(child.isValid())
-		l.unlockPage(child)
-	}
-	t.invalidate()
-}
-
-func (l *Locker) unlockPage(t *pageLockToken) {
-	assert.Assert(t.isValid())
-
-	unlockReq := TxnUnlockRequest[bufferpool.PageIdentity]{
-		txnID:    t.txnID,
-		objectId: t.pageID,
-	}
-	l.pageLockManager.Unlock(unlockReq)
-
-	t.invalidate()
+	l.catalogLockManager.UnlockAll(t.txnID)
+	l.fileLockManager.UnlockAll(t.txnID)
+	l.pageLockManager.UnlockAll(t.txnID)
 }

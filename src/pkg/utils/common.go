@@ -7,3 +7,8 @@ func Must[T any](v T, err error) T {
 
 	return v
 }
+
+type Pair[T, K any] struct {
+	First  T
+	Second K
+}
