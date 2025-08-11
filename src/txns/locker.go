@@ -45,21 +45,6 @@ func newTableLockToken(txnID TxnID, tableID FileID) *tableLockToken {
 	}
 }
 
-type pageLockToken struct {
-	txnID  TxnID
-	pageID bufferpool.PageIdentity
-}
-
-func newPageLockToken(
-	txnID TxnID,
-	pageID bufferpool.PageIdentity,
-) *pageLockToken {
-	return &pageLockToken{
-		pageID: pageID,
-		txnID:  txnID,
-	}
-}
-
 func (l *Locker) LockCatalog(
 	txnID TxnID,
 	lockMode GranularLockMode,
@@ -111,7 +96,7 @@ func (l *Locker) LockPage(
 	t *tableLockToken,
 	pageID PageID,
 	lockMode PageLockMode,
-) optional.Optional[utils.Pair[<-chan struct{}, *pageLockToken]] {
+) optional.Optional[<-chan struct{}] {
 	pageIdent := bufferpool.PageIdentity{
 		FileID: uint64(t.tableID),
 		PageID: uint64(pageID),
@@ -125,15 +110,9 @@ func (l *Locker) LockPage(
 
 	n := l.pageLockManager.Lock(lockRequest)
 	if n == nil {
-		return optional.None[utils.Pair[<-chan struct{}, *pageLockToken]]()
+		return optional.None[<-chan struct{}]()
 	}
-
-	return optional.Some(
-		utils.Pair[<-chan struct{}, *pageLockToken]{
-			First:  n,
-			Second: newPageLockToken(t.txnID, pageIdent),
-		},
-	)
+	return optional.Some(n)
 }
 
 func (l *Locker) Unlock(t *catalogLockToken) {

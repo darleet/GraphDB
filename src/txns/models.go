@@ -21,8 +21,8 @@ type GranularLock[Lock any] interface {
 }
 
 var (
-	RECORD_LOCK_SHARED    PageLockMode = PageLockMode{0}
-	RECORD_LOCK_EXCLUSIVE PageLockMode = PageLockMode{1}
+	PAGE_LOCK_SHARED    PageLockMode = PageLockMode{0}
+	PAGE_LOCK_EXCLUSIVE PageLockMode = PageLockMode{1}
 )
 
 var (
@@ -49,7 +49,7 @@ var (
 )
 
 func (m PageLockMode) Compatible(other PageLockMode) bool {
-	if m == RECORD_LOCK_SHARED && other == RECORD_LOCK_SHARED {
+	if m == PAGE_LOCK_SHARED && other == PAGE_LOCK_SHARED {
 		return true
 	}
 	return false
@@ -57,15 +57,15 @@ func (m PageLockMode) Compatible(other PageLockMode) bool {
 
 func (m PageLockMode) Upgradable(to PageLockMode) bool {
 	switch m {
-	case RECORD_LOCK_SHARED:
+	case PAGE_LOCK_SHARED:
 		switch to {
-		case RECORD_LOCK_SHARED:
+		case PAGE_LOCK_SHARED:
 			return true
-		case RECORD_LOCK_EXCLUSIVE:
+		case PAGE_LOCK_EXCLUSIVE:
 			return true
 		}
-	case RECORD_LOCK_EXCLUSIVE:
-		return to == RECORD_LOCK_EXCLUSIVE
+	case PAGE_LOCK_EXCLUSIVE:
+		return to == PAGE_LOCK_EXCLUSIVE
 	}
 	return false
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
@@ -511,11 +512,11 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 			assertLogRecordWithRetrieval(
 				t,
 				logger.pool,
-				bufferpool.PageIdentity{
-					FileID: logger.logfileID,
-					PageID: beginLoc.Location.PageID,
+				RecordID{
+					FileID:  logger.logfileID,
+					PageID:  beginLoc.Location.PageID,
+					SlotNum: beginLoc.Location.SlotNum,
 				},
-				beginLoc.Location.SlotNum,
 				TypeBegin,
 				TransactionID,
 			)
@@ -524,27 +525,36 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				assertLogRecordWithRetrieval(
 					t,
 					logger.pool,
-					bufferpool.PageIdentity{
-						FileID: logger.logfileID,
-						PageID: finishLoc.Location.PageID,
+					RecordID{
+						FileID:  logger.logfileID,
+						PageID:  finishLoc.Location.PageID,
+						SlotNum: finishLoc.Location.SlotNum,
 					},
-					finishLoc.Location.SlotNum,
 					TypeCommit,
 					TransactionID,
 				)
 			} else {
-				assertLogRecordWithRetrieval(t, logger.pool, bufferpool.PageIdentity{FileID: logger.logfileID, PageID: finishLoc.Location.PageID}, finishLoc.Location.SlotNum, TypeAbort, TransactionID)
+				assertLogRecordWithRetrieval(t,
+					logger.pool,
+					RecordID{
+						FileID:  logger.logfileID,
+						PageID:  finishLoc.Location.PageID,
+						SlotNum: finishLoc.Location.SlotNum,
+					},
+					TypeAbort,
+					TransactionID,
+				)
 			}
 
 			for _, insert := range insertLocs {
 				assertLogRecordWithRetrieval(
 					t,
 					logger.pool,
-					bufferpool.PageIdentity{
-						FileID: logger.logfileID,
-						PageID: insert.Location.PageID,
+					RecordID{
+						FileID:  logger.logfileID,
+						PageID:  insert.Location.PageID,
+						SlotNum: insert.Location.SlotNum,
 					},
-					insert.Location.SlotNum,
 					TypeInsert,
 					TransactionID,
 				)
@@ -554,11 +564,11 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				assertLogRecordWithRetrieval(
 					t,
 					logger.pool,
-					bufferpool.PageIdentity{
-						FileID: logger.logfileID,
-						PageID: update.Location.PageID,
+					RecordID{
+						FileID:  logger.logfileID,
+						PageID:  update.Location.PageID,
+						SlotNum: update.Location.SlotNum,
 					},
-					update.Location.SlotNum,
 					TypeUpdate,
 					TransactionID,
 				)
@@ -650,7 +660,7 @@ func TestLoggerRollback(t *testing.T) {
 	recordValues := fillPages(t, logger, math.MaxUint64, 100000, files)
 	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
-	updatedValues := make(map[RecordID]int, len(recordValues))
+	updatedValues := make(map[RecordID]uint32, len(recordValues))
 	maps.Copy(updatedValues, recordValues)
 
 	txnID := atomic.Uint64{}
@@ -662,13 +672,13 @@ func TestLoggerRollback(t *testing.T) {
 				info := batch[rand.Int()%len(batch)]
 				switch rand.Int() % 2 {
 				case 0:
-					newValue := rand.Int()
+					newValue := rand.Uint32()
 					oldValue := updatedValues[info.key]
 					chain.Update(
 						info.key.PageIdentity(),
 						info.key.SlotNum,
-						[]byte(strconv.Itoa(oldValue)),
-						[]byte(strconv.Itoa(newValue)),
+						utils.Uint32ToBytes(oldValue),
+						utils.Uint32ToBytes(newValue),
 					)
 				case 1:
 					chain.Delete(
@@ -694,27 +704,36 @@ func TestLoggerRollback(t *testing.T) {
 			defer func() { assert.NoError(t, pool.Unpin(pageID)) }()
 
 			data := page.Read(k.SlotNum)
-			assert.Equal(t, data, []byte(strconv.Itoa(v)))
+			assert.Equal(t, data, utils.Uint32ToBytes(v))
 		}()
 	}
 }
 
-func workload(
-	t *testing.T,
-	logger *TxnLogger,
-) {
-
-
-}
-
+// fillPages generates test data by filling pages with random values and logging the operations.
+// It creates a transaction log chain and inserts random values into random pages within the given file IDs.
+//
+// Parameters:
+//   - t: Testing context for assertions
+//   - logger: Transaction logger to record operations
+//   - txnID: Transaction ID for the operation
+//   - length: Number of records to insert
+//   - fileIDs: Slice of file IDs to distribute records across
+//   - limit: Upper bound for generated random values (exclusive)
+//
+// Returns:
+//   - map[RecordID]uint32: Mapping of inserted record locations to their values
+//
+// The function ensures each insert operation is successful by retrying on full pages.
+// All operations are performed within a single transaction that is committed at the end.
 func fillPages(
 	t *testing.T,
 	logger *TxnLogger,
 	txnID txns.TxnID,
 	length int,
 	fileIDs []uint64,
-) map[RecordID]int {
-	res := make(map[RecordID]int, length)
+	limit uint32,
+) map[RecordID]uint32 {
+	res := make(map[RecordID]uint32, length)
 
 	chain := NewTxnLogChain(logger, txnID)
 	chain.Begin()
@@ -732,8 +751,8 @@ func fillPages(
 				p.Lock()
 				defer p.Unlock()
 
-				value := rand.Int()
-				insertedValue := []byte(strconv.Itoa(value))
+				value := rand.Uint32() % limit
+				insertedValue := utils.Uint32ToBytes(value)
 
 				slotOpt := p.InsertPrepare(insertedValue)
 				if slotOpt.IsNone() {

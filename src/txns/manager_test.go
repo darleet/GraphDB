@@ -16,7 +16,7 @@ func TestManagerBasicOperation(t *testing.T) {
 	req := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
 		objectId: 100,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 	notifier := m.Lock(req)
 	expectClosedChannel(t, notifier, "Initial lock should be granted")
@@ -55,7 +55,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 			req := TxnLockRequest[PageLockMode, RecordID]{
 				txnID:    TxnID(id), //nolint:gosec
 				objectId: recordID,
-				lockMode: RECORD_LOCK_SHARED,
+				lockMode: PAGE_LOCK_SHARED,
 			}
 
 			fmt.Printf("before lock %d\n", id)
@@ -106,7 +106,7 @@ func TestManagerUnlockPanicScenarios(t *testing.T) {
 		req := TxnLockRequest[PageLockMode, RecordID]{
 			txnID:    1,
 			objectId: 200,
-			lockMode: RECORD_LOCK_EXCLUSIVE,
+			lockMode: PAGE_LOCK_EXCLUSIVE,
 		}
 		notifier := m.Lock(req)
 		expectClosedChannel(t, notifier, "Lock should be granted")
@@ -125,7 +125,7 @@ func TestManagerLockContention(t *testing.T) {
 	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    5,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 	notifier1 := m.Lock(req1)
 	expectClosedChannel(t, notifier1, "First exclusive lock should be granted")
@@ -134,7 +134,7 @@ func TestManagerLockContention(t *testing.T) {
 	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    4,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 	notifier2 := m.Lock(req2)
 	expectOpenChannel(t, notifier2, "Second exclusive lock should block")
@@ -143,7 +143,7 @@ func TestManagerLockContention(t *testing.T) {
 	req3 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    3,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 	notifier3 := m.Lock(req3)
 	expectOpenChannel(t, notifier3, "Shared lock should block behind exclusive")
@@ -171,7 +171,7 @@ func TestManagerUnlockRetry(t *testing.T) {
 	req := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 	notifier := m.Lock(req)
 	expectClosedChannel(t, notifier, "Lock should be granted")
@@ -203,7 +203,7 @@ func TestManagerUnlockAll(t *testing.T) {
 	notifier1x := m.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    runningTxn,
 		objectId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	})
 	expectClosedChannel(
 		t,
@@ -214,7 +214,7 @@ func TestManagerUnlockAll(t *testing.T) {
 	notifier0s := m.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    waitingTxn,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	})
 	expectOpenChannel(t, notifier0s, "Txn 0 should be enqueued on record 1")
 
@@ -233,14 +233,14 @@ func TestManagerUpgrade(t *testing.T) {
 	f := manager.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    10,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	})
 	expectClosedChannel(t, f, "should have been granted immediatly")
 
 	s := manager.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    9,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	})
 	expectClosedChannel(
 		t,
@@ -251,14 +251,14 @@ func TestManagerUpgrade(t *testing.T) {
 	writer := manager.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    8,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	})
 	expectOpenChannel(t, writer, "incompatible locks -> not granted immediatly")
 
 	th := manager.Upgrade(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    10,
 		objectId: recordID,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	})
 	expectOpenChannel(
 		t,
@@ -270,7 +270,7 @@ func TestManagerUpgrade(t *testing.T) {
 	assert.Equal(t, 3, len(q.txnNodes))
 
 	entry := q.txnNodes[TxnID(10)]
-	assert.Equal(t, RECORD_LOCK_EXCLUSIVE, entry.r.lockMode)
+	assert.Equal(t, PAGE_LOCK_EXCLUSIVE, entry.r.lockMode)
 
 	manager.Unlock(TxnUnlockRequest[RecordID]{
 		txnID:    9,

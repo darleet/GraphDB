@@ -33,12 +33,12 @@ func TestSharedLockCompatibility(t *testing.T) {
 	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -62,12 +62,12 @@ func TestExclusiveBlocking(t *testing.T) {
 	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
 		objectId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -89,12 +89,12 @@ func TestDeadlockPrevention(t *testing.T) {
 	oldReq := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
 		objectId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 	newReq := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	// Older transaction gets blocked (simulated)
@@ -124,7 +124,7 @@ func TestConcurrentAccess(t *testing.T) {
 			req := TxnLockRequest[PageLockMode, RecordID]{
 				txnID:    TxnID(id), //nolint:gosec
 				objectId: 1,
-				lockMode: RECORD_LOCK_SHARED,
+				lockMode: PAGE_LOCK_SHARED,
 			}
 
 			fmt.Printf("before lock %d\n", id)
@@ -155,12 +155,12 @@ func TestExclusiveOrdering(t *testing.T) {
 	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    9,
 		objectId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    8,
 		objectId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -188,17 +188,17 @@ func TestLockFairness(t *testing.T) {
 	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    9,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    8,
 		objectId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 	req3 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    7,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -219,14 +219,14 @@ func TestLockcpgradeAlwaysAllowIfSingle(t *testing.T) {
 	req := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    10,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier := q.Lock(req)
 	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
 
 	// Upgrade the lock
-	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
 	notifier = q.Upgrade(req)
 	expectClosedChannel(
 		t,
@@ -240,7 +240,7 @@ func TestLockUpgradeAllowIfSingleWhenNoPendingUpgrades(t *testing.T) {
 	req := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    10,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier := q.Lock(req)
@@ -249,7 +249,7 @@ func TestLockUpgradeAllowIfSingleWhenNoPendingUpgrades(t *testing.T) {
 	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
 		objectId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 	blockedReqNotifier := q.Lock(req2)
 	expectOpenChannel(
@@ -259,7 +259,7 @@ func TestLockUpgradeAllowIfSingleWhenNoPendingUpgrades(t *testing.T) {
 	)
 
 	// Upgrade the lock
-	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
 	notifier = q.Upgrade(req)
 	expectClosedChannel(
 		t,
@@ -273,7 +273,7 @@ func TestLockUpgradeForbidUpgradeIfDeadlock(t *testing.T) {
 	req := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    3,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier := q.Lock(req)
@@ -282,7 +282,7 @@ func TestLockUpgradeForbidUpgradeIfDeadlock(t *testing.T) {
 	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 	blockedReqNotifier := q.Lock(req2)
 	expectClosedChannel(
@@ -292,7 +292,7 @@ func TestLockUpgradeForbidUpgradeIfDeadlock(t *testing.T) {
 	)
 
 	// Upgrade the lock
-	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
 	notifier = q.Upgrade(req)
 	require.Nil(t, notifier, "deadlock detected -> upgrade should be forbidden")
 }
@@ -343,7 +343,7 @@ func TestManagerUpgradeWithUpgradeWaiter(t *testing.T) {
 	req := TxnLockRequest[PageLockMode, TableID]{
 		txnID:    4,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier := q.Lock(req)
@@ -352,13 +352,13 @@ func TestManagerUpgradeWithUpgradeWaiter(t *testing.T) {
 	req2 := TxnLockRequest[PageLockMode, TableID]{
 		txnID:    3,
 		objectId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier2 := q.Lock(req2)
 	expectClosedChannel(t, notifier2, "compatible lock -> grant the lock")
 
-	req2.lockMode = RECORD_LOCK_EXCLUSIVE
+	req2.lockMode = PAGE_LOCK_EXCLUSIVE
 	upgradeNotifier2 := q.Upgrade(req2)
 	expectOpenChannel(
 		t,
@@ -366,7 +366,7 @@ func TestManagerUpgradeWithUpgradeWaiter(t *testing.T) {
 		"no deadlock -> upgrade should be allowed [wait]",
 	)
 
-	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
 	upgradeNotifier1 := q.Upgrade(req)
 
 	require.Nil(t, upgradeNotifier1)

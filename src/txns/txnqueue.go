@@ -206,11 +206,13 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 	locksAreCompatible := true
 	deadlockCondition := false
 	for cur.status == entryStatusRunning {
-		assert.Assert(
-			cur.r.txnID != r.txnID,
-			"trying to lock already locked transaction. %+v",
-			r,
-		)
+		if cur.r.txnID == r.txnID {
+			// the current transaction already owns the lock
+			// grant the lock immediately
+			res := make(chan struct{})
+			close(res)
+			return res
+		}
 
 		deadlockCondition = deadlockCondition ||
 			checkDeadlockCondition(cur.r.txnID, r.txnID)

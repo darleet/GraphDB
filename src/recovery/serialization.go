@@ -274,13 +274,6 @@ func (r *DeleteLogRecord) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	//nolint:gosec
-	if err := binary.Write(buf, binary.BigEndian, uint32(len(r.beforeValue))); err != nil {
-		return nil, err
-	}
-
-	buf.Write(r.beforeValue)
-
 	return buf.Bytes(), nil
 }
 
@@ -312,9 +305,7 @@ func (r *DeleteLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	r.beforeValue = make([]byte, beforeLen)
-	_, err := io.ReadFull(reader, r.beforeValue)
-	return err
+	return nil
 }
 
 // MarshalBinary for CommitLogRecord.

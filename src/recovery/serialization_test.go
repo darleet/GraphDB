@@ -504,7 +504,6 @@ func TestDeleteLogRecord_MarshalUnmarshal(t *testing.T) {
 			FileID:  192021,
 			SlotNum: 2224,
 		},
-		[]byte("before value"),
 	)
 
 	data, err := original.MarshalBinary()
@@ -518,7 +517,6 @@ func TestDeleteLogRecord_MarshalUnmarshal(t *testing.T) {
 	assert.Equal(t, original.txnID, recovered.txnID)
 	assert.Equal(t, original.parentLogLocation, recovered.parentLogLocation)
 	assert.Equal(t, original.modifiedRecordID, recovered.modifiedRecordID)
-	assert.Equal(t, original.beforeValue, recovered.beforeValue)
 }
 
 func TestDeleteLogRecord_MarshalBinary_EmptyBeforeValue(t *testing.T) {
@@ -531,7 +529,6 @@ func TestDeleteLogRecord_MarshalBinary_EmptyBeforeValue(t *testing.T) {
 			FileID:  7,
 			SlotNum: 8,
 		},
-		[]byte{},
 	)
 
 	data, err := original.MarshalBinary()
@@ -540,7 +537,6 @@ func TestDeleteLogRecord_MarshalBinary_EmptyBeforeValue(t *testing.T) {
 	var recovered DeleteLogRecord
 	err = recovered.UnmarshalBinary(data)
 	assert.NoError(t, err)
-	assert.Empty(t, recovered.beforeValue)
 }
 
 func TestDeleteLogRecord_UnmarshalBinary_InvalidTypeTag(t *testing.T) {
@@ -553,7 +549,6 @@ func TestDeleteLogRecord_UnmarshalBinary_InvalidTypeTag(t *testing.T) {
 			FileID:  7,
 			SlotNum: 8,
 		},
-		[]byte("before"),
 	)
 
 	data, err := original.MarshalBinary()
@@ -582,7 +577,6 @@ func TestDeleteLogRecord_UnmarshalBinary_TruncatedData(t *testing.T) {
 			FileID:  7,
 			SlotNum: 8,
 		},
-		[]byte("before"),
 	)
 
 	data, err := original.MarshalBinary()
