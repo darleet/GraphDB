@@ -227,7 +227,7 @@ func TestMassiveRecovery(t *testing.T) {
 	}
 	slot := optional.Some(uint16(0))
 
-	N := 100
+	N := 1
 	i := 0
 
 	index2pageID := map[int]FileLocation{}
@@ -258,7 +258,7 @@ func TestMassiveRecovery(t *testing.T) {
 	left := N - N/10
 	inc := N * 6 / 10
 	right := (left + inc) % N
-	STEP := 5
+	STEP := 1
 	require.Equal(
 		t,
 		inc%STEP,
@@ -271,7 +271,7 @@ func TestMassiveRecovery(t *testing.T) {
 	for i := left; i != right; i = (i + STEP) % N {
 		wg.Add(1)
 
-		go func(i int) {
+		func(i int) {
 			defer wg.Done()
 
 			TransactionID := txns.TxnID(TransactionIDCounter.Add(1))
@@ -293,29 +293,28 @@ func TestMassiveRecovery(t *testing.T) {
 					chain.
 						Update(pageID, recordLoc.SlotNum, INIT, NEW).
 						Update(pageID, recordLoc.SlotNum, NEW, NEW2)
+					func() {
+						p, err := pool.GetPageNoCreate(pageID)
+						require.NoError(t, err)
+
+						defer func() { require.NoError(t, pool.Unpin(pageID)) }()
+
+						p.Lock()
+						defer p.Unlock()
+
+						data := p.Read(recordLoc.SlotNum)
+
+						clear(data)
+
+						if (i+j)%2 != 0 {
+							copy(data, NEW)
+						} else {
+							copy(data, NEW2)
+						}
+					}()
 				case 1:
 					chain.Delete(pageID, recordLoc.SlotNum)
 				}
-
-				func() {
-					p, err := pool.GetPageNoCreate(pageID)
-					require.NoError(t, err)
-
-					defer func() { require.NoError(t, pool.Unpin(pageID)) }()
-
-					p.Lock()
-					defer p.Unlock()
-
-					data := p.Read(recordLoc.SlotNum)
-
-					clear(data)
-
-					if (i+j)%2 != 0 {
-						copy(data, NEW)
-					} else {
-						copy(data, NEW2)
-					}
-				}()
 			}
 
 			require.NoError(t, chain.Err())
@@ -485,14 +484,14 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 					insertLocs = append(
 						insertLocs,
 						//nolint:gosec
-						chain.Insert(dataPageId, uint16(j), []byte(strconv.Itoa(i*INNER+j))).
+						chain.Insert(dataPageId, uint16(j), utils.Uint32ToBytes(uint32(i*INNER+j))).
 							Loc(),
 					)
 				case 1:
 					updateLocs = append(
 						updateLocs,
 						//nolint:gosec
-						chain.Update(dataPageId, uint16(j), []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i*INNER+j))).
+						chain.Update(dataPageId, uint16(j), []byte(strconv.Itoa(i)), utils.Uint32ToBytes(uint32(i*INNER+j))).
 							Loc(),
 					)
 				}

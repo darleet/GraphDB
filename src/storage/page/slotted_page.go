@@ -209,7 +209,7 @@ func (p *SlottedPage) UnsafeOverrideSlotStatus(
 	header.getSlots()[slotNumber] = newSlotPtr(newStatus, slot.RecordOffset())
 }
 
-func (p *SlottedPage) UndoDelete(slotID uint16, oldData []byte) {
+func (p *SlottedPage) UndoDelete(slotID uint16) {
 	header := p.getHeader()
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 	ptr := header.getSlots()[slotID]
@@ -218,15 +218,7 @@ func (p *SlottedPage) UndoDelete(slotID uint16, oldData []byte) {
 		"tried to UndoDelete from a slot with status %d", ptr.RecordInfo(),
 	)
 
-	data := p.getBytesUnsafe(ptr)
-	assert.Assert(len(data) >= len(oldData))
-	clear(data)
-	copy(data, oldData)
-
-	p.getHeader().getSlots()[slotID] = newSlotPtr(
-		SlotStatusInserted,
-		ptr.RecordOffset(),
-	)
+	p.UnsafeOverrideSlotStatus(slotID, SlotStatusInserted)
 }
 
 func (p *SlottedPage) Update(slotID uint16, newData []byte) {

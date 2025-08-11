@@ -235,10 +235,7 @@ func TestUndoDelete_RestoresDataAndStatus(t *testing.T) {
 
 	// Delete the slot
 	page.Delete(slot.Unwrap())
-
-	// Prepare new data to restore
-	oldData := []byte("restored")
-	page.UndoDelete(slot.Unwrap(), oldData)
+	page.UndoDelete(slot.Unwrap())
 
 	// Slot status should be Inserted again
 	header := page.getHeader()
@@ -254,8 +251,8 @@ func TestUndoDelete_RestoresDataAndStatus(t *testing.T) {
 	got := page.Read(slot.Unwrap())
 	assert.Equal(
 		t,
-		oldData,
-		got[:len(oldData)],
+		orig,
+		got,
 		"Data should be restored after UndoDelete",
 	)
 }
@@ -269,13 +266,13 @@ func TestUndoDelete_PanicsIfSlotNotDeleted(t *testing.T) {
 
 	// Try UndoDelete on a slot that is not deleted
 	assert.Panics(t, func() {
-		page.UndoDelete(slot.Unwrap(), orig)
+		page.UndoDelete(slot.Unwrap())
 	}, "UndoDelete should panic if slot is not deleted")
 }
 
 func TestUndoDelete_PanicsIfSlotIDTooLarge(t *testing.T) {
 	page := NewSlottedPage()
 	assert.Panics(t, func() {
-		page.UndoDelete(9999, []byte("data"))
+		page.UndoDelete(9999)
 	}, "UndoDelete should panic if slotID is too large")
 }

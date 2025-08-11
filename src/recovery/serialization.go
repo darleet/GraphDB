@@ -300,11 +300,6 @@ func (r *DeleteLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	var beforeLen uint32
-	if err := binary.Read(reader, binary.BigEndian, &beforeLen); err != nil {
-		return err
-	}
-
 	return nil
 }
 

@@ -708,7 +708,7 @@ func (l *TxnLogger) activateCLR(record *CompensationLogRecord) {
 	case CLRtypeUpdate:
 		page.Update(record.modifiedRecordID.SlotNum, record.afterValue)
 	case CLRtypeDelete:
-		page.UndoDelete(record.modifiedRecordID.SlotNum, record.afterValue)
+		page.UndoDelete(record.modifiedRecordID.SlotNum)
 	}
 }
 
