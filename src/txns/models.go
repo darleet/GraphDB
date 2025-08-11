@@ -10,32 +10,42 @@ type TableID uint64
  *       in distributed systems that use this kind of transaction IDs */
 type TxnID uint64
 
-type TaggedLockMode[TypeTag any] int
+type TaggedType[T any] struct{ _ T } // this trick forbids casting one lock mode to another
 
-type RecordLockMode TaggedLockMode[RecordID]
-type TableLockMode TaggedLockMode[TableID]
+type RecordLockMode TaggedType[uint8]
+type GranularLockMode TaggedType[uint16]
 
-type LockMode[T any] interface {
-	Compatible(T) bool
-	Upgradable(T) bool
+type GranularLock[Lock any] interface {
+	Compatible(Lock) bool
+	Upgradable(Lock) bool
 }
 
-const (
-	RECORD_LOCK_SHARED RecordLockMode = iota
-	RECORD_LOCK_EXCLUSIVE
-)
-
-const (
-	TABLE_LOCK_INTENTION_SHARED TableLockMode = iota
-	TABLE_LOCK_INTENTION_EXCLUSIVE
-	TABLE_LOCK_SHARED
-	TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE
-	TABLE_LOCK_EXCLUSIVE
+var (
+	RECORD_LOCK_SHARED    RecordLockMode = RecordLockMode{0}
+	RECORD_LOCK_EXCLUSIVE RecordLockMode = RecordLockMode{1}
 )
 
 var (
-	_ LockMode[RecordLockMode] = RecordLockMode(0)
-	_ LockMode[TableLockMode]  = TableLockMode(0)
+	GRANULAR_LOCK_INTENTION_SHARED GranularLockMode = GranularLockMode{
+		0,
+	}
+	GRANULAR_LOCK_INTENTION_EXCLUSIVE GranularLockMode = GranularLockMode{
+		1,
+	}
+	GRANULAR_LOCK_SHARED GranularLockMode = GranularLockMode{
+		2,
+	}
+	GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE GranularLockMode = GranularLockMode{
+		3,
+	}
+	GRANULAR_LOCK_EXCLUSIVE GranularLockMode = GranularLockMode{
+		4,
+	}
+)
+
+var (
+	_ GranularLock[RecordLockMode]   = RecordLockMode{0}
+	_ GranularLock[GranularLockMode] = GranularLockMode{0}
 )
 
 func (m RecordLockMode) Compatible(other RecordLockMode) bool {
@@ -60,71 +70,71 @@ func (m RecordLockMode) Upgradable(to RecordLockMode) bool {
 	return false
 }
 
-func (m TableLockMode) Compatible(other TableLockMode) bool {
+func (m GranularLockMode) Compatible(other GranularLockMode) bool {
 	switch m {
-	case TABLE_LOCK_INTENTION_SHARED:
+	case GRANULAR_LOCK_INTENTION_SHARED:
 		switch other {
-		case TABLE_LOCK_INTENTION_SHARED:
+		case GRANULAR_LOCK_INTENTION_SHARED:
 			return true
-		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 			return true
-		case TABLE_LOCK_SHARED:
+		case GRANULAR_LOCK_SHARED:
 			return true
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return true
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return false
 		}
-	case TABLE_LOCK_INTENTION_EXCLUSIVE:
+	case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 		switch other {
-		case TABLE_LOCK_INTENTION_SHARED:
+		case GRANULAR_LOCK_INTENTION_SHARED:
 			return true
-		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 			return true
-		case TABLE_LOCK_SHARED:
+		case GRANULAR_LOCK_SHARED:
 			return false
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return false
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return false
 		}
-	case TABLE_LOCK_SHARED:
+	case GRANULAR_LOCK_SHARED:
 		switch other {
-		case TABLE_LOCK_INTENTION_SHARED:
+		case GRANULAR_LOCK_INTENTION_SHARED:
 			return true
-		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 			return false
-		case TABLE_LOCK_SHARED:
+		case GRANULAR_LOCK_SHARED:
 			return true
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return false
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return false
 		}
-	case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+	case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 		switch other {
-		case TABLE_LOCK_INTENTION_SHARED:
+		case GRANULAR_LOCK_INTENTION_SHARED:
 			return true
-		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 			return false
-		case TABLE_LOCK_SHARED:
+		case GRANULAR_LOCK_SHARED:
 			return false
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return false
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return false
 		}
-	case TABLE_LOCK_EXCLUSIVE:
+	case GRANULAR_LOCK_EXCLUSIVE:
 		switch other {
-		case TABLE_LOCK_INTENTION_SHARED:
+		case GRANULAR_LOCK_INTENTION_SHARED:
 			return false
-		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 			return false
-		case TABLE_LOCK_SHARED:
+		case GRANULAR_LOCK_SHARED:
 			return false
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return false
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return false
 		}
 	}
@@ -133,81 +143,81 @@ func (m TableLockMode) Compatible(other TableLockMode) bool {
 	return false
 }
 
-func (m TableLockMode) Upgradable(to TableLockMode) bool {
+func (m GranularLockMode) Upgradable(to GranularLockMode) bool {
 	switch m {
-	case TABLE_LOCK_INTENTION_SHARED:
+	case GRANULAR_LOCK_INTENTION_SHARED:
 		switch to {
-		case TABLE_LOCK_INTENTION_SHARED:
+		case GRANULAR_LOCK_INTENTION_SHARED:
 			return true
-		case TABLE_LOCK_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 			return true
-		case TABLE_LOCK_SHARED:
+		case GRANULAR_LOCK_SHARED:
 			return true
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return true
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return true
 		default:
 			return false
 		}
-	case TABLE_LOCK_INTENTION_EXCLUSIVE:
+	case GRANULAR_LOCK_INTENTION_EXCLUSIVE:
 		return false // Cannot upgrade from intention exclusive in 2PL
-	case TABLE_LOCK_SHARED:
+	case GRANULAR_LOCK_SHARED:
 		switch to {
-		case TABLE_LOCK_SHARED:
+		case GRANULAR_LOCK_SHARED:
 			return true
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return true
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return true
 		default:
 			return false
 		}
-	case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+	case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 		switch to {
-		case TABLE_LOCK_SHARED_INTENTION_EXCLUSIVE:
+		case GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE:
 			return true
-		case TABLE_LOCK_EXCLUSIVE:
+		case GRANULAR_LOCK_EXCLUSIVE:
 			return true
 		default:
 			return false
 		}
-	case TABLE_LOCK_EXCLUSIVE:
+	case GRANULAR_LOCK_EXCLUSIVE:
 		return false // Already exclusive, cannot upgrade
 	default:
 		return false
 	}
 }
 
-type TxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
+type TxnLockRequest[LockModeType GranularLock[LockModeType], ObjectIDType comparable] struct {
 	txnID    TxnID
-	recordId ObjectIDType
+	objectId ObjectIDType
 	lockMode LockModeType
 }
 
-func NewTxnLockRequest[LockModeType LockMode[LockModeType], ObjectIDType comparable](
+func NewTxnLockRequest[LockModeType GranularLock[LockModeType], ObjectIDType comparable](
 	txnID TxnID,
-	recordId ObjectIDType,
+	objectId ObjectIDType,
 	lockMode LockModeType,
 ) *TxnLockRequest[LockModeType, ObjectIDType] {
 	return &TxnLockRequest[LockModeType, ObjectIDType]{
 		txnID:    txnID,
-		recordId: recordId,
+		objectId: objectId,
 		lockMode: lockMode,
 	}
 }
 
 type TxnUnlockRequest[ObjectIDType comparable] struct {
 	txnID    TxnID
-	recordId ObjectIDType
+	objectId ObjectIDType
 }
 
 func NewTxnUnlockRequest[ObjectIDType comparable](
 	txnID TxnID,
-	recordId ObjectIDType,
+	objectId ObjectIDType,
 ) *TxnUnlockRequest[ObjectIDType] {
 	return &TxnUnlockRequest[ObjectIDType]{
 		txnID:    txnID,
-		recordId: recordId,
+		objectId: objectId,
 	}
 }

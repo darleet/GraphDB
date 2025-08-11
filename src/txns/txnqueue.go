@@ -15,7 +15,7 @@ const (
 	entryStatusWaitAcquire
 )
 
-type txnQueueEntry[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
+type txnQueueEntry[LockModeType GranularLock[LockModeType], ObjectIDType comparable] struct {
 	r        TxnLockRequest[LockModeType, ObjectIDType]
 	notifier chan struct{}
 	status   entryStatus
@@ -73,7 +73,7 @@ func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeInsert(
 	next.mu.Unlock()
 }
 
-type txnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
+type txnQueue[LockModeType GranularLock[LockModeType], ObjectIDType comparable] struct {
 	head *txnQueueEntry[LockModeType, ObjectIDType]
 	tail *txnQueueEntry[LockModeType, ObjectIDType]
 
@@ -112,7 +112,7 @@ func (q *txnQueue[LockModeType, ObjectIDType]) processBatch(
 		return
 	}
 
-	seenLockModes := make(map[LockMode[LockModeType]]struct{})
+	seenLockModes := make(map[GranularLock[LockModeType]]struct{})
 outer:
 	for {
 		for seenMode := range seenLockModes {
@@ -135,7 +135,7 @@ outer:
 	}
 }
 
-func newTxnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable]() *txnQueue[LockModeType, ObjectIDType] {
+func newTxnQueue[LockModeType GranularLock[LockModeType], ObjectIDType comparable]() *txnQueue[LockModeType, ObjectIDType] {
 	head := &txnQueueEntry[LockModeType, ObjectIDType]{
 		r: TxnLockRequest[LockModeType, ObjectIDType]{
 			txnID: math.MaxUint64, // Needed for the deadlock prevention policy
@@ -345,9 +345,6 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 		}
 
 		defer func() {
-			cur.mu.Unlock()
-			next.mu.Unlock()
-
 			entryBeforeUpgradingOne.SafeDeleteNext()
 			if entryBeforeUpgradingOne == q.head {
 				next := entryBeforeUpgradingOne.next
@@ -359,6 +356,9 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 		}()
 
 		if deadlockCond {
+			cur.mu.Unlock()
+			next.mu.Unlock()
+
 			q.mu.Lock()
 			delete(q.txnNodes, r.txnID)
 			q.mu.Unlock()
@@ -370,7 +370,9 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 			notifier: make(chan struct{}),
 			status:   entryStatusWaitUpgrade,
 		}
+		next.mu.Unlock()
 		cur.SafeInsert(newEntry)
+		cur.mu.Unlock()
 
 		q.mu.Lock()
 		q.txnNodes[r.txnID] = newEntry
