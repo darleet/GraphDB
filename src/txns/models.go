@@ -70,6 +70,7 @@ func (m RecordLockMode) Upgradable(to RecordLockMode) bool {
 	return false
 }
 
+// https://www.geeksforgeeks.org/dbms/multiple-granularity-locking-in-dbms/
 func (m GranularLockMode) Compatible(other GranularLockMode) bool {
 	switch m {
 	case GRANULAR_LOCK_INTENTION_SHARED:

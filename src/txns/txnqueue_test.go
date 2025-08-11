@@ -302,7 +302,7 @@ func TestLockUpgradeCompatibleLocks(t *testing.T) {
 	req := TxnLockRequest[GranularLockMode, TableID]{
 		txnID:    4,
 		objectId: 1,
-		lockMode: GRANULAR_LOCK_INTENTION_SHARED,
+		lockMode: GRANULAR_LOCK_SHARED,
 	}
 
 	notifier := q.Lock(req)
@@ -311,7 +311,7 @@ func TestLockUpgradeCompatibleLocks(t *testing.T) {
 	req2 := TxnLockRequest[GranularLockMode, TableID]{
 		txnID:    3,
 		objectId: 1,
-		lockMode: GRANULAR_LOCK_INTENTION_SHARED,
+		lockMode: GRANULAR_LOCK_SHARED,
 	}
 	notifier2 := q.Lock(req2)
 	expectClosedChannel(
@@ -338,10 +338,41 @@ func TestLockUpgradeCompatibleLocks(t *testing.T) {
 }
 
 func TestManagerUpgradeWithUpgradeWaiter(t *testing.T) {
-	// q := newTxnQueue[GranularLockMode, TableID]()
-	// req := TxnLockRequest[GranularLockMode, TableID]{
-	// 	txnID:    4,
-	// 	recordId: 1,
-	// 	lockMode: GRANULAR_LOCK_INTENTION_SHARED,
-	// }
+	q := newTxnQueue[RecordLockMode, TableID]()
+
+	req := TxnLockRequest[RecordLockMode, TableID]{
+		txnID:    4,
+		objectId: 1,
+		lockMode: RECORD_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	req2 := TxnLockRequest[RecordLockMode, TableID]{
+		txnID:    3,
+		objectId: 1,
+		lockMode: RECORD_LOCK_SHARED,
+	}
+
+	notifier2 := q.Lock(req2)
+	expectClosedChannel(t, notifier2, "compatible lock -> grant the lock")
+
+	req2.lockMode = RECORD_LOCK_EXCLUSIVE
+	upgradeNotifier2 := q.Upgrade(req2)
+	expectOpenChannel(
+		t,
+		upgradeNotifier2,
+		"no deadlock -> upgrade should be allowed [wait]",
+	)
+
+	req.lockMode = RECORD_LOCK_EXCLUSIVE
+	upgradeNotifier1 := q.Upgrade(req)
+
+	require.Nil(t, upgradeNotifier1)
+	expectClosedChannel(
+		t,
+		upgradeNotifier2,
+		"upgrade should be allowed to run [compatible locks]",
+	)
 }
