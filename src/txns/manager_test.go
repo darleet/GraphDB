@@ -10,10 +10,10 @@ import (
 )
 
 func TestManagerBasicOperation(t *testing.T) {
-	m := NewManager[RecordLockMode, RecordID]()
+	m := NewManager[PageLockMode, RecordID]()
 
 	// Test queue creation on first lock
-	req := TxnLockRequest[RecordLockMode, RecordID]{
+	req := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
 		objectId: 100,
 		lockMode: RECORD_LOCK_SHARED,
@@ -40,7 +40,7 @@ func TestManagerBasicOperation(t *testing.T) {
 }
 
 func TestManagerConcurrentRecordAccess(t *testing.T) {
-	m := NewManager[RecordLockMode, RecordID]()
+	m := NewManager[PageLockMode, RecordID]()
 
 	var wg sync.WaitGroup
 
@@ -52,7 +52,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 
 			//nolint:gosec
 			recordID := RecordID(id & 1) // Two distinct records
-			req := TxnLockRequest[RecordLockMode, RecordID]{
+			req := TxnLockRequest[PageLockMode, RecordID]{
 				txnID:    TxnID(id), //nolint:gosec
 				objectId: recordID,
 				lockMode: RECORD_LOCK_SHARED,
@@ -83,7 +83,7 @@ func TestManagerConcurrentRecordAccess(t *testing.T) {
 }
 
 func TestManagerUnlockPanicScenarios(t *testing.T) {
-	m := NewManager[RecordLockMode, RecordID]()
+	m := NewManager[PageLockMode, RecordID]()
 
 	// Test non-existent record panic
 	t.Run("NonExistentRecord", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestManagerUnlockPanicScenarios(t *testing.T) {
 			}
 		}()
 
-		req := TxnLockRequest[RecordLockMode, RecordID]{
+		req := TxnLockRequest[PageLockMode, RecordID]{
 			txnID:    1,
 			objectId: 200,
 			lockMode: RECORD_LOCK_EXCLUSIVE,
@@ -118,11 +118,11 @@ func TestManagerUnlockPanicScenarios(t *testing.T) {
 }
 
 func TestManagerLockContention(t *testing.T) {
-	m := NewManager[RecordLockMode, RecordID]()
+	m := NewManager[PageLockMode, RecordID]()
 	recordID := RecordID(300)
 
 	// First exclusive lock
-	req1 := TxnLockRequest[RecordLockMode, RecordID]{
+	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    5,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_EXCLUSIVE,
@@ -131,7 +131,7 @@ func TestManagerLockContention(t *testing.T) {
 	expectClosedChannel(t, notifier1, "First exclusive lock should be granted")
 
 	// Second exclusive lock (should block)
-	req2 := TxnLockRequest[RecordLockMode, RecordID]{
+	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    4,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_EXCLUSIVE,
@@ -140,7 +140,7 @@ func TestManagerLockContention(t *testing.T) {
 	expectOpenChannel(t, notifier2, "Second exclusive lock should block")
 
 	// Concurrent shared lock (should also block)
-	req3 := TxnLockRequest[RecordLockMode, RecordID]{
+	req3 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    3,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_SHARED,
@@ -164,11 +164,11 @@ func TestManagerLockContention(t *testing.T) {
 }
 
 func TestManagerUnlockRetry(t *testing.T) {
-	m := NewManager[RecordLockMode, RecordID]()
+	m := NewManager[PageLockMode, RecordID]()
 	recordID := RecordID(400)
 
 	// Setup lock
-	req := TxnLockRequest[RecordLockMode, RecordID]{
+	req := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_EXCLUSIVE,
@@ -195,12 +195,12 @@ func TestManagerUnlockRetry(t *testing.T) {
 }
 
 func TestManagerUnlockAll(t *testing.T) {
-	m := NewManager[RecordLockMode, RecordID]()
+	m := NewManager[PageLockMode, RecordID]()
 
 	waitingTxn := TxnID(0)
 	runningTxn := TxnID(1)
 
-	notifier1x := m.Lock(TxnLockRequest[RecordLockMode, RecordID]{
+	notifier1x := m.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    runningTxn,
 		objectId: 1,
 		lockMode: RECORD_LOCK_EXCLUSIVE,
@@ -211,7 +211,7 @@ func TestManagerUnlockAll(t *testing.T) {
 		"Txn 1 should have been granted the Exclusive Lock on 1",
 	)
 
-	notifier0s := m.Lock(TxnLockRequest[RecordLockMode, RecordID]{
+	notifier0s := m.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    waitingTxn,
 		objectId: 1,
 		lockMode: RECORD_LOCK_SHARED,
@@ -227,17 +227,17 @@ func TestManagerUnlockAll(t *testing.T) {
 }
 
 func TestManagerUpgrade(t *testing.T) {
-	manager := NewManager[RecordLockMode, RecordID]()
+	manager := NewManager[PageLockMode, RecordID]()
 
 	recordID := RecordID(uint64(1))
-	f := manager.Lock(TxnLockRequest[RecordLockMode, RecordID]{
+	f := manager.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    10,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_SHARED,
 	})
 	expectClosedChannel(t, f, "should have been granted immediatly")
 
-	s := manager.Lock(TxnLockRequest[RecordLockMode, RecordID]{
+	s := manager.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    9,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_SHARED,
@@ -248,14 +248,14 @@ func TestManagerUpgrade(t *testing.T) {
 		"should have been granted immediatly (the locks are compatible)",
 	)
 
-	writer := manager.Lock(TxnLockRequest[RecordLockMode, RecordID]{
+	writer := manager.Lock(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    8,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_EXCLUSIVE,
 	})
 	expectOpenChannel(t, writer, "incompatible locks -> not granted immediatly")
 
-	th := manager.Upgrade(TxnLockRequest[RecordLockMode, RecordID]{
+	th := manager.Upgrade(TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    10,
 		objectId: recordID,
 		lockMode: RECORD_LOCK_EXCLUSIVE,

@@ -12,7 +12,7 @@ type TxnID uint64
 
 type TaggedType[T any] struct{ v T } // this trick forbids casting one lock mode to another
 
-type RecordLockMode TaggedType[uint8]
+type PageLockMode TaggedType[uint8]
 type GranularLockMode TaggedType[uint16]
 
 type GranularLock[Lock any] interface {
@@ -21,8 +21,8 @@ type GranularLock[Lock any] interface {
 }
 
 var (
-	RECORD_LOCK_SHARED    RecordLockMode = RecordLockMode{0}
-	RECORD_LOCK_EXCLUSIVE RecordLockMode = RecordLockMode{1}
+	RECORD_LOCK_SHARED    PageLockMode = PageLockMode{0}
+	RECORD_LOCK_EXCLUSIVE PageLockMode = PageLockMode{1}
 )
 
 var (
@@ -44,18 +44,18 @@ var (
 )
 
 var (
-	_ GranularLock[RecordLockMode]   = RecordLockMode{0}
+	_ GranularLock[PageLockMode]     = PageLockMode{0}
 	_ GranularLock[GranularLockMode] = GranularLockMode{0}
 )
 
-func (m RecordLockMode) Compatible(other RecordLockMode) bool {
+func (m PageLockMode) Compatible(other PageLockMode) bool {
 	if m == RECORD_LOCK_SHARED && other == RECORD_LOCK_SHARED {
 		return true
 	}
 	return false
 }
 
-func (m RecordLockMode) Upgradable(to RecordLockMode) bool {
+func (m PageLockMode) Upgradable(to PageLockMode) bool {
 	switch m {
 	case RECORD_LOCK_SHARED:
 		switch to {
