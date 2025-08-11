@@ -5,7 +5,6 @@ import (
 	"maps"
 	"math"
 	"math/rand"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -271,7 +270,7 @@ func TestMassiveRecovery(t *testing.T) {
 	for i := left; i != right; i = (i + STEP) % N {
 		wg.Add(1)
 
-		func(i int) {
+		go func(i int) {
 			defer wg.Done()
 
 			TransactionID := txns.TxnID(TransactionIDCounter.Add(1))
@@ -337,7 +336,6 @@ func TestMassiveRecovery(t *testing.T) {
 			}
 			p, err := pool.GetPageNoCreate(dataPageId)
 			require.NoError(t, err)
-
 			defer func() { require.NoError(t, pool.Unpin(dataPageId)) }()
 
 			p.RLock()
@@ -491,7 +489,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 					updateLocs = append(
 						updateLocs,
 						//nolint:gosec
-						chain.Update(dataPageId, uint16(j), []byte(strconv.Itoa(i)), utils.Uint32ToBytes(uint32(i*INNER+j))).
+						chain.Update(dataPageId, uint16(j), utils.Uint32ToBytes(uint32(i)), utils.Uint32ToBytes(uint32(i*INNER+j))).
 							Loc(),
 					)
 				}
@@ -671,25 +669,26 @@ func TestLoggerRollback(t *testing.T) {
 		go func() {
 			txnID := txns.TxnID(txnID.Add(1))
 			chain := NewTxnLogChain(logger, txnID).Begin()
-			for range len(batch) * 3 / 2 {
-				info := batch[rand.Int()%len(batch)]
-				switch rand.Int() % 2 {
-				case 0:
-					newValue := rand.Uint32()
-					oldValue := updatedValues[info.key]
-					chain.Update(
-						info.key.PageIdentity(),
-						info.key.SlotNum,
-						utils.Uint32ToBytes(oldValue),
-						utils.Uint32ToBytes(newValue),
-					)
-				case 1:
-					chain.Delete(
-						info.key.PageIdentity(),
-						info.key.SlotNum,
-					)
-				}
+
+			for j := range len(batch) * 3 / 2 {
+				info := batch[j%len(batch)]
+				newValue := rand.Uint32()
+				oldValue := updatedValues[info.key]
+				chain.Update(
+					info.key.PageIdentity(),
+					info.key.SlotNum,
+					utils.Uint32ToBytes(oldValue),
+					utils.Uint32ToBytes(newValue),
+				)
 			}
+			for j := range len(batch) / 3 {
+				info := batch[j%len(batch)]
+				chain.Delete(
+					info.key.PageIdentity(),
+					info.key.SlotNum,
+				)
+			}
+
 			abortRecordLoc := chain.Abort().Loc()
 			require.NoError(t, chain.Err())
 			logger.Rollback(abortRecordLoc)

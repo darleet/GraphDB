@@ -54,28 +54,30 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 // 		files,
 // 		BALANCE_LIMIT,
 // 	)
+// 	require.NoError(t, pool.EnsureAllPagesUnpinned())
+//
 // 	totalMoney := uint32(0)
 // 	for _, v := range recordValues {
 // 		totalMoney += v
 // 	}
 //
-// 	IDs := make([]RecordID, len(recordValues))
+// 	IDs := []RecordID{}
 // 	for i := range recordValues {
 // 		IDs = append(IDs, i)
 // 	}
 //
 // 	txnsCount := atomic.Uint64{}
 // 	locker := txns.NewLocker()
-// 	N := 10000
+// 	N := 100000
 //
 // 	wg := sync.WaitGroup{}
 // 	for range N {
 // 		wg.Add(1)
-// 		go func() {
+// 		func() {
 // 			defer wg.Done()
 // 			txnID := txns.TxnID(txnsCount.Add(1))
 //
-// 			res := generateUniqueInts[int](t, 2, 0, len(IDs))
+// 			res := generateUniqueInts[int](t, 2, 0, len(IDs)-1)
 // 			me := IDs[res[0]]
 // 			first := IDs[res[1]]
 //
@@ -122,10 +124,18 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 //
 // 			myPage, err := pool.GetPageNoCreate(me.PageIdentity())
 // 			require.NoError(t, err)
-// 			defer pool.Unpin(me.PageIdentity())
+// 			defer func() { assert.NoError(t, pool.Unpin(me.PageIdentity())) }()
+//
 // 			myPage.RLock()
 // 			myBalance := utils.BytesToUint32(myPage.Read(me.SlotNum))
 // 			myPage.RUnlock()
+//
+// 			if myBalance == 0 {
+// 				lastLogRecord, err = logger.AppendAbort(txnID, lastLogRecord)
+// 				require.NoError(t, err)
+// 				logger.Rollback(lastLogRecord)
+// 				return
+// 			}
 //
 // 			// try to read the first guy's balance
 // 			firstPageLockOpt := locker.LockPage(
@@ -145,14 +155,14 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 //
 // 			firstPage, err := pool.GetPageNoCreate(first.PageIdentity())
 // 			require.NoError(t, err)
-// 			defer pool.Unpin(first.PageIdentity())
+// 			defer func() { assert.NoError(t, pool.Unpin(first.PageIdentity())) }()
 //
 // 			firstPage.RLock()
 // 			firstBalance := utils.BytesToUint32(firstPage.Read(first.SlotNum))
 // 			firstPage.RUnlock()
 //
 // 			// transfering
-// 			transferAmount := uint32(rand.Intn(int(myBalance)) + 1)
+// 			transferAmount := uint32(rand.Intn(int(myBalance)))
 // 			myPageUpgradeLockOpt := locker.UpgradePageLock(
 // 				myPageToken,
 // 				txns.PAGE_LOCK_EXCLUSIVE,
@@ -191,14 +201,18 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 //
 // 			myPage.RLock()
 // 			myNewBalanceFromPage := utils.BytesToUint32(myPage.Read(me.SlotNum))
-// 			require.Equal(t, myNewBalanceFromPage, myNewBalance)
+// 			require.Equal(t, myNewBalanceFromPage, myBalance-transferAmount)
 // 			myPage.RUnlock()
 //
 // 			firstPage.RLock()
 // 			firstNewBalanceFromPage := utils.BytesToUint32(
 // 				firstPage.Read(first.SlotNum),
 // 			)
-// 			require.Equal(t, firstNewBalanceFromPage, firstNewBalance)
+// 			require.Equal(
+// 				t,
+// 				firstNewBalanceFromPage,
+// 				firstBalance+transferAmount,
+// 			)
 // 			firstPage.RUnlock()
 //
 // 			if myNewBalanceFromPage <= 30 {
@@ -207,7 +221,7 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 // 				logger.Rollback(lastLogRecord)
 // 				return
 // 			}
-// 			lastLogRecord, err = logger.AppendCommit(txnID, lastLogRecord)
+// 			_, err = logger.AppendCommit(txnID, lastLogRecord)
 // 			require.NoError(t, err)
 // 		}()
 // 	}
@@ -221,6 +235,7 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 // 		page.RLock()
 // 		finalTotalMoney += utils.BytesToUint32(page.Read(id.SlotNum))
 // 		page.RUnlock()
+// 		pool.Unpin(id.PageIdentity())
 // 	}
 // 	require.Equal(t, finalTotalMoney, totalMoney)
 // }

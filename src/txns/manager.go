@@ -154,11 +154,14 @@ func (m *Manager[LockModeType, ObjectID]) UnlockAll(TransactionID TxnID) {
 		defer m.lockedRecordsGuard.Unlock()
 
 		lockedRecords, ok := m.lockedRecords[TransactionID]
+		if !ok {
+			return make(map[ObjectID]struct{})
+		}
+
 		assert.Assert(ok,
 			"expected a set of locked records for the transaction %+v to exist",
 			TransactionID)
 		delete(m.lockedRecords, TransactionID)
-
 		return lockedRecords
 	}()
 
