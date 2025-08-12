@@ -37,20 +37,56 @@ func TestChainSanity(t *testing.T) {
 		},
 	}
 
-	chain := NewTxnLogChain(logger, txns.TxnID(1))
+	txnID := txns.TxnID(89)
+	chain := NewTxnLogChain(logger, txnID)
 
-	dataPageId := bufferpool.PageIdentity{
+	insertSlotNumber := uint16(6)
+	insertPageID := bufferpool.PageIdentity{
 		FileID: 1,
-		PageID: 0,
+		PageID: 2,
 	}
-	// Begin -> Insert -> Update -> Abort -> TxnEnd
+	insert := []byte("insert")
+
+	updateSlotNumber := uint16(7)
+	updatePageID := bufferpool.PageIdentity{
+		FileID: 2,
+		PageID: 1,
+	}
+	updateFrom := []byte("updateOld")
+	updateTo := []byte("updateNew")
+
+	deleteSlotNumber := uint16(8)
+	deletePageID := bufferpool.PageIdentity{
+		FileID: 3,
+		PageID: 1,
+	}
+
+	checkpointATT := []txns.TxnID{1, 2, 3}
+	checkpointDPT := map[bufferpool.PageIdentity]LogRecordLocationInfo{
+		{
+			FileID: 42,
+			PageID: 123,
+		}: {
+			Lsn: 5,
+			Location: FileLocation{
+				PageID:  6,
+				SlotNum: 7,
+			},
+		},
+	}
+
 	chain.Begin().
-		Insert(dataPageId, 0, []byte("insert")).
-		Update(dataPageId, 0, []byte("insert"), []byte("update")).
+		Insert(insertPageID, insertSlotNumber, insert).
+		Update(updatePageID, updateSlotNumber, updateFrom, updateTo).
+		Delete(deletePageID, deleteSlotNumber).
 		Abort().
+		Commit().
+		CheckpointBegin().
+		CheckpointEnd(checkpointATT, checkpointDPT).
 		TxnEnd()
 
 	require.NoError(t, chain.Err())
+	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
@@ -81,8 +117,13 @@ func TestChainSanity(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, TypeInsert, tag)
 
-		_, ok := untypedRecord.(InsertLogRecord)
+		r, ok := untypedRecord.(InsertLogRecord)
 		require.True(t, ok)
+
+		require.Equal(t, txnID, r.txnID)
+		require.Equal(t, insertPageID, r.modifiedRecordID.PageIdentity())
+		require.Equal(t, insert, r.value)
+		require.Equal(t, insertSlotNumber, r.modifiedRecordID.SlotNum)
 	}
 
 	// Update
@@ -94,26 +135,95 @@ func TestChainSanity(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, TypeUpdate, tag)
 
-		_, ok := untypedRecord.(UpdateLogRecord)
+		r, ok := untypedRecord.(UpdateLogRecord)
 		require.True(t, ok)
+
+		require.Equal(t, txnID, r.txnID)
+		require.Equal(t, updatePageID, r.modifiedRecordID.PageIdentity())
+		require.Equal(t, updateSlotNumber, r.modifiedRecordID.SlotNum)
+		require.Equal(t, updateFrom, r.beforeValue)
+		require.Equal(t, updateTo, r.afterValue)
 	}
 
-	// Abort
+	// Delete
 	{
 		data := page.Read(3)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
 		require.NoError(t, err)
+		require.Equal(t, TypeDelete, tag)
+
+		r, ok := untypedRecord.(DeleteLogRecord)
+		require.True(t, ok)
+
+		require.Equal(t, txnID, r.txnID)
+		require.Equal(t, deletePageID, r.modifiedRecordID.PageIdentity())
+		require.Equal(t, deleteSlotNumber, r.modifiedRecordID.SlotNum)
+	}
+
+	// Abort
+	{
+		data := page.Read(4)
+		require.NoError(t, err)
+		tag, untypedRecord, err := readLogRecord(data)
+
+		require.NoError(t, err)
 		require.Equal(t, TypeAbort, tag)
 
-		_, ok := untypedRecord.(AbortLogRecord)
+		r, ok := untypedRecord.(AbortLogRecord)
 		require.True(t, ok)
+
+		require.Equal(t, txnID, r.txnID)
+	}
+
+	// Commit
+	{
+		data := page.Read(5)
+		require.NoError(t, err)
+		tag, untypedRecord, err := readLogRecord(data)
+
+		require.NoError(t, err)
+		require.Equal(t, TypeCommit, tag)
+
+		r, ok := untypedRecord.(CommitLogRecord)
+		require.True(t, ok)
+
+		require.Equal(t, txnID, r.txnID)
+	}
+
+	// CheckpointBegin
+	{
+		data := page.Read(6)
+		require.NoError(t, err)
+		tag, untypedRecord, err := readLogRecord(data)
+
+		require.NoError(t, err)
+		require.Equal(t, TypeCheckpointBegin, tag)
+
+		_, ok := untypedRecord.(CheckpointBeginLogRecord)
+		require.True(t, ok)
+	}
+
+	// CheckpointEnd
+	{
+		data := page.Read(7)
+		require.NoError(t, err)
+		tag, untypedRecord, err := readLogRecord(data)
+
+		require.NoError(t, err)
+		require.Equal(t, TypeCheckpointEnd, tag)
+
+		r, ok := untypedRecord.(CheckpointEndLogRecord)
+		require.True(t, ok)
+
+		require.Equal(t, checkpointATT, r.activeTransactions)
+		require.Equal(t, checkpointDPT, r.dirtyPageTable)
 	}
 
 	// TxnEnd
 	{
-		data := page.Read(4)
+		data := page.Read(8)
 		require.NoError(t, err)
 		tag, untypedRecord, err := readLogRecord(data)
 
@@ -171,6 +281,7 @@ func TestChain(t *testing.T) {
 		Update(dataPageId, 0, []byte("first"), []byte("updat"))
 
 	require.NoError(t, chain.Err())
+	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
