@@ -62,12 +62,6 @@ func (m *Manager[LockModeType, ObjectID]) Lock(
 			m.lockedRecords[r.txnID] = alreadyLockedRecords
 		}
 
-		_, isAleadyLocked := alreadyLockedRecords[r.objectId]
-		assert.Assert(!isAleadyLocked,
-			"Didn't expect the record %+v to be locked by a transaction %+v",
-			r.objectId,
-			r.txnID)
-
 		alreadyLockedRecords[r.objectId] = struct{}{}
 	}()
 
@@ -124,7 +118,7 @@ func (m *Manager[LockModeType, ObjectID]) Unlock(
 
 		q, present := m.qs[r.objectId]
 		assert.Assert(present,
-			"trying to unlock the already unlocked tuple. recordID: %+v",
+			"trying to unlock already unlocked tuple. recordID: %+v",
 			r.objectId)
 
 		return q

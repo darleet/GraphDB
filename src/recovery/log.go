@@ -364,6 +364,8 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 					record.modifiedRecordID.PageIdentity(),
 				)
 				assert.NoError(err)
+				defer func() { assert.NoError(l.pool.Unpin(record.modifiedRecordID.PageIdentity())) }()
+
 				modifiedPage.Lock()
 				defer modifiedPage.Unlock()
 
@@ -389,6 +391,8 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 				modifiedPage, err := l.pool.GetPageNoCreate(
 					record.modifiedRecordID.PageIdentity(),
 				)
+				defer func() { assert.NoError(l.pool.Unpin(record.modifiedRecordID.PageIdentity())) }()
+
 				assert.NoError(err)
 				modifiedPage.Lock()
 				defer modifiedPage.Unlock()
@@ -411,6 +415,7 @@ func (l *TxnLogger) recoverRedo(earliestLog FileLocation) {
 					record.modifiedRecordID.PageIdentity(),
 				)
 				assert.NoError(err)
+				defer func() { assert.NoError(l.pool.Unpin(record.modifiedRecordID.PageIdentity())) }()
 
 				modifiedPage.Lock()
 				defer modifiedPage.Unlock()
