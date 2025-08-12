@@ -226,7 +226,7 @@ func TestMassiveRecovery(t *testing.T) {
 	}
 	slot := optional.Some(uint16(0))
 
-	N := 1
+	N := 2000
 	i := 0
 
 	index2pageID := map[int]FileLocation{}
@@ -257,7 +257,7 @@ func TestMassiveRecovery(t *testing.T) {
 	left := N - N/10
 	inc := N * 6 / 10
 	right := (left + inc) % N
-	STEP := 1
+	STEP := 5
 	require.Equal(
 		t,
 		inc%STEP,
