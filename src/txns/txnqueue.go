@@ -409,41 +409,32 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 
 func (q *txnQueue[LockModeType, ObjectIDType]) Unlock(
 	r TxnUnlockRequest[ObjectIDType],
-) bool {
+) {
 	q.mu.Lock()
 	deletingNode, present := q.txnNodes[r.txnID]
 	q.mu.Unlock()
 
 	assert.Assert(present, "node not found. %+v", r)
 
-	deletingNode.mu.Lock()
-	defer deletingNode.mu.Unlock()
-
-	prev := deletingNode.prev
-	// TODO: rework this into something NOT using retries
-	// Potential solution: tombstone marker.
-	// deleted nodes then would be cleaned up during the
-	// next insert operation
-	if !prev.mu.TryLock() {
-		return false
+	cur := q.head
+	cur.mu.Lock()
+	for cur.next != deletingNode {
+		cur = cur.SafeNext()
 	}
 
-	q.mu.Lock()
-	delete(q.txnNodes, r.txnID)
-	q.mu.Unlock()
-
+	deletingNode.mu.Lock()
 	next := deletingNode.next
 	next.mu.Lock()
-	next.prev = prev
-	next.mu.Unlock()
+	next.prev = cur
+	cur.next = next
+	deletingNodeStatus := deletingNode.status
+	deletingNode.mu.Unlock()
+	cur.mu.Unlock()
 
-	prev.next = next
-	if deletingNode.status == entryStatusRunning && prev == q.head &&
+	if deletingNodeStatus == entryStatusRunning && cur == q.head &&
 		next.status != entryStatusRunning {
-		q.processBatch(prev.SafeNext())
-		return true
+		q.processBatch(next)
+		return
 	}
-	prev.mu.Unlock()
-
-	return true
+	next.mu.Unlock()
 }

@@ -1,7 +1,6 @@
 package txns
 
 import (
-	"runtime"
 	"sync"
 
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
@@ -103,6 +102,28 @@ func (m *Manager[LockModeType, ObjectID]) Upgrade(
 	return n
 }
 
+// func retryUnlock[LockModeType GranularLock[LockModeType], ObjectIDType
+// comparable](
+// 	q *txnQueue[LockModeType, ObjectIDType],
+// 	r TxnUnlockRequest[ObjectIDType],
+// ) {
+// 	RETRY_LIMIT := 50
+//
+// 	j := 0
+// 	for !q.Unlock(r) {
+// 		j++
+// 		// TODO: rethink the retries
+// 		runtime.Gosched()
+// 		if j == RETRY_LIMIT {
+// 			assert.Assert(
+// 				false,
+// 				"failed to unlock record after %v attempts",
+// 				RETRY_LIMIT,
+// 			)
+// 		}
+// 	}
+// }
+
 // Unlock releases the lock held by a transaction on a specific record.
 // It first retrieves the transaction queue associated with the record ID,
 // ensuring that the record is currently locked. It then attempts to unlock
@@ -125,10 +146,7 @@ func (m *Manager[LockModeType, ObjectID]) Unlock(
 		return q
 	}()
 
-	for !q.Unlock(r) {
-		// TODO: rething the retries
-		runtime.Gosched()
-	}
+	q.Unlock(r)
 
 	func() {
 		m.lockedRecordsGuard.Lock()
@@ -180,8 +198,6 @@ func (m *Manager[LockModeType, ObjectID]) UnlockAll(TransactionID TxnID) {
 		}()
 
 		unlockRequest.objectId = r
-		for !q.Unlock(unlockRequest) {
-			runtime.Gosched()
-		}
+		q.Unlock(unlockRequest)
 	}
 }

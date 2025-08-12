@@ -52,13 +52,15 @@ func TestBankTransactions(t *testing.T) {
 	}
 	files := generatedFileIDs[1:]
 
-	BALANCE_LIMIT := uint32(200)
+	BALANCE_LIMIT := uint32(60)
+	clientsCount := 1000
+	txnsCount := 100000
 
 	recordValues := fillPages(
 		t,
 		logger,
 		math.MaxUint64,
-		100000,
+		clientsCount,
 		files,
 		BALANCE_LIMIT,
 	)
@@ -80,16 +82,15 @@ func TestBankTransactions(t *testing.T) {
 		IDs = append(IDs, i)
 	}
 
-	txnsCount := atomic.Uint64{}
+	txnsTicker := atomic.Uint64{}
 	locker := txns.NewLocker()
-	N := 10000
 
 	wg := sync.WaitGroup{}
-	for range N {
+	for range txnsCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			txnID := txns.TxnID(txnsCount.Add(1))
+			txnID := txns.TxnID(txnsTicker.Add(1))
 
 			res := generateUniqueInts[int](t, 2, 0, len(IDs)-1)
 			me := IDs[res[0]]
@@ -100,7 +101,7 @@ func TestBankTransactions(t *testing.T) {
 
 			catalogLockOption := locker.LockCatalog(
 				txnID,
-				txns.GRANULAR_LOCK_SHARED,
+				txns.GRANULAR_LOCK_INTENTION_SHARED,
 			)
 			require.True(t, catalogLockOption.IsSome())
 			n, ctoken := catalogLockOption.Unwrap().Destruct()

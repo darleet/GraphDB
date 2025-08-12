@@ -173,9 +173,7 @@ func TestExclusiveOrdering(t *testing.T) {
 		"shouldn't have granted the lock in presence of concurrent exclusive lock",
 	)
 
-	if !q.Unlock(TxnUnlockRequest[RecordID]{txnID: 9, objectId: 1}) {
-		t.Errorf("no concurrent deleted -> couldn't have failed")
-	}
+	q.Unlock(TxnUnlockRequest[RecordID]{txnID: 9, objectId: 1})
 
 	expectClosedChannel(t, notifier2, "empty queue -> grant the lock")
 }
@@ -329,10 +327,10 @@ func TestLockUpgradeCompatibleLocks(t *testing.T) {
 		"no deadlock -> upgrade should be allowed [wait]",
 	)
 
-	require.True(t, q.Unlock(TxnUnlockRequest[TableID]{
+	q.Unlock(TxnUnlockRequest[TableID]{
 		txnID:    4,
 		objectId: 1,
-	}))
+	})
 
 	expectClosedChannel(t, notifier2, "waiter should be woken up after unlock")
 }
@@ -370,10 +368,10 @@ func TestManagerUpgradeWithUpgradeWaiter(t *testing.T) {
 	upgradeNotifier1 := q.Upgrade(req)
 
 	require.Nil(t, upgradeNotifier1)
-	require.True(t, q.Unlock(TxnUnlockRequest[TableID]{
+	q.Unlock(TxnUnlockRequest[TableID]{
 		txnID:    req.txnID,
 		objectId: req.objectId,
-	}))
+	})
 
 	expectClosedChannel(
 		t,
