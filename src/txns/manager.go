@@ -99,7 +99,8 @@ func (m *Manager[LockModeType, ObjectID]) Upgrade(
 		return q
 	}()
 
-	return q.Upgrade(r)
+	n := q.Upgrade(r)
+	return n
 }
 
 // Unlock releases the lock held by a transaction on a specific record.

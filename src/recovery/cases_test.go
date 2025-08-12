@@ -81,7 +81,7 @@ func TestBankTransactions(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for range N {
 		wg.Add(1)
-		func() {
+		go func() {
 			defer wg.Done()
 			txnID := txns.TxnID(txnsCount.Add(1))
 

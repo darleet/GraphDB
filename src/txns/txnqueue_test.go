@@ -370,6 +370,11 @@ func TestManagerUpgradeWithUpgradeWaiter(t *testing.T) {
 	upgradeNotifier1 := q.Upgrade(req)
 
 	require.Nil(t, upgradeNotifier1)
+	require.True(t, q.Unlock(TxnUnlockRequest[TableID]{
+		txnID:    req.txnID,
+		objectId: req.objectId,
+	}))
+
 	expectClosedChannel(
 		t,
 		upgradeNotifier2,

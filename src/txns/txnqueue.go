@@ -190,7 +190,7 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 		close(notifier) // Grant the lock immediately
 		newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
 			r:        r,
-			notifier: nil,
+			notifier: notifier,
 			status:   entryStatusRunning,
 		}
 		cur.SafeInsert(newNode)
@@ -209,9 +209,7 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 		if cur.r.txnID == r.txnID {
 			// the current transaction already owns the lock
 			// grant the lock immediately
-			res := make(chan struct{})
-			close(res)
-			return res
+			return cur.notifier
 		}
 
 		deadlockCondition = deadlockCondition ||
@@ -227,7 +225,7 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 			close(notifier) // Grant the lock immediately
 			newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
 				r:        r,
-				notifier: nil,
+				notifier: notifier,
 				status:   entryStatusRunning,
 			}
 			cur.SafeInsert(newNode)
@@ -273,6 +271,8 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 	return notifier
 }
 
+// WARN: if it is unsuccessfull, don't forget to UNLOCK all the transaction's
+// locks
 func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 	r TxnLockRequest[LockModeType, ObjectIDType],
 ) <-chan struct{} {
@@ -338,32 +338,15 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 			next.mu.Unlock()
 
 			upgradingEntry.mu.Lock()
-			upgradingEntry.notifier = make(chan struct{})
 			upgradingEntry.r.lockMode = r.lockMode
 			upgradingEntry.mu.Unlock()
 
-			close(upgradingEntry.notifier)
 			return upgradingEntry.notifier
 		}
-
-		defer func() {
-			entryBeforeUpgradingOne.SafeDeleteNext()
-			if entryBeforeUpgradingOne == q.head {
-				next := entryBeforeUpgradingOne.next
-				next.mu.Lock()
-				if next.status != entryStatusRunning {
-					q.processBatch(next)
-				}
-			}
-		}()
 
 		if deadlockCond {
 			cur.mu.Unlock()
 			next.mu.Unlock()
-
-			q.mu.Lock()
-			delete(q.txnNodes, r.txnID)
-			q.mu.Unlock()
 			return nil
 		}
 
@@ -371,10 +354,15 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 			r:        r,
 			notifier: make(chan struct{}),
 			status:   entryStatusWaitUpgrade,
+			next:     next,
+			prev:     cur,
 		}
-		next.mu.Unlock()
-		cur.SafeInsert(newEntry)
+		cur.next = newEntry
+		next.prev = newEntry
 		cur.mu.Unlock()
+		next.mu.Unlock()
+
+		entryBeforeUpgradingOne.SafeDeleteNext()
 
 		q.mu.Lock()
 		q.txnNodes[r.txnID] = newEntry
@@ -386,24 +374,10 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 
 	cur.mu.Unlock()
 	cur = next
-	defer func() {
-		cur.mu.Unlock()
-
-		entryBeforeUpgradingOne.SafeDeleteNext()
-		if entryBeforeUpgradingOne == q.head {
-			next := entryBeforeUpgradingOne.next
-			next.mu.Lock()
-			if next.status != entryStatusRunning {
-				q.processBatch(next)
-			}
-		}
-	}()
+	defer func() { cur.mu.Unlock() }()
 
 	for {
 		if !cur.r.lockMode.Compatible(r.lockMode) {
-			q.mu.Lock()
-			delete(q.txnNodes, r.txnID)
-			q.mu.Unlock()
 			return nil
 		}
 		next = cur.next
@@ -420,6 +394,8 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 			cur.next = newEntry
 			next.prev = newEntry
 			next.mu.Unlock()
+
+			entryBeforeUpgradingOne.SafeDeleteNext()
 
 			q.mu.Lock()
 			q.txnNodes[r.txnID] = newEntry
