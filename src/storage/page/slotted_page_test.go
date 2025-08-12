@@ -150,7 +150,7 @@ func TestDeleteRemovesData(t *testing.T) {
 		"Slot status should be Deleted",
 	)
 
-	data := page.getBytesUnsafe(ptr)
+	data := page.getBytesBySlotPtr(ptr)
 	expected := make([]byte, len(orig))
 	assert.NotEqual(
 		t,

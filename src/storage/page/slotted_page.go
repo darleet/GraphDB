@@ -65,13 +65,19 @@ func (p *SlottedPage) getHeader() *header {
 	return (*header)(unsafe.Pointer(&p.data[0]))
 }
 
-func InsertSerializable[T encoding.BinaryMarshaler](
-	p *SlottedPage,
-	obj T,
-) optional.Optional[uint16] {
-	bytes, err := obj.MarshalBinary()
-	assert.Assert(err != nil)
-	return p.InsertPrepare(bytes)
+func (p *SlottedPage) NumSlots() uint16 {
+	header := p.getHeader()
+	return header.slotsCount
+}
+
+func NewSlottedPage() *SlottedPage {
+	p := &SlottedPage{
+		data: [PageSize]byte{},
+	}
+	head := p.getHeader()
+	head.freeStart = uint16(unsafe.Sizeof(header{}))
+	head.freeEnd = PageSize
+	return p
 }
 
 func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
@@ -97,7 +103,7 @@ func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
 	*ptrToLen = uint16(len(data))
 	ptr := newSlotPtr(SlotStatusPrepareInsert, pos)
 
-	dst := p.getBytesUnsafe(ptr)
+	dst := p.getBytesBySlotPtr(ptr)
 	n := copy(dst, data)
 	assert.Assert(
 		n == len(data),
@@ -131,21 +137,6 @@ func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	slots[slotHandle] = newSlotPtr(SlotStatusInserted, ptr.RecordOffset())
 }
 
-func NewSlottedPage() *SlottedPage {
-	p := &SlottedPage{
-		data: [PageSize]byte{},
-	}
-	head := p.getHeader()
-	head.freeStart = uint16(unsafe.Sizeof(header{}))
-	head.freeEnd = PageSize
-	return p
-}
-
-func (p *SlottedPage) NumSlots() uint16 {
-	header := p.getHeader()
-	return header.slotsCount
-}
-
 func Get[T encoding.BinaryUnmarshaler](
 	p *SlottedPage,
 	slotID uint16,
@@ -155,7 +146,16 @@ func Get[T encoding.BinaryUnmarshaler](
 	return dst.UnmarshalBinary(data)
 }
 
-func (p *SlottedPage) getBytesUnsafe(ptr slotPointer) []byte {
+func InsertSerializable[T encoding.BinaryMarshaler](
+	p *SlottedPage,
+	obj T,
+) optional.Optional[uint16] {
+	bytes, err := obj.MarshalBinary()
+	assert.Assert(err != nil)
+	return p.InsertPrepare(bytes)
+}
+
+func (p *SlottedPage) getBytesBySlotPtr(ptr slotPointer) []byte {
 	offset := ptr.RecordOffset()
 	sliceLen := *(*uint16)(unsafe.Pointer(&p.data[offset]))
 	data := unsafe.Slice(
@@ -178,7 +178,7 @@ func (p *SlottedPage) assertSlotInserted(slotID uint16) slotPointer {
 
 func (p *SlottedPage) Read(slotID uint16) []byte {
 	ptr := p.assertSlotInserted(slotID)
-	return p.getBytesUnsafe(ptr)
+	return p.getBytesBySlotPtr(ptr)
 }
 
 func (p *SlottedPage) Delete(slotID uint16) {
@@ -194,7 +194,7 @@ func (p *SlottedPage) UnsafeRead(slotNumber uint16) []byte {
 
 	header := p.getHeader()
 	ptr := header.getSlots()[slotNumber]
-	return p.getBytesUnsafe(ptr)
+	return p.getBytesBySlotPtr(ptr)
 }
 
 func (p *SlottedPage) UnsafeOverrideSlotStatus(
