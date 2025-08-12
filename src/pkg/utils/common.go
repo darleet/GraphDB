@@ -3,6 +3,8 @@ package utils
 import (
 	"bytes"
 	"encoding/binary"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
 
 func Must[T any](v T, err error) T {
@@ -25,9 +27,7 @@ func (p Pair[T, K]) Destruct() (T, K) {
 func Uint32ToBytes(num uint32) []byte {
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.BigEndian, num)
-	if err != nil {
-		panic(err) // Handle error appropriately
-	}
+	assert.NoError(err)
 	return buf.Bytes()
 }
 
@@ -35,8 +35,6 @@ func BytesToUint32(b []byte) uint32 {
 	var num uint32
 	buf := bytes.NewReader(b)
 	err := binary.Read(buf, binary.BigEndian, &num)
-	if err != nil {
-		panic(err) // Handle error appropriately
-	}
+	assert.NoError(err)
 	return num
 }
