@@ -216,8 +216,8 @@ func TestMassiveRecovery(t *testing.T) {
 	}
 
 	INIT := []byte("init")
-	NEW := []byte("new")
-	NEW2 := []byte("123")
+	NEW := []byte("new1")
+	NEW2 := []byte("1234")
 
 	DataFileID := uint64(0)
 	dataPageId := bufferpool.PageIdentity{

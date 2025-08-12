@@ -93,11 +93,11 @@ func TestUpdateSuccess(t *testing.T) {
 	require.NotEqual(t, slot, None[uint16]())
 	page.InsertCommit(slot.Unwrap())
 
-	newData := []byte("changed")
+	newData := []byte("changed0")
 	page.Update(slot.Unwrap(), newData)
 
 	got := page.Read(slot.Unwrap())
-	assert.Equal(t, newData, got[:len(newData)])
+	assert.Equal(t, newData, got)
 }
 
 func TestUpdateTooLarge(t *testing.T) {

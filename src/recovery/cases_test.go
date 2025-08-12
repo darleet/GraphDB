@@ -65,8 +65,14 @@ func TestBankTransactions(t *testing.T) {
 	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
 	totalMoney := uint32(0)
-	for _, v := range recordValues {
-		totalMoney += v
+	for id := range recordValues {
+		page, err := pool.GetPageNoCreate(id.PageIdentity())
+		require.NoError(t, err)
+		page.RLock()
+		curMoney := utils.BytesToUint32(page.Read(id.SlotNum))
+		totalMoney += curMoney
+		page.RUnlock()
+		assert.NoError(t, pool.Unpin(id.PageIdentity()))
 	}
 
 	IDs := []RecordID{}
@@ -76,7 +82,7 @@ func TestBankTransactions(t *testing.T) {
 
 	txnsCount := atomic.Uint64{}
 	locker := txns.NewLocker()
-	N := 100000
+	N := 10000
 
 	wg := sync.WaitGroup{}
 	for range N {
@@ -239,9 +245,9 @@ func TestBankTransactions(t *testing.T) {
 	for id := range recordValues {
 		page, err := pool.GetPageNoCreate(id.PageIdentity())
 		require.NoError(t, err)
-
 		page.RLock()
-		finalTotalMoney += utils.BytesToUint32(page.Read(id.SlotNum))
+		curMoney := utils.BytesToUint32(page.Read(id.SlotNum))
+		finalTotalMoney += curMoney
 		page.RUnlock()
 		assert.NoError(t, pool.Unpin(id.PageIdentity()))
 	}

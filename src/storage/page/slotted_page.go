@@ -223,7 +223,7 @@ func (p *SlottedPage) UndoDelete(slotID uint16) {
 
 func (p *SlottedPage) Update(slotID uint16, newData []byte) {
 	data := p.Read(slotID)
-	assert.Assert(len(data) >= len(newData))
+	assert.Assert(len(data) == len(newData))
 
 	clear(data)
 	copy(data, newData)
