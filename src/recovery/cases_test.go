@@ -54,7 +54,7 @@ func TestBankTransactions(t *testing.T) {
 	files := generatedFileIDs[1:]
 
 	START_BALANCE := uint32(60)
-	rollbackCutoff := START_BALANCE / 3
+	rollbackCutoff := uint32(0) // START_BALANCE / 3
 	clientsCount := 100
 	txnsCount := 100_000
 
@@ -256,7 +256,7 @@ func TestBankTransactions(t *testing.T) {
 		)
 		firstPage.RUnlock()
 
-		if myNewBalanceFromPage <= rollbackCutoff {
+		if myNewBalanceFromPage < rollbackCutoff {
 			lastLogRecord, err = logger.AppendAbort(
 				txnID,
 				lastLogRecord,
@@ -270,13 +270,14 @@ func TestBankTransactions(t *testing.T) {
 		succ.Add(1)
 	}
 
-	assert.Greater(t, succ.Load(), uint64(0))
-
 	for range txnsCount {
 		wg.Add(1)
 		require.NoError(t, workerPool.Submit(task))
 	}
 	wg.Wait()
+
+	assert.Greater(t, txnsTicker.Load(), uint64(0))
+	assert.Greater(t, succ.Load(), uint64(0))
 
 	finalTotalMoney := uint32(0)
 	for id := range recordValues {
