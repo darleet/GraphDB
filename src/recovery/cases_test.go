@@ -54,7 +54,7 @@ func TestBankTransactions(t *testing.T) {
 	files := generatedFileIDs[1:]
 
 	START_BALANCE := uint32(60)
-	rollbackCutoff := uint32(0) // START_BALANCE / 3
+	rollbackCutoff := START_BALANCE / 3
 	clientsCount := 100
 	txnsCount := 100_000
 

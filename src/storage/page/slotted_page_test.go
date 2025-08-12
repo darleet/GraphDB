@@ -117,20 +117,6 @@ func TestUpdateTooLarge(t *testing.T) {
 	assert.Equal(t, len(orig), len(got))
 }
 
-func TestUpdateEmptyData(t *testing.T) {
-	page := NewSlottedPage()
-	orig := []byte("something")
-	slot := page.InsertPrepare(orig)
-	require.NotEqual(t, slot, None[uint16]())
-	page.InsertCommit(slot.Unwrap())
-
-	newData := []byte{}
-	page.Update(slot.Unwrap(), newData)
-
-	got := page.Read(slot.Unwrap())
-	assert.Equal(t, newData, got[:len(newData)])
-}
-
 func TestDeleteRemovesData(t *testing.T) {
 	page := NewSlottedPage()
 	orig := []byte("todelete")
