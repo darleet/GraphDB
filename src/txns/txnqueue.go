@@ -7,10 +7,18 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
 
-type txnQueueEntry[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
-	r         TxnLockRequest[LockModeType, ObjectIDType]
-	notifier  chan struct{}
-	isRunning bool
+type entryStatus byte
+
+const (
+	entryStatusRunning entryStatus = iota
+	entryStatusWaitUpgrade
+	entryStatusWaitAcquire
+)
+
+type txnQueueEntry[LockModeType GranularLock[LockModeType], ObjectIDType comparable] struct {
+	r        TxnLockRequest[LockModeType, ObjectIDType]
+	notifier chan struct{}
+	status   entryStatus
 
 	mu   sync.Mutex
 	next *txnQueueEntry[LockModeType, ObjectIDType]
@@ -30,6 +38,19 @@ func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeNext() *txnQue
 	lockedEntry.mu.Unlock()
 
 	return next
+}
+
+func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeDeleteNext() {
+	cur := lockedEntry.next
+	cur.mu.Lock()
+
+	next := cur.next
+	next.mu.Lock()
+	defer next.mu.Unlock()
+	cur.mu.Unlock()
+
+	lockedEntry.next = next
+	next.prev = lockedEntry
 }
 
 // SafeInsert inserts the given txnQueueEntry 'n' immediately after the current
@@ -52,7 +73,7 @@ func (lockedEntry *txnQueueEntry[LockModeType, ObjectIDType]) SafeInsert(
 	next.mu.Unlock()
 }
 
-type txnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
+type txnQueue[LockModeType GranularLock[LockModeType], ObjectIDType comparable] struct {
 	head *txnQueueEntry[LockModeType, ObjectIDType]
 	tail *txnQueueEntry[LockModeType, ObjectIDType]
 
@@ -79,7 +100,10 @@ type txnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable] stru
 func (q *txnQueue[LockModeType, ObjectIDType]) processBatch(
 	muGuardedHead *txnQueueEntry[LockModeType, ObjectIDType],
 ) {
-	assert.Assert(!muGuardedHead.isRunning, "processBatch contract is violated")
+	assert.Assert(
+		muGuardedHead.status != entryStatusRunning,
+		"processBatch contract is violated",
+	)
 
 	cur := muGuardedHead
 	defer func() { cur.mu.Unlock() }()
@@ -88,7 +112,7 @@ func (q *txnQueue[LockModeType, ObjectIDType]) processBatch(
 		return
 	}
 
-	seenLockModes := make(map[LockMode[LockModeType]]struct{})
+	seenLockModes := make(map[GranularLock[LockModeType]]struct{})
 outer:
 	for {
 		for seenMode := range seenLockModes {
@@ -99,7 +123,7 @@ outer:
 
 		seenLockModes[cur.r.lockMode] = struct{}{}
 
-		cur.isRunning = true
+		cur.status = entryStatusRunning
 		close(cur.notifier) // grants the lock to the transaction
 
 		if cur.next == q.tail {
@@ -107,11 +131,11 @@ outer:
 		}
 
 		cur = cur.SafeNext()
-		assert.Assert(!cur.isRunning, "only list prefix is allowed to be in the locked state")
+		assert.Assert(cur.status == entryStatusWaitAcquire, "only list prefix is allowed to be in the locked state")
 	}
 }
 
-func newTxnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable]() *txnQueue[LockModeType, ObjectIDType] {
+func newTxnQueue[LockModeType GranularLock[LockModeType], ObjectIDType comparable]() *txnQueue[LockModeType, ObjectIDType] {
 	head := &txnQueueEntry[LockModeType, ObjectIDType]{
 		r: TxnLockRequest[LockModeType, ObjectIDType]{
 			txnID: math.MaxUint64, // Needed for the deadlock prevention policy
@@ -136,11 +160,11 @@ func newTxnQueue[LockModeType LockMode[LockModeType], ObjectIDType comparable]()
 	return q
 }
 
-func checkDeadlockCondition(runnerID TxnID, waiterID TxnID) bool {
+func checkDeadlockCondition(enqueuedTxnID TxnID, requestingTxnID TxnID) bool {
 	// Deadlock prevention policy
 	// Only older transactions can wait for younger ones.
 	// Ohterwise, a younger transaction is aborted
-	return runnerID < waiterID
+	return enqueuedTxnID < requestingTxnID
 }
 
 // Lock attempts to acquire a lock for the given transaction lock request `r` in
@@ -165,9 +189,9 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 		notifier := make(chan struct{})
 		close(notifier) // Grant the lock immediately
 		newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
-			r:         r,
-			notifier:  nil,
-			isRunning: true,
+			r:        r,
+			notifier: notifier,
+			status:   entryStatusRunning,
 		}
 		cur.SafeInsert(newNode)
 
@@ -181,12 +205,12 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 	cur = cur.SafeNext()
 	locksAreCompatible := true
 	deadlockCondition := false
-	for cur.isRunning {
-		assert.Assert(
-			cur.r.txnID != r.txnID,
-			"trying to lock already locked transaction. %+v",
-			r,
-		)
+	for cur.status == entryStatusRunning {
+		if cur.r.txnID == r.txnID {
+			// the current transaction already owns the lock
+			// grant the lock immediately
+			return cur.notifier
+		}
 
 		deadlockCondition = deadlockCondition ||
 			checkDeadlockCondition(cur.r.txnID, r.txnID)
@@ -200,9 +224,9 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 			notifier := make(chan struct{})
 			close(notifier) // Grant the lock immediately
 			newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
-				r:         r,
-				notifier:  nil,
-				isRunning: true,
+				r:        r,
+				notifier: notifier,
+				status:   entryStatusRunning,
 			}
 			cur.SafeInsert(newNode)
 
@@ -234,9 +258,9 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 
 	notifier := make(chan struct{})
 	newNode := &txnQueueEntry[LockModeType, ObjectIDType]{
-		r:         r,
-		notifier:  notifier,
-		isRunning: false,
+		r:        r,
+		notifier: notifier,
+		status:   entryStatusWaitAcquire,
 	}
 	cur.SafeInsert(newNode)
 
@@ -247,115 +271,170 @@ func (q *txnQueue[LockModeType, ObjectIDType]) Lock(
 	return notifier
 }
 
+// WARN: if it is unsuccessfull, don't forget to UNLOCK all the transaction's
+// locks
 func (q *txnQueue[LockModeType, ObjectIDType]) Upgrade(
 	r TxnLockRequest[LockModeType, ObjectIDType],
 ) <-chan struct{} {
 	q.mu.Lock()
-	cur, exists := q.txnNodes[r.txnID]
+	upgradingEntry, ok := q.txnNodes[r.txnID]
 	q.mu.Unlock()
+	assert.Assert(ok, "can't find upgrading entry")
+
+	upgradingEntry.mu.Lock()
+	assert.Assert(
+		upgradingEntry.status == entryStatusRunning,
+		"can only upgrade running transactions",
+	)
+	oldLockMode := upgradingEntry.r.lockMode
+	upgradingEntry.mu.Unlock()
 
 	assert.Assert(
-		exists,
-		"transaction %+v hasn't acquired the tuple with %+v record id. request: %+v",
-		r.txnID,
-		r.recordId,
-		r,
-	)
+		oldLockMode.Upgradable(r.lockMode),
+		"can only upgrade to a compatible lock mode. given: %v -> %v",
+		oldLockMode,
+		r.lockMode)
+
+	deadlockCond := false
+	compatible := true
+
+	var entryBeforeUpgradingOne *txnQueueEntry[LockModeType, ObjectIDType] = nil
+	cur := q.head
 	cur.mu.Lock()
-	assert.Assert(
-		cur.isRunning,
-		"can't upgrade a lock: it wasn't acquired yet. request: %+v",
-		r,
-	)
+	for {
+		entryBeforeUpgradingOne = cur
+		cur = cur.next
+		cur.mu.Lock()
+		if cur.r.txnID == r.txnID {
+			break
+		}
+		entryBeforeUpgradingOne.mu.Unlock()
 
-	first := cur.prev
-	if !first.mu.TryLock() {
-		cur.mu.Unlock()
-		return nil // the caller should retry
+		deadlockCond = deadlockCond ||
+			checkDeadlockCondition(cur.r.txnID, r.txnID)
+		compatible = compatible && cur.r.lockMode.Compatible(r.lockMode)
 	}
-	defer first.mu.Unlock()
+	assert.Assert(entryBeforeUpgradingOne != nil)
+	defer entryBeforeUpgradingOne.mu.Unlock()
 
-	next := cur.next
+	var next = cur.next
 	next.mu.Lock()
+	for next != q.tail && next.status == entryStatusRunning {
+		deadlockCond = deadlockCond ||
+			checkDeadlockCondition(next.r.txnID, r.txnID)
+		compatible = compatible && next.r.lockMode.Compatible(r.lockMode)
 
-	for next.isRunning {
-		tmp := next.next
-		tmp.mu.Lock()
 		cur.mu.Unlock()
 		cur = next
-		next = tmp
+		next = next.next
+		next.mu.Lock()
 	}
 
-	c := make(chan struct{})
-	e := &txnQueueEntry[LockModeType, ObjectIDType]{
-		r:         r,
-		notifier:  c,
-		isRunning: false,
-		mu:        sync.Mutex{},
-		next:      next,
-		prev:      cur,
+	assert.Assert(cur.status == entryStatusRunning)
+	if next == q.tail || next.status == entryStatusWaitAcquire {
+		// no upgrades pending
+		if compatible {
+			cur.mu.Unlock()
+			next.mu.Unlock()
+
+			upgradingEntry.mu.Lock()
+			upgradingEntry.r.lockMode = r.lockMode
+			upgradingEntry.mu.Unlock()
+
+			return upgradingEntry.notifier
+		}
+
+		if deadlockCond {
+			cur.mu.Unlock()
+			next.mu.Unlock()
+			return nil
+		}
+
+		newEntry := &txnQueueEntry[LockModeType, ObjectIDType]{
+			r:        r,
+			notifier: make(chan struct{}),
+			status:   entryStatusWaitUpgrade,
+			next:     next,
+			prev:     cur,
+		}
+		cur.next = newEntry
+		next.prev = newEntry
+		cur.mu.Unlock()
+		next.mu.Unlock()
+
+		entryBeforeUpgradingOne.SafeDeleteNext()
+
+		q.mu.Lock()
+		q.txnNodes[r.txnID] = newEntry
+		q.mu.Unlock()
+		return newEntry.notifier
 	}
 
-	cur.next = e
-	next.prev = e
-
-	q.mu.Lock()
-	q.txnNodes[r.txnID] = e
-	q.mu.Unlock()
+	assert.Assert(next.status == entryStatusWaitUpgrade)
 
 	cur.mu.Unlock()
-	next.mu.Unlock()
+	cur = next
+	defer func() { cur.mu.Unlock() }()
 
-	second := first.next
-	second.mu.Lock()
-	defer second.mu.Unlock()
+	for {
+		if !cur.r.lockMode.Compatible(r.lockMode) {
+			return nil
+		}
+		next = cur.next
+		next.mu.Lock()
 
-	third := second.next
-	third.mu.Lock()
-	defer third.mu.Unlock()
+		if next == q.tail || next.status == entryStatusWaitAcquire {
+			newEntry := &txnQueueEntry[LockModeType, ObjectIDType]{
+				r:        r,
+				notifier: make(chan struct{}),
+				status:   entryStatusWaitUpgrade,
+				next:     next,
+				prev:     cur,
+			}
+			cur.next = newEntry
+			next.prev = newEntry
+			next.mu.Unlock()
 
-	first.next = third
-	third.prev = first
+			entryBeforeUpgradingOne.SafeDeleteNext()
 
-	return c
+			q.mu.Lock()
+			q.txnNodes[r.txnID] = newEntry
+			q.mu.Unlock()
+			return newEntry.notifier
+		}
+		cur.mu.Unlock()
+		cur = next
+	}
 }
 
 func (q *txnQueue[LockModeType, ObjectIDType]) Unlock(
 	r TxnUnlockRequest[ObjectIDType],
-) bool {
+) {
 	q.mu.Lock()
 	deletingNode, present := q.txnNodes[r.txnID]
 	q.mu.Unlock()
 
 	assert.Assert(present, "node not found. %+v", r)
 
-	deletingNode.mu.Lock()
-	defer deletingNode.mu.Unlock()
-
-	prev := deletingNode.prev
-	// TODO: rework this into something NOT using retries
-	// Potential solution: tombstone marker.
-	// deleted nodes then would be cleaned up during the
-	// next insert operation
-	if !prev.mu.TryLock() {
-		return false
+	cur := q.head
+	cur.mu.Lock()
+	for cur.next != deletingNode {
+		cur = cur.SafeNext()
 	}
 
-	q.mu.Lock()
-	delete(q.txnNodes, r.txnID)
-	q.mu.Unlock()
-
+	deletingNode.mu.Lock()
 	next := deletingNode.next
 	next.mu.Lock()
-	next.prev = prev
-	next.mu.Unlock()
+	next.prev = cur
+	cur.next = next
+	deletingNodeStatus := deletingNode.status
+	deletingNode.mu.Unlock()
+	cur.mu.Unlock()
 
-	prev.next = next
-	if deletingNode.isRunning && prev == q.head && !next.isRunning {
-		q.processBatch(prev.SafeNext())
-		return true
+	if deletingNodeStatus == entryStatusRunning && cur == q.head &&
+		next.status != entryStatusRunning {
+		q.processBatch(next)
+		return
 	}
-	prev.mu.Unlock()
-
-	return true
+	next.mu.Unlock()
 }

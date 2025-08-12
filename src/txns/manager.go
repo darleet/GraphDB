@@ -1,26 +1,25 @@
 package txns
 
 import (
-	"runtime"
 	"sync"
 
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 )
 
-type Manager[LockModeType LockMode[LockModeType], ObjectIDType comparable] struct {
+type Manager[LockModeType GranularLock[LockModeType], ID comparable] struct {
 	qsGuard sync.Mutex
-	qs      map[ObjectIDType]*txnQueue[LockModeType, ObjectIDType]
+	qs      map[ID]*txnQueue[LockModeType, ID]
 
 	lockedRecordsGuard sync.Mutex
-	lockedRecords      map[TxnID]map[ObjectIDType]struct{}
+	lockedRecords      map[TxnID]map[ID]struct{}
 }
 
-func NewManager[LockModeType LockMode[LockModeType], ObjectIDType comparable]() *Manager[LockModeType, ObjectIDType] {
-	return &Manager[LockModeType, ObjectIDType]{
+func NewManager[LockModeType GranularLock[LockModeType], ObjectID comparable]() *Manager[LockModeType, ObjectID] {
+	return &Manager[LockModeType, ObjectID]{
 		qsGuard:            sync.Mutex{},
-		qs:                 map[ObjectIDType]*txnQueue[LockModeType, ObjectIDType]{},
+		qs:                 map[ObjectID]*txnQueue[LockModeType, ObjectID]{},
 		lockedRecordsGuard: sync.Mutex{},
-		lockedRecords:      map[TxnID]map[ObjectIDType]struct{}{},
+		lockedRecords:      map[TxnID]map[ObjectID]struct{}{},
 	}
 }
 
@@ -31,17 +30,17 @@ func NewManager[LockModeType LockMode[LockModeType], ObjectIDType comparable]() 
 // lock is acquired. If the lock cannot be acquired immediately, the channel
 // will be closed once the lock is available. Returns nil if the lock cannot be
 // acquired due to a deadlock prevention policy.
-func (m *Manager[LockModeType, ObjectIDType]) Lock(
-	r TxnLockRequest[LockModeType, ObjectIDType],
+func (m *Manager[LockModeType, ObjectID]) Lock(
+	r TxnLockRequest[LockModeType, ObjectID],
 ) <-chan struct{} {
-	q := func() *txnQueue[LockModeType, ObjectIDType] {
+	q := func() *txnQueue[LockModeType, ObjectID] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
 
-		q, ok := m.qs[r.recordId]
+		q, ok := m.qs[r.objectId]
 		if !ok {
-			q = newTxnQueue[LockModeType, ObjectIDType]()
-			m.qs[r.recordId] = q
+			q = newTxnQueue[LockModeType, ObjectID]()
+			m.qs[r.objectId] = q
 		}
 
 		return q
@@ -58,17 +57,11 @@ func (m *Manager[LockModeType, ObjectIDType]) Lock(
 
 		alreadyLockedRecords, ok := m.lockedRecords[r.txnID]
 		if !ok {
-			alreadyLockedRecords = make(map[ObjectIDType]struct{})
+			alreadyLockedRecords = make(map[ObjectID]struct{})
 			m.lockedRecords[r.txnID] = alreadyLockedRecords
 		}
 
-		_, isAleadyLocked := alreadyLockedRecords[r.recordId]
-		assert.Assert(!isAleadyLocked,
-			"Didn't expect the record %+v to be locked by a transaction %+v",
-			r.recordId,
-			r.txnID)
-
-		alreadyLockedRecords[r.recordId] = struct{}{}
+		alreadyLockedRecords[r.objectId] = struct{}{}
 	}()
 
 	return notifier
@@ -90,14 +83,14 @@ func (m *Manager[LockModeType, ObjectIDType]) Lock(
 // Returns:
 // - <-chan struct{}: A channel that will be closed when the lock upgrade is
 // granted, or nil if the upgrade cannot be performed immediately.
-func (m *Manager[LockModeType, ObjectIDType]) Upgrade(
-	r TxnLockRequest[LockModeType, ObjectIDType],
+func (m *Manager[LockModeType, ObjectID]) Upgrade(
+	r TxnLockRequest[LockModeType, ObjectID],
 ) <-chan struct{} {
-	q := func() *txnQueue[LockModeType, ObjectIDType] {
+	q := func() *txnQueue[LockModeType, ObjectID] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
 
-		q, present := m.qs[r.recordId]
+		q, present := m.qs[r.objectId]
 		assert.Assert(present,
 			"trying to upgrade a lock on the unlocked tuple. request: %+v",
 			r)
@@ -105,8 +98,31 @@ func (m *Manager[LockModeType, ObjectIDType]) Upgrade(
 		return q
 	}()
 
-	return q.Upgrade(r)
+	n := q.Upgrade(r)
+	return n
 }
+
+// func retryUnlock[LockModeType GranularLock[LockModeType], ObjectIDType
+// comparable](
+// 	q *txnQueue[LockModeType, ObjectIDType],
+// 	r TxnUnlockRequest[ObjectIDType],
+// ) {
+// 	RETRY_LIMIT := 50
+//
+// 	j := 0
+// 	for !q.Unlock(r) {
+// 		j++
+// 		// TODO: rethink the retries
+// 		runtime.Gosched()
+// 		if j == RETRY_LIMIT {
+// 			assert.Assert(
+// 				false,
+// 				"failed to unlock record after %v attempts",
+// 				RETRY_LIMIT,
+// 			)
+// 		}
+// 	}
+// }
 
 // Unlock releases the lock held by a transaction on a specific record.
 // It first retrieves the transaction queue associated with the record ID,
@@ -115,25 +131,22 @@ func (m *Manager[LockModeType, ObjectIDType]) Upgrade(
 // it removes the record from the set of records locked by the transaction.
 // Panics if the record is not currently locked or if the transaction does not
 // have any locked records.
-func (m *Manager[LockModeType, ObjectIDType]) Unlock(
-	r TxnUnlockRequest[ObjectIDType],
+func (m *Manager[LockModeType, ObjectID]) Unlock(
+	r TxnUnlockRequest[ObjectID],
 ) {
-	q := func() *txnQueue[LockModeType, ObjectIDType] {
+	q := func() *txnQueue[LockModeType, ObjectID] {
 		m.qsGuard.Lock()
 		defer m.qsGuard.Unlock()
 
-		q, present := m.qs[r.recordId]
+		q, present := m.qs[r.objectId]
 		assert.Assert(present,
-			"trying to unlock the already unlocked tuple. recordID: %+v",
-			r.recordId)
+			"trying to unlock already unlocked tuple. recordID: %+v",
+			r.objectId)
 
 		return q
 	}()
 
-	for !q.Unlock(r) {
-		// TODO: rething the retries
-		runtime.Gosched()
-	}
+	q.Unlock(r)
 
 	func() {
 		m.lockedRecordsGuard.Lock()
@@ -144,30 +157,33 @@ func (m *Manager[LockModeType, ObjectIDType]) Unlock(
 			"expected a set of locked records for the transaction %+v to exist",
 			r.txnID,
 		)
-		delete(lockedRecords, r.recordId)
+		delete(lockedRecords, r.objectId)
 	}()
 }
 
-func (m *Manager[LockModeType, ObjectIDType]) UnlockAll(TransactionID TxnID) {
-	lockedRecords := func() map[ObjectIDType]struct{} {
+func (m *Manager[LockModeType, ObjectID]) UnlockAll(TransactionID TxnID) {
+	lockedRecords := func() map[ObjectID]struct{} {
 		m.lockedRecordsGuard.Lock()
 		defer m.lockedRecordsGuard.Unlock()
 
 		lockedRecords, ok := m.lockedRecords[TransactionID]
+		if !ok {
+			return make(map[ObjectID]struct{})
+		}
+
 		assert.Assert(ok,
 			"expected a set of locked records for the transaction %+v to exist",
 			TransactionID)
 		delete(m.lockedRecords, TransactionID)
-
 		return lockedRecords
 	}()
 
-	unlockRequest := TxnUnlockRequest[ObjectIDType]{
+	unlockRequest := TxnUnlockRequest[ObjectID]{
 		txnID: TransactionID,
 	}
 
 	for r := range lockedRecords {
-		q := func() *txnQueue[LockModeType, ObjectIDType] {
+		q := func() *txnQueue[LockModeType, ObjectID] {
 			m.qsGuard.Lock()
 			defer m.qsGuard.Unlock()
 
@@ -181,9 +197,7 @@ func (m *Manager[LockModeType, ObjectIDType]) UnlockAll(TransactionID TxnID) {
 			return q
 		}()
 
-		unlockRequest.recordId = r
-		for !q.Unlock(unlockRequest) {
-			runtime.Gosched()
-		}
+		unlockRequest.objectId = r
+		q.Unlock(unlockRequest)
 	}
 }

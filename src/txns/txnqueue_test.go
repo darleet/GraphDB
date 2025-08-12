@@ -29,16 +29,16 @@ func expectOpenChannel(t *testing.T, ch <-chan struct{}, mes string) {
 
 // TestSharedLockCompatibility shows proper lock compatibility
 func TestSharedLockCompatibility(t *testing.T) {
-	q := newTxnQueue[RecordLockMode, RecordID]()
-	req1 := TxnLockRequest[RecordLockMode, RecordID]{
+	q := newTxnQueue[PageLockMode, RecordID]()
+	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
-		recordId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
 	}
-	req2 := TxnLockRequest[RecordLockMode, RecordID]{
+	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
-		recordId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -58,16 +58,16 @@ func TestSharedLockCompatibility(t *testing.T) {
 
 // TestExclusiveBlocking demonstrates lock queueing
 func TestExclusiveBlocking(t *testing.T) {
-	q := newTxnQueue[RecordLockMode, RecordID]()
-	req1 := TxnLockRequest[RecordLockMode, RecordID]{
+	q := newTxnQueue[PageLockMode, RecordID]()
+	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
-		recordId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
 	}
-	req2 := TxnLockRequest[RecordLockMode, RecordID]{
+	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
-		recordId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		objectId: 1,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -83,18 +83,18 @@ func TestExclusiveBlocking(t *testing.T) {
 
 // TestDeadlockPrevention verifies transaction age ordering
 func TestDeadlockPrevention(t *testing.T) {
-	q := newTxnQueue[RecordLockMode, RecordID]()
+	q := newTxnQueue[PageLockMode, RecordID]()
 
 	// Older transaction (lower ID) first
-	oldReq := TxnLockRequest[RecordLockMode, RecordID]{
+	oldReq := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    1,
-		recordId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		objectId: 1,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
-	newReq := TxnLockRequest[RecordLockMode, RecordID]{
+	newReq := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    2,
-		recordId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	// Older transaction gets blocked (simulated)
@@ -111,7 +111,7 @@ func TestDeadlockPrevention(t *testing.T) {
 
 // TestConcurrentAccess checks for race conditions
 func TestConcurrentAccess(t *testing.T) {
-	q := newTxnQueue[RecordLockMode, RecordID]()
+	q := newTxnQueue[PageLockMode, RecordID]()
 
 	var wg sync.WaitGroup
 
@@ -121,10 +121,10 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			req := TxnLockRequest[RecordLockMode, RecordID]{
+			req := TxnLockRequest[PageLockMode, RecordID]{
 				txnID:    TxnID(id), //nolint:gosec
-				recordId: 1,
-				lockMode: RECORD_LOCK_SHARED,
+				objectId: 1,
+				lockMode: PAGE_LOCK_SHARED,
 			}
 
 			fmt.Printf("before lock %d\n", id)
@@ -140,7 +140,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 			fmt.Printf("before unlock %d\n", id)
 			q.Unlock(
-				TxnUnlockRequest[RecordID]{txnID: TxnID(id), recordId: 1},
+				TxnUnlockRequest[RecordID]{txnID: TxnID(id), objectId: 1},
 			) //nolint:gosec
 			fmt.Printf("after unlock %d\n", id)
 		}(i)
@@ -151,16 +151,16 @@ func TestConcurrentAccess(t *testing.T) {
 
 // TestExclusiveOrdering validates exclusive locks ordering
 func TestExclusiveOrdering(t *testing.T) {
-	q := newTxnQueue[RecordLockMode, RecordID]()
-	req1 := TxnLockRequest[RecordLockMode, RecordID]{
+	q := newTxnQueue[PageLockMode, RecordID]()
+	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    9,
-		recordId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		objectId: 1,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
-	req2 := TxnLockRequest[RecordLockMode, RecordID]{
+	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    8,
-		recordId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		objectId: 1,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -173,9 +173,7 @@ func TestExclusiveOrdering(t *testing.T) {
 		"shouldn't have granted the lock in presence of concurrent exclusive lock",
 	)
 
-	if !q.Unlock(TxnUnlockRequest[RecordID]{txnID: 9, recordId: 1}) {
-		t.Errorf("no concurrent deleted -> couldn't have failed")
-	}
+	q.Unlock(TxnUnlockRequest[RecordID]{txnID: 9, objectId: 1})
 
 	expectClosedChannel(t, notifier2, "empty queue -> grant the lock")
 }
@@ -184,21 +182,21 @@ func TestExclusiveOrdering(t *testing.T) {
 // can't grant a lock automatically if there is
 // another transaction that have already requested a lock on a tuple
 func TestLockFairness(t *testing.T) {
-	q := newTxnQueue[RecordLockMode, RecordID]()
-	req1 := TxnLockRequest[RecordLockMode, RecordID]{
+	q := newTxnQueue[PageLockMode, RecordID]()
+	req1 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    9,
-		recordId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
 	}
-	req2 := TxnLockRequest[RecordLockMode, RecordID]{
+	req2 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    8,
-		recordId: 1,
-		lockMode: RECORD_LOCK_EXCLUSIVE,
+		objectId: 1,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
 	}
-	req3 := TxnLockRequest[RecordLockMode, RecordID]{
+	req3 := TxnLockRequest[PageLockMode, RecordID]{
 		txnID:    7,
-		recordId: 1,
-		lockMode: RECORD_LOCK_SHARED,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
 	}
 
 	notifier1 := q.Lock(req1)
@@ -211,5 +209,173 @@ func TestLockFairness(t *testing.T) {
 		t,
 		notifier3,
 		"waiting imcompatible lock -> can't grant the lock immediately",
+	)
+}
+
+func TestLockcpgradeAlwaysAllowIfSingle(t *testing.T) {
+	q := newTxnQueue[PageLockMode, RecordID]()
+	req := TxnLockRequest[PageLockMode, RecordID]{
+		txnID:    10,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	// Upgrade the lock
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
+	notifier = q.Upgrade(req)
+	expectClosedChannel(
+		t,
+		notifier,
+		"single transaction -> upgrade should be allowed",
+	)
+}
+
+func TestLockUpgradeAllowIfSingleWhenNoPendingUpgrades(t *testing.T) {
+	q := newTxnQueue[PageLockMode, RecordID]()
+	req := TxnLockRequest[PageLockMode, RecordID]{
+		txnID:    10,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	req2 := TxnLockRequest[PageLockMode, RecordID]{
+		txnID:    2,
+		objectId: 1,
+		lockMode: PAGE_LOCK_EXCLUSIVE,
+	}
+	blockedReqNotifier := q.Lock(req2)
+	expectOpenChannel(
+		t,
+		blockedReqNotifier,
+		"incompatible lock -> should be blocked",
+	)
+
+	// Upgrade the lock
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
+	notifier = q.Upgrade(req)
+	expectClosedChannel(
+		t,
+		notifier,
+		"single transaction -> upgrade should be allowed",
+	)
+}
+
+func TestLockUpgradeForbidUpgradeIfDeadlock(t *testing.T) {
+	q := newTxnQueue[PageLockMode, RecordID]()
+	req := TxnLockRequest[PageLockMode, RecordID]{
+		txnID:    3,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	req2 := TxnLockRequest[PageLockMode, RecordID]{
+		txnID:    2,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
+	}
+	blockedReqNotifier := q.Lock(req2)
+	expectClosedChannel(
+		t,
+		blockedReqNotifier,
+		"compatible lock -> grant the lock",
+	)
+
+	// Upgrade the lock
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
+	notifier = q.Upgrade(req)
+	require.Nil(t, notifier, "deadlock detected -> upgrade should be forbidden")
+}
+
+func TestLockUpgradeCompatibleLocks(t *testing.T) {
+	q := newTxnQueue[GranularLockMode, TableID]()
+	req := TxnLockRequest[GranularLockMode, TableID]{
+		txnID:    4,
+		objectId: 1,
+		lockMode: GRANULAR_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	req2 := TxnLockRequest[GranularLockMode, TableID]{
+		txnID:    3,
+		objectId: 1,
+		lockMode: GRANULAR_LOCK_SHARED,
+	}
+	notifier2 := q.Lock(req2)
+	expectClosedChannel(
+		t,
+		notifier2,
+		"compatible lock -> grant the lock",
+	)
+
+	// Upgrade the lock
+	req2.lockMode = GRANULAR_LOCK_SHARED_INTENTION_EXCLUSIVE
+	notifier2 = q.Upgrade(req2)
+	expectOpenChannel(
+		t,
+		notifier2,
+		"no deadlock -> upgrade should be allowed [wait]",
+	)
+
+	q.Unlock(TxnUnlockRequest[TableID]{
+		txnID:    4,
+		objectId: 1,
+	})
+
+	expectClosedChannel(t, notifier2, "waiter should be woken up after unlock")
+}
+
+func TestManagerUpgradeWithUpgradeWaiter(t *testing.T) {
+	q := newTxnQueue[PageLockMode, TableID]()
+
+	req := TxnLockRequest[PageLockMode, TableID]{
+		txnID:    4,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
+	}
+
+	notifier := q.Lock(req)
+	expectClosedChannel(t, notifier, "empty queue -> grant the lock")
+
+	req2 := TxnLockRequest[PageLockMode, TableID]{
+		txnID:    3,
+		objectId: 1,
+		lockMode: PAGE_LOCK_SHARED,
+	}
+
+	notifier2 := q.Lock(req2)
+	expectClosedChannel(t, notifier2, "compatible lock -> grant the lock")
+
+	req2.lockMode = PAGE_LOCK_EXCLUSIVE
+	upgradeNotifier2 := q.Upgrade(req2)
+	expectOpenChannel(
+		t,
+		upgradeNotifier2,
+		"no deadlock -> upgrade should be allowed [wait]",
+	)
+
+	req.lockMode = PAGE_LOCK_EXCLUSIVE
+	upgradeNotifier1 := q.Upgrade(req)
+
+	require.Nil(t, upgradeNotifier1)
+	q.Unlock(TxnUnlockRequest[TableID]{
+		txnID:    req.txnID,
+		objectId: req.objectId,
+	})
+
+	expectClosedChannel(
+		t,
+		upgradeNotifier2,
+		"upgrade should be allowed to run [compatible locks]",
 	)
 }

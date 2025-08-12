@@ -12,49 +12,87 @@ var (
 )
 
 type BufferPool_mock struct {
-	pages    sync.Map // map[PageIdentity]*page.SlottedPage
-	unpinned sync.Map // map[PageIdentity]bool
+	pagesMu sync.RWMutex
+	pages   map[PageIdentity]*page.SlottedPage
+
+	pinCountMu sync.RWMutex
+	pinCounts  map[PageIdentity]int
 }
 
 func NewBufferPoolMock() *BufferPool_mock {
-	return &BufferPool_mock{}
+	return &BufferPool_mock{
+		pages:     make(map[PageIdentity]*page.SlottedPage),
+		pinCounts: make(map[PageIdentity]int),
+	}
 }
 
 func (b *BufferPool_mock) Unpin(pageID PageIdentity) error {
-	b.unpinned.Store(pageID, true)
+	b.pinCountMu.Lock()
+	defer b.pinCountMu.Unlock()
+
+	pinCount, ok := b.pinCounts[pageID]
+	if !ok {
+		return fmt.Errorf("page %v not found in pin counts", pageID)
+	}
+
+	if pinCount <= 0 {
+		return fmt.Errorf("page %v has already been unpinned", pageID)
+	}
+
+	b.pinCounts[pageID] = pinCount - 1
 	return nil
 }
 
 func (b *BufferPool_mock) GetPage(
 	pageID PageIdentity,
 ) (*page.SlottedPage, error) {
-	val, ok := b.pages.Load(pageID)
+	b.pagesMu.RLock()
+	p, ok := b.pages[pageID]
 
-	var p *page.SlottedPage
+	if ok {
+		b.pinCountMu.Lock()
+		b.pinCounts[pageID]++
+		b.pinCountMu.Unlock()
+		b.pagesMu.RUnlock()
+		return p, nil
+	}
+	b.pagesMu.RUnlock()
 
-	if !ok {
-		p = page.NewSlottedPage()
-		b.pages.Store(pageID, p)
-	} else {
-		p = val.(*page.SlottedPage)
+	b.pagesMu.Lock()
+	defer b.pagesMu.Unlock()
+	p, ok = b.pages[pageID]
+	if ok {
+		b.pinCountMu.Lock()
+		b.pinCounts[pageID]++
+		b.pinCountMu.Unlock()
+		return p, nil
 	}
 
-	b.unpinned.Store(pageID, false)
+	p = page.NewSlottedPage()
+	b.pages[pageID] = p
 
+	b.pinCountMu.Lock()
+	b.pinCounts[pageID] = 1
+	b.pinCountMu.Unlock()
 	return p, nil
 }
 
 func (b *BufferPool_mock) GetPageNoCreate(
 	pageID PageIdentity,
 ) (*page.SlottedPage, error) {
-	val, ok := b.pages.Load(pageID)
+	b.pagesMu.RLock()
+	defer b.pagesMu.RUnlock()
+
+	p, ok := b.pages[pageID]
+
 	if !ok {
 		return nil, ErrNoSuchPage
 	}
 
-	b.unpinned.Store(pageID, false)
-
-	return val.(*page.SlottedPage), nil
+	b.pinCountMu.Lock()
+	b.pinCounts[pageID]++
+	b.pinCountMu.Unlock()
+	return p, nil
 }
 
 func (b *BufferPool_mock) FlushPage(pageID PageIdentity) error {
@@ -62,18 +100,15 @@ func (b *BufferPool_mock) FlushPage(pageID PageIdentity) error {
 }
 
 func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
-	pinnedIDs := []PageIdentity{}
+	b.pinCountMu.RLock()
+	defer b.pinCountMu.RUnlock()
 
-	b.pages.Range(func(key, _ interface{}) bool {
-		pageID := key.(PageIdentity)
-		val, ok := b.unpinned.Load(pageID)
-
-		if !ok || val == false {
-			pinnedIDs = append(pinnedIDs, pageID)
+	pinnedIDs := map[PageIdentity]int{}
+	for pageID, pinCount := range b.pinCounts {
+		if pinCount > 0 {
+			pinnedIDs[pageID] = pinCount
 		}
-
-		return true
-	})
+	}
 
 	if len(pinnedIDs) > 0 {
 		return fmt.Errorf("not all pages were unpinned: %+v", pinnedIDs)

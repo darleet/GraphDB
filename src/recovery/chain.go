@@ -32,7 +32,6 @@ func (c *TxnLogChain) SwitchTransactionID(
 	}
 
 	c.TransactionID = TransactionID
-
 	return c
 }
 
@@ -65,8 +64,11 @@ func (c *TxnLogChain) Insert(
 	c.lastLocations[c.TransactionID], c.err = c.logger.AppendInsert(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
-		pageInfo,
-		slotNumber,
+		RecordID{
+			FileID:  pageInfo.FileID,
+			PageID:  pageInfo.PageID,
+			SlotNum: slotNumber,
+		},
 		value,
 	)
 
@@ -90,10 +92,39 @@ func (c *TxnLogChain) Update(
 	c.lastLocations[c.TransactionID], c.err = c.logger.AppendUpdate(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
-		pageInfo,
-		slotNumber,
+		RecordID{
+			FileID:  pageInfo.FileID,
+			PageID:  pageInfo.PageID,
+			SlotNum: slotNumber,
+		},
 		beforeValue,
 		afterValue,
+	)
+
+	return c
+}
+
+func (c *TxnLogChain) Delete(
+	pageInfo bufferpool.PageIdentity,
+	slotNumber uint16,
+) *TxnLogChain {
+	if c.err != nil {
+		return c
+	}
+
+	if _, ok := c.lastLocations[c.TransactionID]; !ok {
+		c.err = fmt.Errorf("no last location found for %d", c.TransactionID)
+		return c
+	}
+
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendDelete(
+		c.TransactionID,
+		c.lastLocations[c.TransactionID],
+		RecordID{
+			FileID:  pageInfo.FileID,
+			PageID:  pageInfo.PageID,
+			SlotNum: slotNumber,
+		},
 	)
 
 	return c

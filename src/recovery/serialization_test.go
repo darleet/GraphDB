@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
@@ -25,11 +27,11 @@ func TestBeginLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 }
@@ -39,8 +41,11 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 		123,
 		txns.TxnID(456),
 		LogRecordLocationInfo{789, FileLocation{101112, 13141}},
-		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
-		2224,
+		RecordID{
+			PageID:  161718,
+			FileID:  192021,
+			SlotNum: 2224,
+		},
 		[]byte("before value"),
 		[]byte("after value"),
 	)
@@ -60,11 +65,11 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -76,19 +81,11 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 		)
 	}
 
-	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
+	if original.modifiedRecordID != recovered.modifiedRecordID {
 		t.Errorf(
 			"pageInfo mismatch: got %v, want %v",
-			recovered.modifiedPageIdentity,
-			original.modifiedPageIdentity,
-		)
-	}
-
-	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
-		t.Errorf(
-			"slotNumber mismatch: got %v, want %v",
-			recovered.modifiedSlotNumber,
-			original.modifiedSlotNumber,
+			recovered.modifiedRecordID,
+			original.modifiedRecordID,
 		)
 	}
 
@@ -114,8 +111,11 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 		123,
 		txns.TxnID(456),
 		LogRecordLocationInfo{789, FileLocation{101112, 13115}},
-		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
-		2224,
+		RecordID{
+			PageID:  161718,
+			FileID:  192021,
+			SlotNum: 2224,
+		},
 		[]byte("test value"),
 	)
 
@@ -134,11 +134,11 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -150,19 +150,11 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 		)
 	}
 
-	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
+	if original.modifiedRecordID != recovered.modifiedRecordID {
 		t.Errorf(
 			"pageInfo mismatch: got %v, want %v",
-			recovered.modifiedPageIdentity,
-			original.modifiedPageIdentity,
-		)
-	}
-
-	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
-		t.Errorf(
-			"slotNumber mismatch: got %v, want %v",
-			recovered.modifiedSlotNumber,
-			original.modifiedSlotNumber,
+			recovered.modifiedRecordID,
+			original.modifiedRecordID,
 		)
 	}
 
@@ -197,11 +189,11 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -236,11 +228,11 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -275,11 +267,11 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
 	}
 
-	if original.TransactionID != recovered.TransactionID {
+	if original.txnID != recovered.txnID {
 		t.Errorf(
 			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
+			recovered.txnID,
+			original.txnID,
 		)
 	}
 
@@ -297,12 +289,15 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 		123,
 		txns.TxnID(456),
 		LogRecordLocationInfo{789, FileLocation{101112, 13145}},
-		bufferpool.PageIdentity{PageID: 161718, FileID: 192021},
-		22224,
-		true,
+		RecordID{
+			PageID:  161718,
+			FileID:  192021,
+			SlotNum: 22224,
+		},
+		CLRtypeUpdate,
 		252627,
 		[]byte("before value"),
-		[]byte("after value"),
+		[]byte("after value123"),
 	)
 
 	data, err := original.MarshalBinary()
@@ -315,66 +310,7 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 		t.Fatalf("UnmarshalBinary failed: %v", err)
 	}
 
-	// Compare all fields
-	if original.lsn != recovered.lsn {
-		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
-	}
-
-	if original.TransactionID != recovered.TransactionID {
-		t.Errorf(
-			"TransactionID mismatch: got %v, want %v",
-			recovered.TransactionID,
-			original.TransactionID,
-		)
-	}
-
-	if original.parentLogLocation != recovered.parentLogLocation {
-		t.Errorf(
-			"prevLog mismatch: got %v, want %v",
-			recovered.parentLogLocation,
-			original.parentLogLocation,
-		)
-	}
-
-	if original.modifiedPageIdentity != recovered.modifiedPageIdentity {
-		t.Errorf(
-			"pageInfo mismatch: got %v, want %v",
-			recovered.modifiedPageIdentity,
-			original.modifiedPageIdentity,
-		)
-	}
-
-	if original.modifiedSlotNumber != recovered.modifiedSlotNumber {
-		t.Errorf(
-			"slotNumber mismatch: got %v, want %v",
-			recovered.modifiedSlotNumber,
-			original.modifiedSlotNumber,
-		)
-	}
-
-	if original.nextUndoLSN != recovered.nextUndoLSN {
-		t.Errorf(
-			"nextUndoLSN mismatch: got %v, want %v",
-			recovered.nextUndoLSN,
-			original.nextUndoLSN,
-		)
-	}
-
-	if !bytes.Equal(original.beforeValue, recovered.beforeValue) {
-		t.Errorf(
-			"beforeValue mismatch: got %v, want %v",
-			recovered.beforeValue,
-			original.beforeValue,
-		)
-	}
-
-	if !bytes.Equal(original.afterValue, recovered.afterValue) {
-		t.Errorf(
-			"afterValue mismatch: got %v, want %v",
-			recovered.afterValue,
-			original.afterValue,
-		)
-	}
+	assert.Equal(t, original, recovered)
 }
 
 func TestInvalidTypeTag(t *testing.T) {
@@ -382,24 +318,20 @@ func TestInvalidTypeTag(t *testing.T) {
 	original := NewBeginLogRecord(123, txns.TxnID(456))
 
 	data, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary failed: %v", err)
-	}
+	assert.NoError(t, err)
 
 	// Corrupt the type tag
 	data[0] = 0xFF
 
 	var recovered BeginLogRecord
-	if err := recovered.UnmarshalBinary(data); err == nil {
-		t.Fatal("Expected error for invalid type tag, got nil")
-	}
+	err = recovered.UnmarshalBinary(data)
+	assert.Error(t, err, "expected error for invalid type tag")
 }
 
 func TestEmptyData(t *testing.T) {
 	var recovered BeginLogRecord
-	if err := recovered.UnmarshalBinary([]byte{}); err == nil {
-		t.Fatal("Expected error for empty data, got nil")
-	}
+	err := recovered.UnmarshalBinary([]byte{})
+	assert.Error(t, err, "Expected error for empty data")
 }
 
 func TestPartialData(t *testing.T) {
@@ -407,42 +339,33 @@ func TestPartialData(t *testing.T) {
 	original := NewBeginLogRecord(123, txns.TxnID(456))
 
 	data, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary failed: %v", err)
-	}
+	assert.NoError(t, err)
 
 	// Truncate the data
 	data = data[:len(data)-2]
 
 	var recovered BeginLogRecord
-	if err := recovered.UnmarshalBinary(data); err == nil {
-		t.Fatal("Expected error for truncated data, got nil")
-	}
+	err = recovered.UnmarshalBinary(data)
+	assert.Error(t, err, "Expected error for truncated data")
 }
 
 func TestCheckpointBegin_MarshalUnmarshal(t *testing.T) {
 	original := NewCheckpointBegin(123456789)
 
 	data, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary failed: %v", err)
-	}
+	assert.NoError(t, err)
 
 	var recovered CheckpointBeginLogRecord
-	if err := recovered.UnmarshalBinary(data); err != nil {
-		t.Fatalf("UnmarshalBinary failed: %v", err)
-	}
+	err = recovered.UnmarshalBinary(data)
+	assert.NoError(t, err)
 
-	if original.lsn != recovered.lsn {
-		t.Errorf("lsn mismatch: got %v, want %v", recovered.lsn, original.lsn)
-	}
+	assert.Equal(t, original, recovered)
 }
 
 func TestCheckpointBegin_EmptyData(t *testing.T) {
 	var recovered CheckpointBeginLogRecord
-	if err := recovered.UnmarshalBinary([]byte{}); err == nil {
-		t.Fatal("Expected error for empty data, got nil")
-	}
+	err := recovered.UnmarshalBinary([]byte{})
+	assert.Error(t, err, "Expected error for empty data")
 }
 
 func TestCheckpointBegin_InvalidTypeTag(t *testing.T) {
@@ -450,17 +373,14 @@ func TestCheckpointBegin_InvalidTypeTag(t *testing.T) {
 	original := NewCheckpointBegin(123456789)
 
 	data, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary failed: %v", err)
-	}
+	assert.NoError(t, err)
 
 	// Corrupt the type tag
 	data[0] = 0xFF
 
 	var recovered CheckpointBeginLogRecord
-	if err := recovered.UnmarshalBinary(data); err == nil {
-		t.Fatal("Expected error for invalid type tag, got nil")
-	}
+	err = recovered.UnmarshalBinary(data)
+	assert.Error(t, err, "Expected error for invalid type tag")
 }
 
 func TestCheckpointBegin_TruncatedData(t *testing.T) {
@@ -573,4 +493,99 @@ func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
 	if err := recovered.UnmarshalBinary(data); err == nil {
 		t.Fatal("Expected error for invalid type tag, got nil")
 	}
+}
+func TestDeleteLogRecord_MarshalUnmarshal(t *testing.T) {
+	original := NewDeleteLogRecord(
+		123,
+		txns.TxnID(456),
+		LogRecordLocationInfo{789, FileLocation{101112, 13141}},
+		RecordID{
+			PageID:  161718,
+			FileID:  192021,
+			SlotNum: 2224,
+		},
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.NoError(t, err)
+
+	assert.Equal(t, original.lsn, recovered.lsn)
+	assert.Equal(t, original.txnID, recovered.txnID)
+	assert.Equal(t, original.parentLogLocation, recovered.parentLogLocation)
+	assert.Equal(t, original.modifiedRecordID, recovered.modifiedRecordID)
+}
+
+func TestDeleteLogRecord_MarshalBinary_EmptyBeforeValue(t *testing.T) {
+	original := NewDeleteLogRecord(
+		1,
+		txns.TxnID(2),
+		LogRecordLocationInfo{3, FileLocation{4, 5}},
+		RecordID{
+			PageID:  6,
+			FileID:  7,
+			SlotNum: 8,
+		},
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.NoError(t, err)
+}
+
+func TestDeleteLogRecord_UnmarshalBinary_InvalidTypeTag(t *testing.T) {
+	original := NewDeleteLogRecord(
+		1,
+		txns.TxnID(2),
+		LogRecordLocationInfo{3, FileLocation{4, 5}},
+		RecordID{
+			PageID:  6,
+			FileID:  7,
+			SlotNum: 8,
+		},
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	data[0] = 0xFF // Corrupt the type tag
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.Error(t, err)
+}
+
+func TestDeleteLogRecord_UnmarshalBinary_EmptyData(t *testing.T) {
+	var recovered DeleteLogRecord
+	err := recovered.UnmarshalBinary([]byte{})
+	assert.Error(t, err)
+}
+
+func TestDeleteLogRecord_UnmarshalBinary_TruncatedData(t *testing.T) {
+	original := NewDeleteLogRecord(
+		1,
+		txns.TxnID(2),
+		LogRecordLocationInfo{3, FileLocation{4, 5}},
+		RecordID{
+			PageID:  6,
+			FileID:  7,
+			SlotNum: 8,
+		},
+	)
+
+	data, err := original.MarshalBinary()
+	assert.NoError(t, err)
+
+	// Truncate the data
+	data = data[:len(data)-2]
+
+	var recovered DeleteLogRecord
+	err = recovered.UnmarshalBinary(data)
+	assert.Error(t, err)
 }

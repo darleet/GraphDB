@@ -69,7 +69,7 @@ func (iter *LogRecordsIter) MoveForward() (res bool, err error) {
 }
 
 func (iter *LogRecordsIter) ReadRecord() (LogRecordTypeTag, any, error) {
-	d := iter.lockedPage.GetBytes(iter.curLoc.SlotNum)
+	d := iter.lockedPage.Read(iter.curLoc.SlotNum)
 	return readLogRecord(d)
 }
 
