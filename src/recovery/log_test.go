@@ -707,15 +707,17 @@ func TestLoggerRollback(t *testing.T) {
 		}
 	}
 
-	recordValues := fillPages(t, logger, math.MaxUint64, 4, files, 1024)
+	recordValues := fillPages(t, logger, math.MaxUint64, 20000, files, 1024)
 	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
 	updatedValues := make(map[RecordID]uint32, len(recordValues))
 	maps.Copy(updatedValues, recordValues)
 
+	locker := txns.NewLocker()
+
 	txnID := atomic.Uint64{}
 	wg := sync.WaitGroup{}
-	for batch := range mapBatch(recordValues, 3) {
+	for batch := range mapBatch(recordValues, 300) {
 		wg.Add(1)
 		go func(batch []KVPair[RecordID, uint32]) {
 			defer func() {
@@ -730,10 +732,51 @@ func TestLoggerRollback(t *testing.T) {
 			defer wg.Done()
 
 			txnID := txns.TxnID(txnID.Add(1))
-			chain := NewTxnLogChain(logger, txnID).Begin()
+			chain := NewTxnLogChain(logger, txnID)
+			require.NoError(t, chain.Begin().Err())
+
+			cLockOpt := locker.LockCatalog(
+				txnID,
+				txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
+			)
+			if cLockOpt.IsNone() {
+				assert.NoError(t, chain.Abort().Err())
+				logger.Rollback(chain.Loc())
+				return
+			}
+			cLock, cToken := cLockOpt.Unwrap().Destruct()
+			<-cLock
+			defer locker.Unlock(cToken)
 
 			for j := range len(batch) * 3 / 2 {
 				info := batch[j%len(batch)]
+
+				tLockOpt := locker.LockFile(
+					cToken,
+					txns.FileID(info.key.FileID),
+					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
+				)
+				if tLockOpt.IsNone() {
+					assert.NoError(t, chain.Abort().Err())
+					logger.Rollback(chain.Loc())
+					return
+				}
+				tLock, tToken := tLockOpt.Unwrap().Destruct()
+				<-tLock
+
+				pLockOpt := locker.LockPage(
+					tToken,
+					txns.PageID(info.key.PageID),
+					txns.PAGE_LOCK_EXCLUSIVE,
+				)
+				if pLockOpt.IsNone() {
+					assert.NoError(t, chain.Abort().Err())
+					logger.Rollback(chain.Loc())
+					return
+				}
+				pLock, _ := pLockOpt.Unwrap().Destruct()
+				<-pLock
+
 				newValue := rand.Uint32()
 				oldValue := updatedValues[info.key]
 				chain.Update(
@@ -741,15 +784,55 @@ func TestLoggerRollback(t *testing.T) {
 					utils.Uint32ToBytes(oldValue),
 					utils.Uint32ToBytes(newValue),
 				)
+
+				page, err := pool.GetPageNoCreate(info.key.PageIdentity())
+				require.NoError(t, err)
+				page.Lock()
+				page.Update(info.key.SlotNum, utils.Uint32ToBytes(newValue))
+				page.Unlock()
+				require.NoError(t, pool.Unpin(info.key.PageIdentity()))
 			}
 
 			for j := range len(batch) / 3 {
 				info := batch[j]
-				chain.Delete(info.key)
+
+				tLockOpt := locker.LockFile(
+					cToken,
+					txns.FileID(info.key.FileID),
+					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
+				)
+				if tLockOpt.IsNone() {
+					assert.NoError(t, chain.Abort().Err())
+					logger.Rollback(chain.Loc())
+					return
+				}
+				tLock, tToken := tLockOpt.Unwrap().Destruct()
+				<-tLock
+
+				pLockOpt := locker.LockPage(
+					tToken,
+					txns.PageID(info.key.PageID),
+					txns.PAGE_LOCK_EXCLUSIVE,
+				)
+				if pLockOpt.IsNone() {
+					assert.NoError(t, chain.Abort().Err())
+					logger.Rollback(chain.Loc())
+					return
+				}
+				pLock, _ := pLockOpt.Unwrap().Destruct()
+				<-pLock
+
+				require.NoError(t, chain.Delete(info.key).Err())
+				page, err := pool.GetPageNoCreate(info.key.PageIdentity())
+				require.NoError(t, err)
+				page.Lock()
+				page.Delete(info.key.SlotNum)
+				page.Unlock()
+				require.NoError(t, pool.Unpin(info.key.PageIdentity()))
 			}
 
-			abortRecordLoc := chain.Abort().Loc()
-			require.NoError(t, chain.Err())
+			require.NoError(t, chain.Abort().Err())
+			abortRecordLoc := chain.Loc()
 			logger.Rollback(abortRecordLoc)
 		}(batch)
 	}

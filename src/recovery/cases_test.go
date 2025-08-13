@@ -112,7 +112,7 @@ func TestBankTransactions(t *testing.T) {
 		<-n
 		defer locker.Unlock(ctoken)
 
-		tableLockOpt := locker.LockTable(
+		tableLockOpt := locker.LockFile(
 			ctoken,
 			txns.FileID(me.FileID),
 			txns.GRANULAR_LOCK_INTENTION_SHARED,
