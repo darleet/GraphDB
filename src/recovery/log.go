@@ -2,7 +2,9 @@ package recovery
 
 import (
 	"errors"
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -48,6 +50,61 @@ func (l *TxnLogger) iter(
 	)
 
 	return iter, nil
+}
+
+func (l *TxnLogger) Dump(start FileLocation, b *strings.Builder) {
+	iter, err := l.iter(start)
+	if err != nil {
+		return
+	}
+
+	for {
+		tag, record, err := iter.ReadRecord()
+		if err != nil {
+			return
+		}
+
+		loc := iter.Location()
+		fmt.Fprintf(b, "[%d@%d]: ", loc.PageID, loc.SlotNum)
+		switch tag {
+		case TypeBegin:
+			r := assert.Cast[BeginLogRecord](record)
+			b.WriteString(r.String())
+		case TypeInsert:
+			r := assert.Cast[InsertLogRecord](record)
+			b.WriteString(r.String())
+		case TypeUpdate:
+			r := assert.Cast[UpdateLogRecord](record)
+			b.WriteString(r.String())
+		case TypeDelete:
+			r := assert.Cast[DeleteLogRecord](record)
+			b.WriteString(r.String())
+		case TypeCommit:
+			r := assert.Cast[CommitLogRecord](record)
+			b.WriteString(r.String())
+		case TypeAbort:
+			r := assert.Cast[AbortLogRecord](record)
+			b.WriteString(r.String())
+		case TypeTxnEnd:
+			r := assert.Cast[TxnEndLogRecord](record)
+			b.WriteString(r.String())
+		case TypeCheckpointBegin:
+			r := assert.Cast[CheckpointBeginLogRecord](record)
+			b.WriteString(r.String())
+		case TypeCheckpointEnd:
+			r := assert.Cast[CheckpointEndLogRecord](record)
+			b.WriteString(r.String())
+		case TypeCompensation:
+			r := assert.Cast[CompensationLogRecord](record)
+			b.WriteString(r.String())
+		}
+		b.WriteString("\n")
+
+		success, err := iter.MoveForward()
+		if err != nil || !success {
+			break
+		}
+	}
 }
 
 /*
@@ -445,7 +502,11 @@ func (l *TxnLogger) readLogRecord(
 		FileID: l.logfileID,
 		PageID: recordLocation.PageID,
 	}
-	page, err := l.pool.GetPage(pageIdent)
+	page, err := l.pool.GetPageNoCreate(pageIdent)
+	if err != nil {
+		return TypeUnknown, nil, err
+	}
+
 	defer func() { err = errors.Join(err, l.pool.Unpin(pageIdent)) }()
 
 	if err != nil {
@@ -606,7 +667,7 @@ func loggerUndoRecord[T RevertableLogRecord](
 }
 
 func (l *TxnLogger) AppendInsert(
-	TransactionID txns.TxnID,
+	txnID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 	recordID RecordID,
 	value []byte,
@@ -616,7 +677,7 @@ func (l *TxnLogger) AppendInsert(
 
 	r := NewInsertLogRecord(
 		l.NewLSN(),
-		TransactionID,
+		txnID,
 		prevLog,
 		recordID,
 		value,
@@ -625,7 +686,7 @@ func (l *TxnLogger) AppendInsert(
 }
 
 func (l *TxnLogger) AppendDelete(
-	TransactionID txns.TxnID,
+	txnID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 	recordID RecordID,
 ) (LogRecordLocationInfo, error) {
@@ -634,7 +695,7 @@ func (l *TxnLogger) AppendDelete(
 
 	r := NewDeleteLogRecord(
 		l.NewLSN(),
-		TransactionID,
+		txnID,
 		prevLog,
 		recordID,
 	)
@@ -642,13 +703,13 @@ func (l *TxnLogger) AppendDelete(
 }
 
 func (l *TxnLogger) AppendCommit(
-	TransactionID txns.TxnID,
+	txnID txns.TxnID,
 	prevLog LogRecordLocationInfo,
 ) (LogRecordLocationInfo, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	r := NewCommitLogRecord(l.NewLSN(), TransactionID, prevLog)
+	r := NewCommitLogRecord(l.NewLSN(), txnID, prevLog)
 	return marshalRecordAndWrite(l, &r)
 }
 

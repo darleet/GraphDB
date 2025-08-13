@@ -189,14 +189,6 @@ func (p *SlottedPage) Delete(slotID uint16) {
 	)
 }
 
-func (p *SlottedPage) UnsafeRead(slotNumber uint16) []byte {
-	assert.Assert(slotNumber < p.NumSlots(), "slotNumber is too large")
-
-	header := p.getHeader()
-	ptr := header.getSlots()[slotNumber]
-	return p.getBytesBySlotPtr(ptr)
-}
-
 func (p *SlottedPage) UnsafeOverrideSlotStatus(
 	slotNumber uint16,
 	newStatus slotStatus,

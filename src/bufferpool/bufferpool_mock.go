@@ -7,10 +7,6 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 )
 
-var (
-	_ BufferPool[*page.SlottedPage] = &BufferPool_mock{}
-)
-
 type BufferPool_mock struct {
 	pagesMu sync.RWMutex
 	pages   map[PageIdentity]*page.SlottedPage
@@ -18,6 +14,10 @@ type BufferPool_mock struct {
 	pinCountMu sync.RWMutex
 	pinCounts  map[PageIdentity]int
 }
+
+var (
+	_ BufferPool[*page.SlottedPage] = &BufferPool_mock{}
+)
 
 func NewBufferPoolMock() *BufferPool_mock {
 	return &BufferPool_mock{
@@ -39,7 +39,8 @@ func (b *BufferPool_mock) Unpin(pageID PageIdentity) error {
 		return fmt.Errorf("page %v has already been unpinned", pageID)
 	}
 
-	b.pinCounts[pageID] = pinCount - 1
+	newPinCount := pinCount - 1
+	b.pinCounts[pageID] = newPinCount
 	return nil
 }
 
@@ -47,32 +48,32 @@ func (b *BufferPool_mock) GetPage(
 	pageID PageIdentity,
 ) (*page.SlottedPage, error) {
 	b.pagesMu.RLock()
-	p, ok := b.pages[pageID]
+	p, exists := b.pages[pageID]
+	b.pagesMu.RUnlock()
 
-	if ok {
+	if exists {
 		b.pinCountMu.Lock()
 		b.pinCounts[pageID]++
 		b.pinCountMu.Unlock()
-		b.pagesMu.RUnlock()
 		return p, nil
 	}
-	b.pagesMu.RUnlock()
 
+	b.pinCountMu.Lock()
 	b.pagesMu.Lock()
-	defer b.pagesMu.Unlock()
-	p, ok = b.pages[pageID]
-	if ok {
-		b.pinCountMu.Lock()
+
+	p, exists = b.pages[pageID]
+	if exists {
 		b.pinCounts[pageID]++
+		b.pagesMu.Unlock()
 		b.pinCountMu.Unlock()
 		return p, nil
 	}
 
 	p = page.NewSlottedPage()
 	b.pages[pageID] = p
-
-	b.pinCountMu.Lock()
 	b.pinCounts[pageID] = 1
+
+	b.pagesMu.Unlock()
 	b.pinCountMu.Unlock()
 	return p, nil
 }
@@ -81,11 +82,10 @@ func (b *BufferPool_mock) GetPageNoCreate(
 	pageID PageIdentity,
 ) (*page.SlottedPage, error) {
 	b.pagesMu.RLock()
-	defer b.pagesMu.RUnlock()
+	p, exists := b.pages[pageID]
+	b.pagesMu.RUnlock()
 
-	p, ok := b.pages[pageID]
-
-	if !ok {
+	if !exists {
 		return nil, ErrNoSuchPage
 	}
 
@@ -105,13 +105,16 @@ func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
 
 	pinnedIDs := map[PageIdentity]int{}
 	for pageID, pinCount := range b.pinCounts {
-		if pinCount > 0 {
+		if pinCount != 0 {
 			pinnedIDs[pageID] = pinCount
 		}
 	}
 
 	if len(pinnedIDs) > 0 {
-		return fmt.Errorf("not all pages were unpinned: %+v", pinnedIDs)
+		return fmt.Errorf(
+			"not all pages were properly unpinned: %+v",
+			pinnedIDs,
+		)
 	}
 
 	return nil

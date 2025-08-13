@@ -48,8 +48,7 @@ func (c *TxnLogChain) Begin() *TxnLogChain {
 }
 
 func (c *TxnLogChain) Insert(
-	pageInfo bufferpool.PageIdentity,
-	slotNumber uint16,
+	recordID RecordID,
 	value []byte,
 ) *TxnLogChain {
 	if c.err != nil {
@@ -64,11 +63,7 @@ func (c *TxnLogChain) Insert(
 	c.lastLocations[c.TransactionID], c.err = c.logger.AppendInsert(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
-		RecordID{
-			FileID:  pageInfo.FileID,
-			PageID:  pageInfo.PageID,
-			SlotNum: slotNumber,
-		},
+		recordID,
 		value,
 	)
 
@@ -76,8 +71,7 @@ func (c *TxnLogChain) Insert(
 }
 
 func (c *TxnLogChain) Update(
-	pageInfo bufferpool.PageIdentity,
-	slotNumber uint16,
+	recordID RecordID,
 	beforeValue, afterValue []byte,
 ) *TxnLogChain {
 	if c.err != nil {
@@ -92,11 +86,7 @@ func (c *TxnLogChain) Update(
 	c.lastLocations[c.TransactionID], c.err = c.logger.AppendUpdate(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
-		RecordID{
-			FileID:  pageInfo.FileID,
-			PageID:  pageInfo.PageID,
-			SlotNum: slotNumber,
-		},
+		recordID,
 		beforeValue,
 		afterValue,
 	)
@@ -105,8 +95,7 @@ func (c *TxnLogChain) Update(
 }
 
 func (c *TxnLogChain) Delete(
-	pageInfo bufferpool.PageIdentity,
-	slotNumber uint16,
+	recordID RecordID,
 ) *TxnLogChain {
 	if c.err != nil {
 		return c
@@ -120,11 +109,7 @@ func (c *TxnLogChain) Delete(
 	c.lastLocations[c.TransactionID], c.err = c.logger.AppendDelete(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
-		RecordID{
-			FileID:  pageInfo.FileID,
-			PageID:  pageInfo.PageID,
-			SlotNum: slotNumber,
-		},
+		recordID,
 	)
 
 	return c

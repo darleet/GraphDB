@@ -2,6 +2,7 @@ package recovery
 
 import (
 	"encoding"
+	"fmt"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
@@ -56,6 +57,7 @@ func (p *LogRecordLocationInfo) isNil() bool {
 
 type LogRecord interface {
 	LSN() LSN
+	String() string
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }
@@ -78,6 +80,7 @@ var (
 	_ LogRecord           = &CheckpointBeginLogRecord{}
 	_ LogRecord           = &CheckpointEndLogRecord{}
 	_ LogRecord           = &CompensationLogRecord{}
+	_ LogRecord           = &TxnEndLogRecord{}
 )
 
 type BeginLogRecord struct {
@@ -96,6 +99,10 @@ func (l *BeginLogRecord) LSN() LSN {
 	return l.lsn
 }
 
+func (l *BeginLogRecord) String() string {
+	return fmt.Sprintf("BEGIN lsn:%d txn:%d", l.lsn, l.txnID)
+}
+
 type UpdateLogRecord struct {
 	lsn               LSN
 	txnID             txns.TxnID
@@ -107,6 +114,18 @@ type UpdateLogRecord struct {
 
 func (r *UpdateLogRecord) LSN() LSN {
 	return r.lsn
+}
+
+func (r *UpdateLogRecord) String() string {
+	return fmt.Sprintf(
+		"UPDATE lsn:%d txn:%d parent:%+v modified:%+v before:%+v after:%+v",
+		r.lsn,
+		r.txnID,
+		r.parentLogLocation,
+		r.modifiedRecordID,
+		r.beforeValue,
+		r.afterValue,
+	)
 }
 
 func (r *UpdateLogRecord) Undo(
@@ -155,6 +174,17 @@ type InsertLogRecord struct {
 
 func (r *InsertLogRecord) LSN() LSN {
 	return r.lsn
+}
+
+func (r *InsertLogRecord) String() string {
+	return fmt.Sprintf(
+		"INSERT lsn:%d txn:%d parent:%+v modified:%+v value:%+v",
+		r.lsn,
+		r.txnID,
+		r.parentLogLocation,
+		r.modifiedRecordID,
+		r.value,
+	)
 }
 
 func NewInsertLogRecord(
@@ -214,6 +244,16 @@ func (r *DeleteLogRecord) LSN() LSN {
 	return r.lsn
 }
 
+func (r *DeleteLogRecord) String() string {
+	return fmt.Sprintf(
+		"DELETE lsn:%d txn:%d parent:%+v modified:%+v",
+		r.lsn,
+		r.txnID,
+		r.parentLogLocation,
+		r.modifiedRecordID,
+	)
+}
+
 func (r *DeleteLogRecord) Undo(
 	lsn LSN,
 	parentLogLocation LogRecordLocationInfo,
@@ -252,6 +292,15 @@ func NewCommitLogRecord(
 	}
 }
 
+func (r *CommitLogRecord) String() string {
+	return fmt.Sprintf(
+		"COMMIT lsn:%d txn:%d parent:%+v",
+		r.lsn,
+		r.txnID,
+		r.parentLogLocation,
+	)
+}
+
 type AbortLogRecord struct {
 	lsn               LSN
 	txnID             txns.TxnID
@@ -260,6 +309,15 @@ type AbortLogRecord struct {
 
 func (r *AbortLogRecord) LSN() LSN {
 	return r.lsn
+}
+
+func (r *AbortLogRecord) String() string {
+	return fmt.Sprintf(
+		"ABORT lsn:%d txn:%d parent:%+v",
+		r.lsn,
+		r.txnID,
+		r.parentLogLocation,
+	)
 }
 
 func NewAbortLogRecord(lsn LSN, txnID txns.TxnID,
@@ -291,6 +349,15 @@ func NewTxnEndLogRecord(lsn LSN, txnID txns.TxnID,
 	}
 }
 
+func (r *TxnEndLogRecord) String() string {
+	return fmt.Sprintf(
+		"TXN_END lsn:%d txn:%d parent:%+v",
+		r.lsn,
+		r.txnID,
+		r.parentLogLocation,
+	)
+}
+
 type CLRtype byte
 
 const (
@@ -312,6 +379,20 @@ type CompensationLogRecord struct {
 
 func (r *CompensationLogRecord) LSN() LSN {
 	return r.lsn
+}
+
+func (r *CompensationLogRecord) String() string {
+	return fmt.Sprintf(
+		"CLR lsn:%d txn:%d parent:%+v next_undo:%+v type:%+v modified:%+v before:%+v after:%+v",
+		r.lsn,
+		r.txnID,
+		r.parentLogLocation,
+		r.nextUndoLSN,
+		r.clrType,
+		r.modifiedRecordID,
+		r.beforeValue,
+		r.afterValue,
+	)
 }
 
 func NewCompensationLogRecord(
@@ -352,6 +433,10 @@ func (l *CheckpointBeginLogRecord) LSN() LSN {
 	return l.lsn
 }
 
+func (l *CheckpointBeginLogRecord) String() string {
+	return fmt.Sprintf("CHECKPOINT_BEGIN lsn:%d", l.lsn)
+}
+
 type CheckpointEndLogRecord struct {
 	lsn                LSN
 	activeTransactions []txns.TxnID
@@ -372,4 +457,9 @@ func NewCheckpointEnd(
 
 func (l *CheckpointEndLogRecord) LSN() LSN {
 	return l.lsn
+}
+
+func (l *CheckpointEndLogRecord) String() string {
+	return fmt.Sprintf("CHECKPOINT_END lsn:%d active_txns:%v dirty_pages:%v",
+		l.lsn, l.activeTransactions, l.dirtyPageTable)
 }

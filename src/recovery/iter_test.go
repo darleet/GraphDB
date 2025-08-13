@@ -53,41 +53,45 @@ func generateSequence(
 
 			//nolint:gosec
 			chain.Insert(
-				dataPageId,
-				uint16(i),
+				RecordID{
+					FileID:  dataPageId.FileID,
+					PageID:  dataPageId.PageID,
+					SlotNum: uint16(i),
+				},
 				utils.Uint32ToBytes(uint32(i)),
-			).
-				Loc()
+			)
 		case 1:
 			res[i] = TypeUpdate
 
 			//nolint:gosec
 			chain.Update(
-				dataPageId,
-				uint16(i),
+				RecordID{
+					FileID:  dataPageId.FileID,
+					PageID:  dataPageId.PageID,
+					SlotNum: uint16(i),
+				},
 				utils.Uint32ToBytes(uint32(i)),
 				utils.Uint32ToBytes(uint32(i+1)),
-			).
-				Loc()
+			)
 		case 2:
 			res[i] = TypeDelete
 
 			//nolint:gosec
 			chain.Delete(
-				dataPageId,
-				uint16(i),
-			).
-				Loc()
+				RecordID{
+					FileID:  dataPageId.FileID,
+					PageID:  dataPageId.PageID,
+					SlotNum: uint16(i),
+				},
+			)
 		}
 	}
 
 	if rand.Int()%2 == 0 {
 		chain.Abort()
-
 		res[len(res)-1] = TypeAbort
 	} else {
 		chain.Commit()
-
 		res[len(res)-1] = TypeCommit
 	}
 
