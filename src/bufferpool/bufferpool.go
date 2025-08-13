@@ -44,13 +44,6 @@ type DiskManager[T Page] interface {
 	WritePage(page T, pageIdent common.PageIdentity) error
 }
 
-type frame[T Page] struct {
-	Page      T
-	Idx       uint64
-	PinCount  int
-	PageIdent common.PageIdentity
-}
-
 type BufferPool[T Page] interface {
 	Unpin(common.PageIdentity) error
 	GetPage(common.PageIdentity) (T, error)
@@ -59,19 +52,20 @@ type BufferPool[T Page] interface {
 }
 
 type frameInfo struct {
-	frameID uint64
-	isDirty bool
+	frameID  uint64
+	pinCount uint64
+	isDirty  bool
 }
 
-type Manager[T Page] struct {
-	poolSize    uint64
-	pageToFrame map[common.PageIdentity]uint64
-	frames      []frame[T]
-	emptyFrames []uint64
+type Manager struct {
+	poolSize        uint64
+	pageToFrameInfo map[common.PageIdentity]frameInfo
+	frames          []page.SlottedPage
+	emptyFrames     []uint64
 
 	replacer Replacer
 
-	diskManager    DiskManager[T]
+	diskManager    DiskManager[*page.SlottedPage]
 	DirtyPageTable map[common.PageIdentity]common.LSN
 
 	fastPath sync.Mutex
@@ -79,80 +73,52 @@ type Manager[T Page] struct {
 }
 
 var (
-	_ BufferPool[Page] = &Manager[Page]{}
+	_ BufferPool[Page] = &Manager{}
 )
 
-func New[T Page](
-	poolSize uint64,
-	replacer Replacer,
-	diskManager DiskManager[T],
-) (*Manager[T], error) {
-	assert.Assert(poolSize > 0, "pool size must be greater than zero")
-
-	emptyFrames := make([]uint64, poolSize)
-	for i := range poolSize {
-		emptyFrames[i] = uint64(i)
-	}
-
-	frames := make([]frame[T], poolSize)
-
-	return &Manager[T]{
-		poolSize:       poolSize,
-		pageToFrame:    make(map[common.PageIdentity]uint64),
-		frames:         frames,
-		emptyFrames:    emptyFrames,
-		replacer:       replacer,
-		diskManager:    diskManager,
-		DirtyPageTable: make(map[common.PageIdentity]common.LSN),
-	}, nil
-}
-
-func (m *Manager[T]) Unpin(pIdent common.PageIdentity) error {
+func (m *Manager) Unpin(pIdent common.PageIdentity) error {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
-	frameID, ok := m.pageToFrame[pIdent]
+	frameInfo, ok := m.pageToFrameInfo[pIdent]
 	if !ok {
 		return ErrNoSuchPage
 	}
 
-	m.unpinFrame(frameID)
+	assert.Assert(frameInfo.pinCount > 0, "invalid pin count")
+
+	frameInfo.pinCount--
+	m.pageToFrameInfo[pIdent] = frameInfo
+	if frameInfo.pinCount == 0 {
+		m.replacer.Unpin(frameInfo.frameID)
+	}
 
 	return nil
 }
 
-func (m *Manager[T]) unpinFrame(frameID uint64) {
-	frame := &m.frames[frameID]
-
-	assert.Assert(frame.PinCount > 0, "invalid pin count")
-
-	frame.PinCount--
-	if frame.PinCount == 0 {
-		m.replacer.Unpin(frameID)
-	}
-}
-
-func (m *Manager[T]) pin(pIdent common.PageIdentity) {
-	frameID, ok := m.pageToFrame[pIdent]
+func (m *Manager) pin(pIdent common.PageIdentity) {
+	// WARN: m has to locked!
+	frameInfo, ok := m.pageToFrameInfo[pIdent]
 
 	assert.Assert(ok, "no frame for page: %v", pIdent)
 
-	m.frames[frameID].PinCount++
-	m.replacer.Pin(frameID)
+	frameInfo.pinCount++
+	m.pageToFrameInfo[pIdent] = frameInfo
+	m.replacer.Pin(frameInfo.frameID)
 }
 
-func (m *Manager[T]) GetPageNoCreate(pageID common.PageIdentity) (T, error) {
+func (m *Manager) GetPageNoCreate(pageID common.PageIdentity) (*page.SlottedPage, error) {
 	panic("NOT IMPLEMENTED")
 }
 
-func (m *Manager[T]) GetPage(pIdent common.PageIdentity) (T, error) {
+func (m *Manager) GetPage(pIdent common.PageIdentity) (*page.SlottedPage, error) {
 	m.fastPath.Lock()
 
-	if frameID, ok := m.pageToFrame[pIdent]; ok {
+	if frameInfo, ok := m.pageToFrameInfo[pIdent]; ok {
 		m.pin(pIdent)
 		m.fastPath.Unlock()
 
-		return m.frames[frameID].Page, nil
+		return &m.frames[frameInfo.frameID], nil
 	}
 
 	m.fastPath.Unlock()
@@ -161,11 +127,11 @@ func (m *Manager[T]) GetPage(pIdent common.PageIdentity) (T, error) {
 	defer m.slowPath.Unlock()
 
 	m.fastPath.Lock()
-	if frameID, ok := m.pageToFrame[pIdent]; ok {
+	if frameInfo, ok := m.pageToFrameInfo[pIdent]; ok {
 		m.pin(pIdent)
 		m.fastPath.Unlock()
 
-		return m.frames[frameID].Page, nil
+		return &m.frames[frameInfo.frameID], nil
 	}
 	m.fastPath.Unlock()
 
@@ -176,8 +142,7 @@ func (m *Manager[T]) GetPage(pIdent common.PageIdentity) (T, error) {
 			PageID: pIdent.PageID,
 		})
 		if err != nil {
-			var zero T
-			return zero, err
+			return nil, err
 		}
 
 		m.frames[frameID] = frame[T]{
@@ -188,7 +153,7 @@ func (m *Manager[T]) GetPage(pIdent common.PageIdentity) (T, error) {
 				PageID: pIdent.PageID,
 			},
 		}
-		m.pageToFrame[pIdent] = frameID
+		m.pageToFrameInfo[pIdent] = frameID
 
 		return page, nil
 	}
@@ -213,7 +178,7 @@ func (m *Manager[T]) GetPage(pIdent common.PageIdentity) (T, error) {
 		delete(m.DirtyPageTable, pIdent)
 	}
 
-	delete(m.pageToFrame, victimFrame.PageIdent)
+	delete(m.pageToFrameInfo, victimFrame.PageIdent)
 
 	page, err := m.diskManager.ReadPage(common.PageIdentity{
 		FileID: pIdent.FileID,
@@ -233,14 +198,14 @@ func (m *Manager[T]) GetPage(pIdent common.PageIdentity) (T, error) {
 		},
 	}
 
-	m.pageToFrame[pIdent] = victimFrameID
+	m.pageToFrameInfo[pIdent] = victimFrameID
 
 	m.pin(pIdent)
 
 	return page, nil
 }
 
-func (m *Manager[T]) reserveFrame() uint64 {
+func (m *Manager) reserveFrame() uint64 {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
@@ -256,11 +221,11 @@ func (m *Manager[T]) reserveFrame() uint64 {
 	return noFrame
 }
 
-func (m *Manager[T]) FlushPage(pIdent common.PageIdentity) error {
+func (m *Manager) FlushPage(pIdent common.PageIdentity) error {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
-	frameID, ok := m.pageToFrame[pIdent]
+	frameID, ok := m.pageToFrameInfo[pIdent]
 	if !ok {
 		return fmt.Errorf("no frame for such page: %v", pIdent)
 	}
@@ -282,7 +247,7 @@ func (m *Manager[T]) FlushPage(pIdent common.PageIdentity) error {
 	return nil
 }
 
-func (m *Manager[T]) FlushAllPages() error {
+func (m *Manager) FlushAllPages() error {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 

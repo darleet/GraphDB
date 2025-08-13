@@ -29,7 +29,6 @@ const (
 	TypeUnknown
 )
 
-
 // MarshalBinary for BeginLogRecord.
 func (b *BeginLogRecord) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
