@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
@@ -29,39 +29,6 @@ const (
 	TypeUnknown
 )
 
-func (l *LogRecordLocationInfo) MarshalBinary() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	if err := binary.Write(buf, binary.BigEndian, l.Lsn); err != nil {
-		return nil, err
-	}
-
-	if err := binary.Write(buf, binary.BigEndian, l.Location.PageID); err != nil {
-		return nil, err
-	}
-
-	if err := binary.Write(buf, binary.BigEndian, l.Location.SlotNum); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-func (l *LogRecordLocationInfo) UnmarshalBinary(data []byte) error {
-	rd := bytes.NewReader(data)
-	if err := binary.Read(rd, binary.BigEndian, &l.Lsn); err != nil {
-		return err
-	}
-
-	if err := binary.Read(rd, binary.BigEndian, &l.Location.PageID); err != nil {
-		return err
-	}
-
-	if err := binary.Read(rd, binary.BigEndian, &l.Location.SlotNum); err != nil {
-		return err
-	}
-
-	return nil
-}
 
 // MarshalBinary for BeginLogRecord.
 func (b *BeginLogRecord) MarshalBinary() ([]byte, error) {
@@ -640,17 +607,17 @@ func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 	}
 
 	c.dirtyPageTable = make(
-		map[bufferpool.PageIdentity]LogRecordLocationInfo,
+		map[common.PageIdentity]common.LogRecordLocationInfo,
 		dirtyPagesLen,
 	)
 
 	for i := 0; i < int(dirtyPagesLen); i++ {
-		var pageID bufferpool.PageIdentity
+		var pageID common.PageIdentity
 		if err := binary.Read(reader, binary.BigEndian, &pageID); err != nil {
 			return err
 		}
 
-		var logInfo LogRecordLocationInfo
+		var logInfo common.LogRecordLocationInfo
 		if err := binary.Read(reader, binary.BigEndian, &logInfo); err != nil {
 			return err
 		}

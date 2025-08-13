@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
@@ -22,9 +23,9 @@ import (
 
 func TestValidRecovery(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	loggerStart := LogRecordLocationInfo{
+	loggerStart := common.LogRecordLocationInfo{
 		Lsn:      0,
-		Location: FileLocation{PageID: 0, SlotNum: 0},
+		Location: common.FileLocation{PageID: 0, SlotNum: 0},
 	}
 	logger := &TxnLogger{
 		pool:            pool,
@@ -41,7 +42,7 @@ func TestValidRecovery(t *testing.T) {
 		assert.NoError(t, pool.EnsureAllPagesUnpinned())
 	}()
 
-	dataPageID := bufferpool.PageIdentity{FileID: 42, PageID: 123}
+	dataPageID := common.PageIdentity{FileID: 42, PageID: 123}
 	slotNumOpt, err := insertValueNoLogs(t, pool, dataPageID, []byte("bef000"))
 	require.True(t, slotNumOpt.IsSome())
 	slotNum := slotNumOpt.Unwrap()
@@ -54,12 +55,12 @@ func TestValidRecovery(t *testing.T) {
 	chain := NewTxnLogChain(logger, TransactionID)
 	// Simulate a transaction: Begin -> Insert -> Update -> Commit -> TxnEnd
 	chain.Begin().
-		Insert(RecordID{
+		Insert(common.RecordID{
 			FileID:  dataPageID.FileID,
 			PageID:  dataPageID.PageID,
 			SlotNum: uint16(slotNum),
 		}, before).
-		Update(RecordID{
+		Update(common.RecordID{
 			FileID:  dataPageID.FileID,
 			PageID:  dataPageID.PageID,
 			SlotNum: uint16(slotNum),
@@ -78,12 +79,12 @@ func TestValidRecovery(t *testing.T) {
 		logfileID:       logger.logfileID,
 		lastLogLocation: logger.lastLogLocation,
 	}
-	checkpoint := FileLocation{PageID: 0, SlotNum: 0}
+	checkpoint := common.FileLocation{PageID: 0, SlotNum: 0}
 	logger2.Recover(checkpoint)
 
 	// Check that the page contains the "after" value
 	p, err := pool.GetPage(dataPageID)
-	defer func(pageID bufferpool.PageIdentity) { assert.NoError(t, pool.Unpin(pageID)) }(
+	defer func(pageID common.PageIdentity) { assert.NoError(t, pool.Unpin(pageID)) }(
 		dataPageID,
 	)
 
@@ -108,16 +109,16 @@ func TestValidRecovery(t *testing.T) {
 func TestFailedTxn(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 
-	logStart := LogRecordLocationInfo{
+	logStart := common.LogRecordLocationInfo{
 		Lsn:      0,
-		Location: FileLocation{PageID: 0, SlotNum: 0},
+		Location: common.FileLocation{PageID: 0, SlotNum: 0},
 	}
 	logger := &TxnLogger{
 		pool:            pool,
 		logfileID:       1,
 		lastLogLocation: logStart,
 	}
-	pageIdent := bufferpool.PageIdentity{FileID: 1, PageID: 42}
+	pageIdent := common.PageIdentity{FileID: 1, PageID: 42}
 
 	TransactionID := txns.TxnID(100)
 	before := []byte("before")
@@ -130,7 +131,7 @@ func TestFailedTxn(t *testing.T) {
 	// Simulate a transaction: **Begin -> Insert -> CRASH**
 	chain := NewTxnLogChain(logger, TransactionID).
 		Begin().
-		Insert(RecordID{
+		Insert(common.RecordID{
 			FileID:  pageIdent.FileID,
 			PageID:  pageIdent.PageID,
 			SlotNum: slotNum,
@@ -189,12 +190,12 @@ func TestFailedTxn(t *testing.T) {
 func insertValueNoLogs(
 	t *testing.T,
 	pool bufferpool.BufferPool[*page.SlottedPage],
-	pageId bufferpool.PageIdentity,
+	pageId common.PageIdentity,
 	data []byte,
 ) (optional.Optional[uint16], error) {
 	p, err := pool.GetPage(pageId)
 	require.NoError(t, err)
-	defer func(pgID bufferpool.PageIdentity) { require.NoError(t, pool.Unpin(pgID)) }(
+	defer func(pgID common.PageIdentity) { require.NoError(t, pool.Unpin(pgID)) }(
 		pageId,
 	)
 
@@ -214,7 +215,7 @@ func TestMassiveRecovery(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
-	logPageId := bufferpool.PageIdentity{
+	logPageId := common.PageIdentity{
 		FileID: 42,
 		PageID: 321,
 	}
@@ -224,9 +225,9 @@ func TestMassiveRecovery(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocationInfo{
 			Lsn: 0,
-			Location: FileLocation{
+			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
@@ -241,7 +242,7 @@ func TestMassiveRecovery(t *testing.T) {
 	NEW2 := []byte("1234")
 
 	DataFileID := uint64(0)
-	dataPageId := bufferpool.PageIdentity{
+	dataPageId := common.PageIdentity{
 		FileID: DataFileID,
 		PageID: 321,
 	}
@@ -250,7 +251,7 @@ func TestMassiveRecovery(t *testing.T) {
 	N := 2000
 	i := 0
 
-	index2pageID := map[int]FileLocation{}
+	index2pageID := map[int]common.FileLocation{}
 
 	for i < N {
 		succ := func() bool {
@@ -267,7 +268,7 @@ func TestMassiveRecovery(t *testing.T) {
 		}()
 
 		if succ {
-			index2pageID[i] = FileLocation{
+			index2pageID[i] = common.FileLocation{
 				PageID:  dataPageId.PageID,
 				SlotNum: slot.Unwrap(),
 			}
@@ -303,7 +304,7 @@ func TestMassiveRecovery(t *testing.T) {
 				recordLoc, ok := index2pageID[(i+j)%N]
 				require.True(t, ok, "%d", i+j)
 
-				pageID := bufferpool.PageIdentity{
+				pageID := common.PageIdentity{
 					FileID: DataFileID,
 					PageID: recordLoc.PageID,
 				}
@@ -311,12 +312,12 @@ func TestMassiveRecovery(t *testing.T) {
 				switch rand.Int() % 2 {
 				case 0:
 					chain.
-						Update(RecordID{
+						Update(common.RecordID{
 							FileID:  pageID.FileID,
 							PageID:  pageID.PageID,
 							SlotNum: recordLoc.SlotNum,
 						}, INIT, NEW).
-						Update(RecordID{
+						Update(common.RecordID{
 							FileID:  pageID.FileID,
 							PageID:  pageID.PageID,
 							SlotNum: recordLoc.SlotNum,
@@ -341,7 +342,7 @@ func TestMassiveRecovery(t *testing.T) {
 						}
 					}()
 				case 1:
-					chain.Delete(RecordID{
+					chain.Delete(common.RecordID{
 						FileID:  pageID.FileID,
 						PageID:  pageID.PageID,
 						SlotNum: recordLoc.SlotNum,
@@ -355,7 +356,7 @@ func TestMassiveRecovery(t *testing.T) {
 
 	wg.Wait()
 
-	logger.Recover(FileLocation{
+	logger.Recover(common.FileLocation{
 		PageID:  logPageId.PageID,
 		SlotNum: 0,
 	})
@@ -363,7 +364,7 @@ func TestMassiveRecovery(t *testing.T) {
 	for i := range N {
 		func() {
 			location := index2pageID[i]
-			dataPageId := bufferpool.PageIdentity{
+			dataPageId := common.PageIdentity{
 				FileID: DataFileID,
 				PageID: location.PageID,
 			}
@@ -434,7 +435,7 @@ func assertLogRecord(
 func assertLogRecordWithRetrieval(
 	t *testing.T,
 	pool bufferpool.BufferPool[*page.SlottedPage],
-	recordID RecordID,
+	recordID common.RecordID,
 	expectedRecordType LogRecordTypeTag,
 	expectedTransactionID txns.TxnID,
 ) {
@@ -463,7 +464,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
-	logPageId := bufferpool.PageIdentity{
+	logPageId := common.PageIdentity{
 		FileID: 42,
 		PageID: 321,
 	}
@@ -473,9 +474,9 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocationInfo{
 			Lsn: 0,
-			Location: FileLocation{
+			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
@@ -485,7 +486,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 		},
 	}
 
-	dataPageId := bufferpool.PageIdentity{
+	dataPageId := common.PageIdentity{
 		FileID: 0,
 		PageID: 0,
 	}
@@ -505,8 +506,8 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 
 			chain := NewTxnLogChain(logger, TransactionID)
 
-			insertLocs := []LogRecordLocationInfo{}
-			updateLocs := []LogRecordLocationInfo{}
+			insertLocs := []common.LogRecordLocationInfo{}
+			updateLocs := []common.LogRecordLocationInfo{}
 			beginLoc := chain.Begin().Loc()
 
 			for j := range INNER {
@@ -516,7 +517,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 						insertLocs,
 						//nolint:gosec
 						chain.Insert(
-							RecordID{
+							common.RecordID{
 								FileID:  dataPageId.FileID,
 								PageID:  dataPageId.PageID,
 								SlotNum: uint16(j),
@@ -529,7 +530,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 						updateLocs,
 						//nolint:gosec
 						chain.Update(
-							RecordID{
+							common.RecordID{
 								FileID:  dataPageId.FileID,
 								PageID:  dataPageId.PageID,
 								SlotNum: uint16(j),
@@ -541,7 +542,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				}
 			}
 
-			finishLoc := NewNilLogRecordLocation()
+			finishLoc := common.NewNilLogRecordLocation()
 			isCommit := rand.Int()%2 != 0
 
 			if isCommit {
@@ -559,7 +560,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 			assertLogRecordWithRetrieval(
 				t,
 				logger.pool,
-				RecordID{
+				common.RecordID{
 					FileID:  logger.logfileID,
 					PageID:  beginLoc.Location.PageID,
 					SlotNum: beginLoc.Location.SlotNum,
@@ -572,7 +573,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				assertLogRecordWithRetrieval(
 					t,
 					logger.pool,
-					RecordID{
+					common.RecordID{
 						FileID:  logger.logfileID,
 						PageID:  finishLoc.Location.PageID,
 						SlotNum: finishLoc.Location.SlotNum,
@@ -583,7 +584,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 			} else {
 				assertLogRecordWithRetrieval(t,
 					logger.pool,
-					RecordID{
+					common.RecordID{
 						FileID:  logger.logfileID,
 						PageID:  finishLoc.Location.PageID,
 						SlotNum: finishLoc.Location.SlotNum,
@@ -597,7 +598,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				assertLogRecordWithRetrieval(
 					t,
 					logger.pool,
-					RecordID{
+					common.RecordID{
 						FileID:  logger.logfileID,
 						PageID:  insert.Location.PageID,
 						SlotNum: insert.Location.SlotNum,
@@ -611,7 +612,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 				assertLogRecordWithRetrieval(
 					t,
 					logger.pool,
-					RecordID{
+					common.RecordID{
 						FileID:  logger.logfileID,
 						PageID:  update.Location.PageID,
 						SlotNum: update.Location.SlotNum,
@@ -668,11 +669,11 @@ func mapBatch[K comparable, V any](
 
 func TestLoggerRollback(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	logPageId := bufferpool.PageIdentity{
+	logPageId := common.PageIdentity{
 		FileID: 42,
 		PageID: 321,
 	}
-	logStartLocation := FileLocation{
+	logStartLocation := common.FileLocation{
 		PageID:  logPageId.PageID,
 		SlotNum: 0,
 	}
@@ -682,7 +683,7 @@ func TestLoggerRollback(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocationInfo{
 			Lsn:      0,
 			Location: logStartLocation,
 		},
@@ -710,7 +711,7 @@ func TestLoggerRollback(t *testing.T) {
 	recordValues := fillPages(t, logger, math.MaxUint64, 20000, files, 1024)
 	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
-	updatedValues := make(map[RecordID]uint32, len(recordValues))
+	updatedValues := make(map[common.RecordID]uint32, len(recordValues))
 	maps.Copy(updatedValues, recordValues)
 
 	locker := txns.NewLocker()
@@ -719,7 +720,7 @@ func TestLoggerRollback(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for batch := range mapBatch(recordValues, 300) {
 		wg.Add(1)
-		go func(batch []KVPair[RecordID, uint32]) {
+		go func(batch []KVPair[common.RecordID, uint32]) {
 			defer func() {
 				r := recover()
 				if r != nil {
@@ -840,7 +841,7 @@ func TestLoggerRollback(t *testing.T) {
 
 	for k, v := range recordValues {
 		func() {
-			pageID := bufferpool.PageIdentity{
+			pageID := common.PageIdentity{
 				FileID: k.FileID,
 				PageID: k.PageID,
 			}
@@ -867,7 +868,7 @@ func TestLoggerRollback(t *testing.T) {
 //   - limit: Upper bound for generated random values (exclusive)
 //
 // Returns:
-//   - map[RecordID]uint32: Mapping of inserted record locations to their values
+//   - map[common.RecordID]uint32: Mapping of inserted record locations to their values
 //
 // The function ensures each insert operation is successful by retrying on full
 // pages. All operations are performed within a single transaction that is
@@ -879,14 +880,14 @@ func fillPages(
 	length int,
 	fileIDs []uint64,
 	limit uint32,
-) map[RecordID]uint32 {
-	res := make(map[RecordID]uint32, length)
+) map[common.RecordID]uint32 {
+	res := make(map[common.RecordID]uint32, length)
 
 	chain := NewTxnLogChain(logger, txnID)
 	chain.Begin()
 	for range length {
 		for {
-			pageID := bufferpool.PageIdentity{
+			pageID := common.PageIdentity{
 				FileID: fileIDs[rand.Int()%len(fileIDs)],
 				PageID: rand.Uint64() % 1024,
 			}
@@ -907,7 +908,7 @@ func fillPages(
 				}
 				slot := slotOpt.Unwrap()
 				chain.Insert(
-					RecordID{
+					common.RecordID{
 						FileID:  pageID.FileID,
 						PageID:  pageID.PageID,
 						SlotNum: slot,
@@ -916,7 +917,7 @@ func fillPages(
 				)
 				p.InsertCommit(slot)
 
-				res[RecordID{
+				res[common.RecordID{
 					FileID:  pageID.FileID,
 					PageID:  pageID.PageID,
 					SlotNum: slot,

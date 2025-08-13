@@ -2,6 +2,8 @@ package bufferpool
 
 import (
 	"github.com/stretchr/testify/mock"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 )
 
 type SlottedPage_mock struct {
@@ -32,7 +34,7 @@ type MockDiskManager struct {
 }
 
 func (m *MockDiskManager) ReadPage(
-	pageIdent PageIdentity,
+	pageIdent common.PageIdentity,
 ) (*SlottedPage_mock, error) {
 	args := m.Called(pageIdent)
 	return args.Get(0).(*SlottedPage_mock), args.Error(1)
@@ -40,7 +42,7 @@ func (m *MockDiskManager) ReadPage(
 
 func (m *MockDiskManager) WritePage(
 	page *SlottedPage_mock,
-	pageIdent PageIdentity,
+	pageIdent common.PageIdentity,
 ) error {
 	args := m.Called(page, pageIdent)
 	return args.Error(0)

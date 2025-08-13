@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
@@ -46,9 +47,9 @@ func TestBankTransactions(t *testing.T) {
 	logger := &TxnLogger{
 		pool:      pool,
 		logfileID: generatedFileIDs[0],
-		lastLogLocation: LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocationInfo{
 			Lsn:      0,
-			Location: FileLocation{PageID: 0, SlotNum: 0},
+			Location: common.FileLocation{PageID: 0, SlotNum: 0},
 		},
 	}
 	files := generatedFileIDs[1:]
@@ -82,7 +83,7 @@ func TestBankTransactions(t *testing.T) {
 		assert.NoError(t, pool.Unpin(id.PageIdentity()))
 	}
 
-	IDs := []RecordID{}
+	IDs := []common.RecordID{}
 	for i := range recordValues {
 		IDs = append(IDs, i)
 	}

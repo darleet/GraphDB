@@ -1,6 +1,9 @@
 package recovery
 
-import "github.com/Blackdeer1524/GraphDB/src/txns"
+import (
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
+	"github.com/Blackdeer1524/GraphDB/src/txns"
+)
 
 type txnStatus byte
 
@@ -11,12 +14,12 @@ const (
 
 type ATTEntry struct {
 	status          txnStatus
-	logLocationInfo LogRecordLocationInfo
+	logLocationInfo common.LogRecordLocationInfo
 }
 
 func NewATTEntry(
 	status txnStatus,
-	location LogRecordLocationInfo,
+	location common.LogRecordLocationInfo,
 ) ATTEntry {
 	return ATTEntry{
 		status:          status,
@@ -57,7 +60,7 @@ func (att *ActiveTransactionsTable) Insert(
 		prevEntry.status = entry.status
 	}
 
-	if !entry.logLocationInfo.isNil() {
+	if !entry.logLocationInfo.IsNil() {
 		prevEntry.logLocationInfo = entry.logLocationInfo
 	}
 

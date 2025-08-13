@@ -1,7 +1,7 @@
 package txns
 
 import (
-	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 )
@@ -12,14 +12,14 @@ type FileID uint64
 type Locker struct {
 	catalogLockManager *Manager[GranularLockMode, struct{}]
 	fileLockManager    *Manager[GranularLockMode, FileID] // for indexes and tables
-	pageLockManager    *Manager[PageLockMode, bufferpool.PageIdentity]
+	pageLockManager    *Manager[PageLockMode, common.PageIdentity]
 }
 
 func NewLocker() *Locker {
 	return &Locker{
 		catalogLockManager: NewManager[GranularLockMode, struct{}](),
 		fileLockManager:    NewManager[GranularLockMode, FileID](),
-		pageLockManager:    NewManager[PageLockMode, bufferpool.PageIdentity](),
+		pageLockManager:    NewManager[PageLockMode, common.PageIdentity](),
 	}
 }
 
@@ -47,12 +47,12 @@ func newFileLockToken(txnID TxnID, fileID FileID) *fileLockToken {
 
 type pageLockToken struct {
 	txnID  TxnID
-	pageID bufferpool.PageIdentity
+	pageID common.PageIdentity
 }
 
 func newPageLockToken(
 	txnID TxnID,
-	pageID bufferpool.PageIdentity,
+	pageID common.PageIdentity,
 ) *pageLockToken {
 	return &pageLockToken{
 		pageID: pageID,
@@ -112,12 +112,12 @@ func (l *Locker) LockPage(
 	pageID PageID,
 	lockMode PageLockMode,
 ) optional.Optional[utils.Pair[<-chan struct{}, *pageLockToken]] {
-	pageIdent := bufferpool.PageIdentity{
+	pageIdent := common.PageIdentity{
 		FileID: uint64(t.fileID),
 		PageID: uint64(pageID),
 	}
 
-	lockRequest := TxnLockRequest[PageLockMode, bufferpool.PageIdentity]{
+	lockRequest := TxnLockRequest[PageLockMode, common.PageIdentity]{
 		txnID:    t.txnID,
 		objectId: pageIdent,
 		lockMode: lockMode,
@@ -179,7 +179,7 @@ func (l *Locker) UpgradePageLock(
 	t *pageLockToken,
 	lockMode PageLockMode,
 ) optional.Optional[<-chan struct{}] {
-	lockRequest := TxnLockRequest[PageLockMode, bufferpool.PageIdentity]{
+	lockRequest := TxnLockRequest[PageLockMode, common.PageIdentity]{
 		txnID:    t.txnID,
 		objectId: t.pageID,
 		lockMode: lockMode,

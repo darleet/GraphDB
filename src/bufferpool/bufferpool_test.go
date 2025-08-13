@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 )
 
 func TestGetPage_Cached(t *testing.T) {
@@ -24,16 +26,16 @@ func TestGetPage_Cached(t *testing.T) {
 	manager.frames[frameID] = frame[*SlottedPage_mock]{
 		Page:     p,
 		PinCount: 0,
-		PageIdent: PageIdentity{
+		PageIdent: common.PageIdentity{
 			FileID: fileID,
 			PageID: pageID,
 		},
 	}
-	manager.pageToFrame[PageIdentity{FileID: fileID, PageID: pageID}] = frameID
+	manager.pageToFrame[common.PageIdentity{FileID: fileID, PageID: pageID}] = frameID
 
 	mockReplacer.On("Pin", frameID).Return()
 
-	pIdent := PageIdentity{FileID: fileID, PageID: pageID}
+	pIdent := common.PageIdentity{FileID: fileID, PageID: pageID}
 
 	result, err := manager.GetPage(pIdent)
 
@@ -55,7 +57,7 @@ func TestGetPage_LoadFromDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	fileID, pageID := uint64(1), uint64(0)
-	pageIdent := PageIdentity{
+	pageIdent := common.PageIdentity{
 		FileID: fileID,
 		PageID: pageID,
 	}
@@ -90,7 +92,7 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 	existingPage := NewSlottedPage_mock()
 	existingPage.SetData([]byte("existing data"))
 
-	existingPageData := PageIdentity{
+	existingPageData := common.PageIdentity{
 		FileID: existingFileID,
 		PageID: existingPageID,
 	}
@@ -109,7 +111,7 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 	newPage := NewSlottedPage_mock()
 	newPage.SetData([]byte("new data"))
 
-	pIdent := PageIdentity{FileID: newFileID, PageID: newPageID}
+	pIdent := common.PageIdentity{FileID: newFileID, PageID: newPageID}
 	mockDisk.On("ReadPage", pIdent).Return(newPage, nil)
 	mockReplacer.On("Pin", uint64(1)).Return()
 
@@ -124,7 +126,7 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 	assert.Equal(
 		t,
 		uint64(0),
-		manager.pageToFrame[PageIdentity{FileID: existingFileID, PageID: existingPageID}],
+		manager.pageToFrame[common.PageIdentity{FileID: existingFileID, PageID: existingPageID}],
 	)
 
 	mockDisk.AssertExpectations(t)
@@ -143,7 +145,7 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 	existingPage.SetData([]byte("old data"))
 	existingPage.SetDirtiness(true)
 
-	existingPageIdent := PageIdentity{
+	existingPageIdent := common.PageIdentity{
 		FileID: existingFileID,
 		PageID: existingPageID,
 	}
@@ -154,7 +156,7 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 		PinCount:  0,
 		PageIdent: existingPageIdent,
 	}
-	manager.pageToFrame[PageIdentity{FileID: existingFileID, PageID: existingPageID}] = frameID
+	manager.pageToFrame[common.PageIdentity{FileID: existingFileID, PageID: existingPageID}] = frameID
 	manager.emptyFrames = nil
 
 	newPage := NewSlottedPage_mock()
@@ -166,7 +168,7 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 	mockDisk.On("WritePage", existingPage, existingPageIdent).Return(nil)
 
 	newFileID, newPageID := uint64(2), uint64(1)
-	pIdent := PageIdentity{FileID: newFileID, PageID: newPageID}
+	pIdent := common.PageIdentity{FileID: newFileID, PageID: newPageID}
 	mockDisk.On("ReadPage", pIdent).Return(newPage, nil)
 
 	result, err := manager.GetPage(pIdent)
@@ -174,7 +176,10 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, newPage, result)
 
-	oldIdent := PageIdentity{FileID: existingFileID, PageID: existingPageID}
+	oldIdent := common.PageIdentity{
+		FileID: existingFileID,
+		PageID: existingPageID,
+	}
 	_, exists := manager.pageToFrame[oldIdent]
 	assert.False(t, exists, "Старая страница не удалена из pageToFrame")
 

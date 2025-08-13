@@ -3,7 +3,7 @@ package recovery
 import (
 	"fmt"
 
-	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
@@ -11,7 +11,7 @@ type TxnLogChain struct {
 	logger        *TxnLogger
 	TransactionID txns.TxnID
 
-	lastLocations map[txns.TxnID]LogRecordLocationInfo
+	lastLocations map[txns.TxnID]common.LogRecordLocationInfo
 	err           error
 }
 
@@ -20,7 +20,7 @@ func NewTxnLogChain(logger *TxnLogger, TransactionID txns.TxnID) *TxnLogChain {
 		logger:        logger,
 		TransactionID: TransactionID,
 
-		lastLocations: map[txns.TxnID]LogRecordLocationInfo{},
+		lastLocations: map[txns.TxnID]common.LogRecordLocationInfo{},
 	}
 }
 
@@ -48,7 +48,7 @@ func (c *TxnLogChain) Begin() *TxnLogChain {
 }
 
 func (c *TxnLogChain) Insert(
-	recordID RecordID,
+	recordID common.RecordID,
 	value []byte,
 ) *TxnLogChain {
 	if c.err != nil {
@@ -71,7 +71,7 @@ func (c *TxnLogChain) Insert(
 }
 
 func (c *TxnLogChain) Update(
-	recordID RecordID,
+	recordID common.RecordID,
 	beforeValue, afterValue []byte,
 ) *TxnLogChain {
 	if c.err != nil {
@@ -95,7 +95,7 @@ func (c *TxnLogChain) Update(
 }
 
 func (c *TxnLogChain) Delete(
-	recordID RecordID,
+	recordID common.RecordID,
 ) *TxnLogChain {
 	if c.err != nil {
 		return c
@@ -181,7 +181,7 @@ func (c *TxnLogChain) CheckpointBegin() *TxnLogChain {
 
 func (c *TxnLogChain) CheckpointEnd(
 	ATT []txns.TxnID,
-	DPT map[bufferpool.PageIdentity]LogRecordLocationInfo,
+	DPT map[common.PageIdentity]common.LogRecordLocationInfo,
 ) *TxnLogChain {
 	if c.err != nil {
 		return c
@@ -192,7 +192,7 @@ func (c *TxnLogChain) CheckpointEnd(
 	return c
 }
 
-func (c *TxnLogChain) Loc() LogRecordLocationInfo {
+func (c *TxnLogChain) Loc() common.LogRecordLocationInfo {
 	return c.lastLocations[c.TransactionID]
 }
 
