@@ -76,9 +76,9 @@ func TestChainSanity(t *testing.T) {
 	}
 
 	chain.Begin().
-		Insert(insertPageID, insertSlotNumber, insert).
-		Update(updatePageID, updateSlotNumber, updateFrom, updateTo).
-		Delete(deletePageID, deleteSlotNumber).
+		Insert(RecordID{FileID: insertPageID.FileID, PageID: insertPageID.PageID, SlotNum: insertSlotNumber}, insert).
+		Update(RecordID{FileID: updatePageID.FileID, PageID: updatePageID.PageID, SlotNum: updateSlotNumber}, updateFrom, updateTo).
+		Delete(RecordID{FileID: deletePageID.FileID, PageID: deletePageID.PageID, SlotNum: deleteSlotNumber}).
 		Abort().
 		Commit().
 		CheckpointBegin().
@@ -272,13 +272,13 @@ func TestChain(t *testing.T) {
 
 	// interleaving
 	chain.Begin().
-		Insert(dataPageId, 0, []byte("first")).
+		Insert(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 0}, []byte("first")).
 		SwitchTransactionID(TransactionID_2).
 		Begin().
-		Insert(dataPageId, 1, []byte("second")).
-		Update(dataPageId, 1, []byte("second"), []byte("sec0nd")).
+		Insert(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 1}, []byte("second")).
+		Update(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 1}, []byte("second"), []byte("sec0nd")).
 		SwitchTransactionID(TransactionID_1).
-		Update(dataPageId, 0, []byte("first"), []byte("updat"))
+		Update(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 0}, []byte("first"), []byte("updat"))
 
 	require.NoError(t, chain.Err())
 	require.NoError(t, pool.EnsureAllPagesUnpinned())

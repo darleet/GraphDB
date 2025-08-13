@@ -38,9 +38,9 @@ type fileLockToken struct {
 	fileID FileID
 }
 
-func newTableLockToken(txnID TxnID, tableID FileID) *fileLockToken {
+func newFileLockToken(txnID TxnID, fileID FileID) *fileLockToken {
 	return &fileLockToken{
-		fileID: tableID,
+		fileID: fileID,
 		txnID:  txnID,
 	}
 }
@@ -83,21 +83,21 @@ func (l *Locker) LockCatalog(
 	)
 }
 
-func (l *Locker) LockTable(
+func (l *Locker) LockFile(
 	t *catalogLockToken,
-	tableID FileID,
+	fileID FileID,
 	lockMode GranularLockMode,
 ) optional.Optional[utils.Pair[<-chan struct{}, *fileLockToken]] {
 	n := l.fileLockManager.Lock(TxnLockRequest[GranularLockMode, FileID]{
 		txnID:    t.txnID,
-		objectId: tableID,
+		objectId: fileID,
 		lockMode: lockMode,
 	})
 	if n == nil {
 		return optional.None[utils.Pair[<-chan struct{}, *fileLockToken]]()
 	}
 
-	tt := newTableLockToken(t.txnID, tableID)
+	tt := newFileLockToken(t.txnID, fileID)
 
 	return optional.Some(
 		utils.Pair[<-chan struct{}, *fileLockToken]{
