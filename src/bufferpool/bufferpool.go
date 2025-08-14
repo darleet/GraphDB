@@ -18,9 +18,6 @@ type Page interface {
 	GetData() []byte
 	SetData(d []byte)
 
-	SetDirtiness(val bool)
-	IsDirty() bool
-
 	// latch methods
 	Lock()
 	Unlock()
@@ -73,7 +70,7 @@ type Manager struct {
 }
 
 var (
-	_ BufferPool[Page] = &Manager{}
+	_ BufferPool[*page.SlottedPage] = &Manager{}
 )
 
 func (m *Manager) Unpin(pIdent common.PageIdentity) error {
@@ -107,11 +104,15 @@ func (m *Manager) pin(pIdent common.PageIdentity) {
 	m.replacer.Pin(frameInfo.frameID)
 }
 
-func (m *Manager) GetPageNoCreate(pageID common.PageIdentity) (*page.SlottedPage, error) {
+func (m *Manager) GetPageNoCreate(
+	pageID common.PageIdentity,
+) (*page.SlottedPage, error) {
 	panic("NOT IMPLEMENTED")
 }
 
-func (m *Manager) GetPage(pIdent common.PageIdentity) (*page.SlottedPage, error) {
+func (m *Manager) GetPage(
+	pIdent common.PageIdentity,
+) (*page.SlottedPage, error) {
 	m.fastPath.Lock()
 
 	if frameInfo, ok := m.pageToFrameInfo[pIdent]; ok {
