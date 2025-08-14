@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	assert "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 )
 
@@ -20,6 +21,10 @@ const (
 
 type SlottedPage struct {
 	data [PageSize]byte
+}
+
+func (p *SlottedPage) UnsafeInitLatch() {
+	p.getHeader().latch = sync.RWMutex{}
 }
 
 type slotPointer uint16
@@ -48,7 +53,7 @@ func (s slotPointer) RecordInfo() slotStatus {
 type header struct {
 	latch sync.RWMutex
 
-	dirty bool
+	pageLSN common.LSN
 
 	freeStart uint16
 	freeEnd   uint16
@@ -78,6 +83,16 @@ func NewSlottedPage() *SlottedPage {
 	head.freeStart = uint16(unsafe.Sizeof(header{}))
 	head.freeEnd = PageSize
 	return p
+}
+
+func (p *SlottedPage) PageLSN() common.LSN {
+	header := p.getHeader()
+	return header.pageLSN
+}
+
+func (p *SlottedPage) SetPageLSN(lsn common.LSN) {
+	header := p.getHeader()
+	header.pageLSN = lsn
 }
 
 func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
@@ -235,14 +250,6 @@ func (p *SlottedPage) RLock() {
 
 func (p *SlottedPage) RUnlock() {
 	p.getHeader().latch.RUnlock()
-}
-
-func (p *SlottedPage) SetDirtiness(val bool) {
-	p.getHeader().dirty = val
-}
-
-func (p *SlottedPage) IsDirty() bool {
-	return p.getHeader().dirty
 }
 
 func (p *SlottedPage) GetData() []byte {
