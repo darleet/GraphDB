@@ -43,7 +43,7 @@ func TestBankTransactions(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
-	generatedFileIDs := generateUniqueInts[uint64](t, 2, 0, 1024)
+	generatedFileIDs := generateUniqueInts[common.FileID](t, 2, 0, 1024)
 	logger := &TxnLogger{
 		pool:      pool,
 		logfileID: generatedFileIDs[0],
@@ -115,7 +115,7 @@ func TestBankTransactions(t *testing.T) {
 
 		tableLockOpt := locker.LockFile(
 			ctoken,
-			txns.FileID(me.FileID),
+			common.FileID(me.FileID),
 			txns.GRANULAR_LOCK_INTENTION_SHARED,
 		)
 		if tableLockOpt.IsNone() {
@@ -133,7 +133,7 @@ func TestBankTransactions(t *testing.T) {
 
 		myPageLockOpt := locker.LockPage(
 			ttoken,
-			txns.PageID(me.PageID),
+			common.PageID(me.PageID),
 			txns.PAGE_LOCK_SHARED,
 		)
 		if myPageLockOpt.IsNone() {
@@ -169,7 +169,7 @@ func TestBankTransactions(t *testing.T) {
 		// try to read the first guy's balance
 		firstPageLockOpt := locker.LockPage(
 			ttoken,
-			txns.PageID(first.PageID),
+			common.PageID(first.PageID),
 			txns.PAGE_LOCK_SHARED,
 		)
 		if firstPageLockOpt.IsNone() {

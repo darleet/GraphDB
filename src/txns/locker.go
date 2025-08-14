@@ -6,19 +6,16 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 )
 
-type PageID uint64
-type FileID uint64
-
 type Locker struct {
 	catalogLockManager *Manager[GranularLockMode, struct{}]
-	fileLockManager    *Manager[GranularLockMode, FileID] // for indexes and tables
+	fileLockManager    *Manager[GranularLockMode, common.FileID] // for indexes and tables
 	pageLockManager    *Manager[PageLockMode, common.PageIdentity]
 }
 
 func NewLocker() *Locker {
 	return &Locker{
 		catalogLockManager: NewManager[GranularLockMode, struct{}](),
-		fileLockManager:    NewManager[GranularLockMode, FileID](),
+		fileLockManager:    NewManager[GranularLockMode, common.FileID](),
 		pageLockManager:    NewManager[PageLockMode, common.PageIdentity](),
 	}
 }
@@ -35,10 +32,10 @@ func newCatalogLockToken(txnID TxnID) *catalogLockToken {
 
 type fileLockToken struct {
 	txnID  TxnID
-	fileID FileID
+	fileID common.FileID
 }
 
-func newFileLockToken(txnID TxnID, fileID FileID) *fileLockToken {
+func newFileLockToken(txnID TxnID, fileID common.FileID) *fileLockToken {
 	return &fileLockToken{
 		fileID: fileID,
 		txnID:  txnID,
@@ -85,10 +82,10 @@ func (l *Locker) LockCatalog(
 
 func (l *Locker) LockFile(
 	t *catalogLockToken,
-	fileID FileID,
+	fileID common.FileID,
 	lockMode GranularLockMode,
 ) optional.Optional[utils.Pair[<-chan struct{}, *fileLockToken]] {
-	n := l.fileLockManager.Lock(TxnLockRequest[GranularLockMode, FileID]{
+	n := l.fileLockManager.Lock(TxnLockRequest[GranularLockMode, common.FileID]{
 		txnID:    t.txnID,
 		objectId: fileID,
 		lockMode: lockMode,
@@ -109,12 +106,12 @@ func (l *Locker) LockFile(
 
 func (l *Locker) LockPage(
 	t *fileLockToken,
-	pageID PageID,
+	pageID common.PageID,
 	lockMode PageLockMode,
 ) optional.Optional[utils.Pair[<-chan struct{}, *pageLockToken]] {
 	pageIdent := common.PageIdentity{
-		FileID: uint64(t.fileID),
-		PageID: uint64(pageID),
+		FileID: t.fileID,
+		PageID: pageID,
 	}
 
 	lockRequest := TxnLockRequest[PageLockMode, common.PageIdentity]{
@@ -164,11 +161,13 @@ func (l *Locker) UpgradeFileLock(
 	t *fileLockToken,
 	lockMode GranularLockMode,
 ) optional.Optional[<-chan struct{}] {
-	n := l.fileLockManager.Upgrade(TxnLockRequest[GranularLockMode, FileID]{
-		txnID:    t.txnID,
-		objectId: t.fileID,
-		lockMode: lockMode,
-	})
+	n := l.fileLockManager.Upgrade(
+		TxnLockRequest[GranularLockMode, common.FileID]{
+			txnID:    t.txnID,
+			objectId: t.fileID,
+			lockMode: lockMode,
+		},
+	)
 	if n == nil {
 		return optional.None[<-chan struct{}]()
 	}

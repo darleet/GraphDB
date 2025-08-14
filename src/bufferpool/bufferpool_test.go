@@ -20,8 +20,8 @@ func TestGetPage_Cached(t *testing.T) {
 
 	fileID, pageID := uint64(1), uint64(0)
 	pageIdent := common.PageIdentity{
-		FileID: fileID,
-		PageID: pageID,
+		FileID: common.FileID(fileID),
+		PageID: common.PageID(pageID),
 	}
 
 	p := page.NewSlottedPage()
@@ -59,8 +59,8 @@ func TestGetPage_LoadFromDisk(t *testing.T) {
 
 	fileID, pageID := uint64(1), uint64(0)
 	pageIdent := common.PageIdentity{
-		FileID: fileID,
-		PageID: pageID,
+		FileID: common.FileID(fileID),
+		PageID: common.PageID(pageID),
 	}
 
 	expectedPage := page.NewSlottedPage()
@@ -102,8 +102,8 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 	existingPage.InsertCommit(slotOpt.Unwrap())
 
 	existingPageData := common.PageIdentity{
-		FileID: existingFileID,
-		PageID: existingPageID,
+		FileID: common.FileID(existingFileID),
+		PageID: common.PageID(existingPageID),
 	}
 
 	frameID := uint64(0)
@@ -122,7 +122,10 @@ func TestGetPage_LoadFromDisk_WithExistingPage(t *testing.T) {
 	newInsertSlotOpt := newPage.InsertPrepare([]byte("new data"))
 	newPage.InsertCommit(newInsertSlotOpt.Unwrap())
 
-	pIdent := common.PageIdentity{FileID: newFileID, PageID: newPageID}
+	pIdent := common.PageIdentity{
+		FileID: common.FileID(newFileID),
+		PageID: common.PageID(newPageID),
+	}
 	mockDisk.On("ReadPage", pIdent).Return(newPage, nil)
 	mockReplacer.On("Pin", pIdent).Return()
 
@@ -156,8 +159,8 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 	existingPage.InsertCommit(slotOpt.Unwrap())
 
 	existingPageIdent := common.PageIdentity{
-		FileID: existingFileID,
-		PageID: existingPageID,
+		FileID: common.FileID(existingFileID),
+		PageID: common.PageID(existingPageID),
 	}
 
 	frameID := uint64(0)
@@ -177,7 +180,10 @@ func TestGetPage_LoadFromDisk_WithVictimReplacement(t *testing.T) {
 	mockDisk.On("WritePage", existingPage, existingPageIdent).Return(nil)
 
 	newFileID, newPageID := uint64(2), uint64(1)
-	newPageIdent := common.PageIdentity{FileID: newFileID, PageID: newPageID}
+	newPageIdent := common.PageIdentity{
+		FileID: common.FileID(newFileID),
+		PageID: common.PageID(newPageID),
+	}
 	mockDisk.On("ReadPage", newPageIdent).Return(newPage, nil)
 	mockReplacer.On("Pin", newPageIdent).Return()
 

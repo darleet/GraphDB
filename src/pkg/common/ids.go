@@ -5,9 +5,12 @@ import (
 	"encoding/binary"
 )
 
+type PageID uint64
+type FileID uint64
+
 type PageIdentity struct {
-	FileID uint64
-	PageID uint64
+	FileID FileID
+	PageID PageID
 }
 
 func (p PageIdentity) MarshalBinary() ([]byte, error) {
@@ -28,13 +31,13 @@ func (p *PageIdentity) UnmarshalBinary(data []byte) error {
 }
 
 type FileLocation struct {
-	PageID  uint64
+	PageID  PageID
 	SlotNum uint16
 }
 
 type RecordID struct {
-	FileID  uint64
-	PageID  uint64
+	FileID  FileID
+	PageID  PageID
 	SlotNum uint16
 }
 

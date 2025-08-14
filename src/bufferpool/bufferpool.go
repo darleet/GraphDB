@@ -60,10 +60,12 @@ type Manager struct {
 	frames      []page.SlottedPage
 	emptyFrames []uint64
 
+	isLogging bool
+	logfile   common.FileID
+
 	replacer Replacer
 
-	diskManager    DiskManager[*page.SlottedPage]
-	DirtyPageTable map[common.PageIdentity]common.LSN
+	diskManager DiskManager[*page.SlottedPage]
 
 	fastPath sync.Mutex
 	slowPath sync.Mutex
@@ -82,15 +84,16 @@ func New(
 	}
 
 	return &Manager{
-		poolSize:       poolSize,
-		pageTable:      map[common.PageIdentity]frameInfo{},
-		frames:         make([]page.SlottedPage, poolSize),
-		emptyFrames:    emptyFrames,
-		replacer:       replacer,
-		diskManager:    diskManager,
-		DirtyPageTable: map[common.PageIdentity]common.LSN{},
-		fastPath:       sync.Mutex{},
-		slowPath:       sync.Mutex{},
+		poolSize:    poolSize,
+		pageTable:   map[common.PageIdentity]frameInfo{},
+		frames:      make([]page.SlottedPage, poolSize),
+		emptyFrames: emptyFrames,
+		replacer:    replacer,
+		diskManager: diskManager,
+		fastPath:    sync.Mutex{},
+		slowPath:    sync.Mutex{},
+		isLogging:   false,
+		logfile:     0,
 	}, nil
 }
 
@@ -191,15 +194,17 @@ func (m *Manager) GetPage(
 
 	victimPage := &m.frames[victimInfo.frameID]
 	if victimInfo.isDirty {
-		err = m.diskManager.WritePage(
-			victimPage,
-			victimPageIdent,
-		)
-		if err != nil {
-			return nil, err
+		if m.isLogging {
+			panic("TODO")
+		} else {
+			err = m.diskManager.WritePage(
+				victimPage,
+				victimPageIdent,
+			)
+			if err != nil {
+				return nil, err
+			}
 		}
-
-		delete(m.DirtyPageTable, pIdent)
 	}
 	delete(m.pageTable, victimPageIdent)
 
@@ -251,8 +256,6 @@ func (m *Manager) FlushPage(pIdent common.PageIdentity) error {
 		return fmt.Errorf("failed to write page to disk: %w", err)
 	}
 
-	delete(m.DirtyPageTable, pIdent)
-
 	frameInfo.isDirty = false
 	m.pageTable[pIdent] = frameInfo
 	return nil
@@ -277,8 +280,6 @@ func (m *Manager) FlushAllPages() error {
 
 		pgInfo.isDirty = false
 		m.pageTable[pgIdent] = pgInfo
-
-		delete(m.DirtyPageTable, pgIdent)
 	}
 
 	return nil

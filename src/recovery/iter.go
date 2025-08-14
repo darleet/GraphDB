@@ -9,7 +9,7 @@ import (
 )
 
 type LogRecordsIter struct {
-	logfileID uint64
+	logfileID common.FileID
 	curLoc    common.FileLocation
 
 	pool       bufferpool.BufferPool[*page.SlottedPage]
@@ -17,7 +17,7 @@ type LogRecordsIter struct {
 }
 
 func newLogRecordIter(
-	logfileID uint64,
+	logfileID common.FileID,
 	curLoc common.FileLocation,
 	pool bufferpool.BufferPool[*page.SlottedPage],
 	lockedPage *page.SlottedPage,

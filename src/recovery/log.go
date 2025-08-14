@@ -23,7 +23,7 @@ type TxnLogger struct {
 	mu sync.Mutex
 	// "где-то" лежит на диске
 	logRecordsCount uint64
-	logfileID       uint64
+	logfileID       common.FileID
 	lastLogLocation common.LogRecordLocationInfo
 	// ================
 

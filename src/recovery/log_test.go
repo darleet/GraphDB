@@ -241,7 +241,7 @@ func TestMassiveRecovery(t *testing.T) {
 	NEW := []byte("new1")
 	NEW2 := []byte("1234")
 
-	DataFileID := uint64(0)
+	DataFileID := common.FileID(0)
 	dataPageId := common.PageIdentity{
 		FileID: DataFileID,
 		PageID: 321,
@@ -696,10 +696,10 @@ func TestLoggerRollback(t *testing.T) {
 		assert.NoError(t, pool.EnsureAllPagesUnpinned())
 	}()
 
-	files := []uint64{}
+	files := []common.FileID{}
 	for range 1 {
 		for {
-			fileID := rand.Uint64() % 1024
+			fileID := common.FileID(rand.Uint64() % 1024)
 			if fileID == logger.logfileID {
 				continue
 			}
@@ -754,7 +754,7 @@ func TestLoggerRollback(t *testing.T) {
 
 				tLockOpt := locker.LockFile(
 					cToken,
-					txns.FileID(info.key.FileID),
+					common.FileID(info.key.FileID),
 					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 				)
 				if tLockOpt.IsNone() {
@@ -767,7 +767,7 @@ func TestLoggerRollback(t *testing.T) {
 
 				pLockOpt := locker.LockPage(
 					tToken,
-					txns.PageID(info.key.PageID),
+					common.PageID(info.key.PageID),
 					txns.PAGE_LOCK_EXCLUSIVE,
 				)
 				if pLockOpt.IsNone() {
@@ -799,7 +799,7 @@ func TestLoggerRollback(t *testing.T) {
 
 				tLockOpt := locker.LockFile(
 					cToken,
-					txns.FileID(info.key.FileID),
+					common.FileID(info.key.FileID),
 					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 				)
 				if tLockOpt.IsNone() {
@@ -812,7 +812,7 @@ func TestLoggerRollback(t *testing.T) {
 
 				pLockOpt := locker.LockPage(
 					tToken,
-					txns.PageID(info.key.PageID),
+					common.PageID(info.key.PageID),
 					txns.PAGE_LOCK_EXCLUSIVE,
 				)
 				if pLockOpt.IsNone() {
@@ -879,7 +879,7 @@ func fillPages(
 	logger *TxnLogger,
 	txnID txns.TxnID,
 	length int,
-	fileIDs []uint64,
+	fileIDs []common.FileID,
 	limit uint32,
 ) map[common.RecordID]uint32 {
 	res := make(map[common.RecordID]uint32, length)
@@ -889,8 +889,8 @@ func fillPages(
 	for range length {
 		for {
 			pageID := common.PageIdentity{
-				FileID: fileIDs[rand.Int()%len(fileIDs)],
-				PageID: rand.Uint64() % 1024,
+				FileID: common.FileID(fileIDs[rand.Int()%len(fileIDs)]),
+				PageID: common.PageID(rand.Uint64() % 1024),
 			}
 
 			p, err := logger.pool.GetPage(pageID)
