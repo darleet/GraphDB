@@ -60,8 +60,7 @@ type Manager struct {
 	frames      []page.SlottedPage
 	emptyFrames []uint64
 
-	isLogging bool
-	logfile   common.FileID
+	logfile common.FileID
 
 	replacer Replacer
 
@@ -92,7 +91,6 @@ func New(
 		diskManager: diskManager,
 		fastPath:    sync.Mutex{},
 		slowPath:    sync.Mutex{},
-		isLogging:   false,
 		logfile:     0,
 	}, nil
 }
@@ -194,16 +192,12 @@ func (m *Manager) GetPage(
 
 	victimPage := &m.frames[victimInfo.frameID]
 	if victimInfo.isDirty {
-		if m.isLogging {
-			panic("TODO")
-		} else {
-			err = m.diskManager.WritePage(
-				victimPage,
-				victimPageIdent,
-			)
-			if err != nil {
-				return nil, err
-			}
+		err = m.diskManager.WritePage(
+			victimPage,
+			victimPageIdent,
+		)
+		if err != nil {
+			return nil, err
 		}
 	}
 	delete(m.pageTable, victimPageIdent)
