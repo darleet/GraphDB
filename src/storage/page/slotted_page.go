@@ -1,7 +1,7 @@
 package page
 
 import (
-	"encoding"
+	"errors"
 	"sync"
 	"unsafe"
 
@@ -95,7 +95,32 @@ func (p *SlottedPage) SetPageLSN(lsn common.LSN) {
 	header.pageLSN = lsn
 }
 
-func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
+var ErrNoSpaceLeft error = errors.New("the page is full")
+
+func (p *SlottedPage) Insert(
+	data []byte,
+	pageIdent common.PageIdentity,
+	ctxLogger common.ITxnLoggerWithContext,
+) (uint16, common.LogRecordLocInfo, error) {
+	slotOpt := p.insertPrepare(data)
+	if slotOpt.IsNone() {
+		return 0, common.NewNilLogRecordLocation(), ErrNoSpaceLeft
+	}
+
+	slot := slotOpt.Unwrap()
+	recordID := common.RecordID{
+		FileID:  pageIdent.FileID,
+		PageID:  pageIdent.PageID,
+		SlotNum: slot,
+	}
+	logRecordLoc, err := ctxLogger.AppendInsert(recordID, data)
+	p.insertCommit(slot)
+	p.SetPageLSN(logRecordLoc.Lsn)
+
+	return slot, logRecordLoc, err
+}
+
+func (p *SlottedPage) insertPrepare(data []byte) optional.Optional[uint16] {
 	header := p.getHeader()
 	// space required to store both the array and it's length
 	requiredLength := int(unsafe.Sizeof(uint16(1))) + len(data)
@@ -134,7 +159,7 @@ func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
 	return optional.Some(curSlot)
 }
 
-func (p *SlottedPage) InsertCommit(slotHandle uint16) {
+func (p *SlottedPage) insertCommit(slotHandle uint16) {
 	header := p.getHeader()
 	assert.Assert(
 		uint16(slotHandle) < header.slotsCount,
@@ -150,24 +175,6 @@ func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 		"tried to commit an insert to a wrong slot",
 	)
 	slots[slotHandle] = newSlotPtr(SlotStatusInserted, ptr.RecordOffset())
-}
-
-func Get[T encoding.BinaryUnmarshaler](
-	p *SlottedPage,
-	slotID uint16,
-	dst T,
-) error {
-	data := p.Read(slotID)
-	return dst.UnmarshalBinary(data)
-}
-
-func InsertSerializable[T encoding.BinaryMarshaler](
-	p *SlottedPage,
-	obj T,
-) optional.Optional[uint16] {
-	bytes, err := obj.MarshalBinary()
-	assert.Assert(err != nil)
-	return p.InsertPrepare(bytes)
 }
 
 func (p *SlottedPage) getBytesBySlotPtr(ptr slotPointer) []byte {
@@ -196,24 +203,25 @@ func (p *SlottedPage) Read(slotID uint16) []byte {
 	return p.getBytesBySlotPtr(ptr)
 }
 
-func (p *SlottedPage) Delete(slotID uint16) {
-	ptr := p.assertSlotInserted(slotID)
-	p.getHeader().getSlots()[slotID] = newSlotPtr(
+func (p *SlottedPage) Delete(
+	recordID common.RecordID,
+	ctxLogger common.ITxnLoggerWithContext,
+) (common.LogRecordLocInfo, error) {
+	// TODO: может всё-таки заносить значения, которые удаляем, в CLR?
+	ptr := p.assertSlotInserted(recordID.SlotNum)
+
+	logRecordLoc, err := ctxLogger.AppendDelete(recordID)
+	if err != nil {
+		return common.NewNilLogRecordLocation(), err
+	}
+
+	p.getHeader().getSlots()[recordID.SlotNum] = newSlotPtr(
 		SlotStatusDeleted,
 		ptr.RecordOffset(),
 	)
-}
+	p.SetPageLSN(logRecordLoc.Lsn)
 
-func (p *SlottedPage) UnsafeOverrideSlotStatus(
-	slotNumber uint16,
-	newStatus slotStatus,
-) {
-	assert.Assert(slotNumber < p.NumSlots(), "slotNumber is too large")
-
-	header := p.getHeader()
-	slot := header.getSlots()[slotNumber]
-
-	header.getSlots()[slotNumber] = newSlotPtr(newStatus, slot.RecordOffset())
+	return logRecordLoc, nil
 }
 
 func (p *SlottedPage) UndoDelete(slotID uint16) {
@@ -228,12 +236,25 @@ func (p *SlottedPage) UndoDelete(slotID uint16) {
 	p.UnsafeOverrideSlotStatus(slotID, SlotStatusInserted)
 }
 
-func (p *SlottedPage) Update(slotID uint16, newData []byte) {
-	data := p.Read(slotID)
+func (p *SlottedPage) Update(
+	newData []byte,
+	recordID common.RecordID,
+	ctxLogger common.ITxnLoggerWithContext,
+) (common.LogRecordLocInfo, error) {
+	data := p.Read(recordID.SlotNum)
 	assert.Assert(len(data) == len(newData))
 
+	before := make([]byte, len(data))
+	copy(before, data)
+	logRecordLoc, err := ctxLogger.AppendUpdate(recordID, before, newData)
+	if err != nil {
+		return common.NewNilLogRecordLocation(), err
+	}
 	clear(data)
 	copy(data, newData)
+	p.SetPageLSN(logRecordLoc.Lsn)
+
+	return logRecordLoc, err
 }
 
 func (p *SlottedPage) Lock() {
@@ -258,4 +279,16 @@ func (p *SlottedPage) GetData() []byte {
 
 func (p *SlottedPage) SetData(data []byte) {
 	copy(p.data[:], data)
+}
+
+func (p *SlottedPage) UnsafeOverrideSlotStatus(
+	slotNumber uint16,
+	newStatus slotStatus,
+) {
+	assert.Assert(slotNumber < p.NumSlots(), "slotNumber is too large")
+
+	header := p.getHeader()
+	slot := header.getSlots()[slotNumber]
+
+	header.getSlots()[slotNumber] = newSlotPtr(newStatus, slot.RecordOffset())
 }

@@ -23,7 +23,7 @@ import (
 
 func TestValidRecovery(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
-	loggerStart := common.LogRecordLocationInfo{
+	loggerStart := common.LogRecordLocInfo{
 		Lsn:      0,
 		Location: common.FileLocation{PageID: 0, SlotNum: 0},
 	}
@@ -48,7 +48,7 @@ func TestValidRecovery(t *testing.T) {
 	slotNum := slotNumOpt.Unwrap()
 	require.NoError(t, err)
 
-	TransactionID := txns.TxnID(100)
+	TransactionID := common.TxnID(100)
 	before := []byte("before")
 	after := []byte("after")
 
@@ -109,7 +109,7 @@ func TestValidRecovery(t *testing.T) {
 func TestFailedTxn(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 
-	logStart := common.LogRecordLocationInfo{
+	logStart := common.LogRecordLocInfo{
 		Lsn:      0,
 		Location: common.FileLocation{PageID: 0, SlotNum: 0},
 	}
@@ -120,7 +120,7 @@ func TestFailedTxn(t *testing.T) {
 	}
 	pageIdent := common.PageIdentity{FileID: 1, PageID: 42}
 
-	TransactionID := txns.TxnID(100)
+	TransactionID := common.TxnID(100)
 	before := []byte("before")
 
 	slotNumOpt, err := insertValueNoLogs(t, pool, pageIdent, before)
@@ -225,14 +225,14 @@ func TestMassiveRecovery(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []common.TxnID {
 			panic("TODO")
 		},
 	}
@@ -295,7 +295,7 @@ func TestMassiveRecovery(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			TransactionID := txns.TxnID(TransactionIDCounter.Add(1))
+			TransactionID := common.TxnID(TransactionIDCounter.Add(1))
 			chain := NewTxnLogChain(logger, TransactionID)
 
 			chain.Begin()
@@ -390,7 +390,7 @@ func assertLogRecord(
 	actualTag LogRecordTypeTag,
 	untypedRecord any,
 	expectedRecordType LogRecordTypeTag,
-	expectedTransactionID txns.TxnID,
+	expectedTransactionID common.TxnID,
 ) {
 	require.Equal(t, actualTag, expectedRecordType)
 
@@ -437,7 +437,7 @@ func assertLogRecordWithRetrieval(
 	pool bufferpool.BufferPool[*page.SlottedPage],
 	recordID common.RecordID,
 	expectedRecordType LogRecordTypeTag,
-	expectedTransactionID txns.TxnID,
+	expectedTransactionID common.TxnID,
 ) {
 	page, err := pool.GetPage(recordID.PageIdentity())
 	require.NoError(t, err)
@@ -474,14 +474,14 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []common.TxnID {
 			panic("TODO")
 		},
 	}
@@ -501,13 +501,13 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 		waitWg.Add(1)
 		barierWg.Add(1)
 
-		go func(TransactionID txns.TxnID) {
+		go func(TransactionID common.TxnID) {
 			defer waitWg.Done()
 
 			chain := NewTxnLogChain(logger, TransactionID)
 
-			insertLocs := []common.LogRecordLocationInfo{}
-			updateLocs := []common.LogRecordLocationInfo{}
+			insertLocs := []common.LogRecordLocInfo{}
+			updateLocs := []common.LogRecordLocInfo{}
 			beginLoc := chain.Begin().Loc()
 
 			for j := range INNER {
@@ -621,7 +621,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 					TransactionID,
 				)
 			}
-		}(txns.TxnID(i)) //nolint:gosec
+		}(common.TxnID(i)) //nolint:gosec
 	}
 
 	waitWg.Wait()
@@ -683,11 +683,11 @@ func TestLoggerRollback(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn:      0,
 			Location: logStartLocation,
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []common.TxnID {
 			panic("TODO")
 		},
 	}
@@ -732,7 +732,7 @@ func TestLoggerRollback(t *testing.T) {
 			}()
 			defer wg.Done()
 
-			txnID := txns.TxnID(txnID.Add(1))
+			txnID := common.TxnID(txnID.Add(1))
 			chain := NewTxnLogChain(logger, txnID)
 			require.NoError(t, chain.Begin().Err())
 
@@ -877,7 +877,7 @@ func TestLoggerRollback(t *testing.T) {
 func fillPages(
 	t *testing.T,
 	logger *TxnLogger,
-	txnID txns.TxnID,
+	txnID common.TxnID,
 	length int,
 	fileIDs []common.FileID,
 	limit uint32,

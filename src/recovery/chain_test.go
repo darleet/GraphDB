@@ -9,7 +9,6 @@ import (
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 func TestChainSanity(t *testing.T) {
@@ -26,19 +25,19 @@ func TestChainSanity(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn: 123,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []common.TxnID {
 			panic("TODO")
 		},
 	}
 
-	txnID := txns.TxnID(89)
+	txnID := common.TxnID(89)
 	chain := NewTxnLogChain(logger, txnID)
 
 	insertSlotNumber := uint16(6)
@@ -62,8 +61,8 @@ func TestChainSanity(t *testing.T) {
 		PageID: 1,
 	}
 
-	checkpointATT := []txns.TxnID{1, 2, 3}
-	checkpointDPT := map[common.PageIdentity]common.LogRecordLocationInfo{
+	checkpointATT := []common.TxnID{1, 2, 3}
+	checkpointDPT := map[common.PageIdentity]common.LogRecordLocInfo{
 		{
 			FileID: 42,
 			PageID: 123,
@@ -249,14 +248,14 @@ func TestChain(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []common.TxnID {
 			panic("TODO")
 		},
 	}
@@ -266,8 +265,8 @@ func TestChain(t *testing.T) {
 		PageID: 0,
 	}
 
-	TransactionID_1 := txns.TxnID(1)
-	TransactionID_2 := txns.TxnID(2)
+	TransactionID_1 := common.TxnID(1)
+	TransactionID_2 := common.TxnID(2)
 
 	chain := NewTxnLogChain(logger, TransactionID_1)
 

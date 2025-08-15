@@ -21,21 +21,21 @@ func NewLocker() *Locker {
 }
 
 type catalogLockToken struct {
-	txnID TxnID
+	txnID common.TxnID
 }
 
-func newCatalogLockToken(txnID TxnID) *catalogLockToken {
+func newCatalogLockToken(txnID common.TxnID) *catalogLockToken {
 	return &catalogLockToken{
 		txnID: txnID,
 	}
 }
 
 type fileLockToken struct {
-	txnID  TxnID
+	txnID  common.TxnID
 	fileID common.FileID
 }
 
-func newFileLockToken(txnID TxnID, fileID common.FileID) *fileLockToken {
+func newFileLockToken(txnID common.TxnID, fileID common.FileID) *fileLockToken {
 	return &fileLockToken{
 		fileID: fileID,
 		txnID:  txnID,
@@ -43,12 +43,12 @@ func newFileLockToken(txnID TxnID, fileID common.FileID) *fileLockToken {
 }
 
 type pageLockToken struct {
-	txnID  TxnID
+	txnID  common.TxnID
 	pageID common.PageIdentity
 }
 
 func newPageLockToken(
-	txnID TxnID,
+	txnID common.TxnID,
 	pageID common.PageIdentity,
 ) *pageLockToken {
 	return &pageLockToken{
@@ -58,7 +58,7 @@ func newPageLockToken(
 }
 
 func (l *Locker) LockCatalog(
-	txnID TxnID,
+	txnID common.TxnID,
 	lockMode GranularLockMode,
 ) optional.Optional[utils.Pair[<-chan struct{}, *catalogLockToken]] {
 	r := TxnLockRequest[GranularLockMode, struct{}]{

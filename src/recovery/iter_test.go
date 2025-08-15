@@ -11,7 +11,6 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 // generateSequence creates a random sequence of log record operations for
@@ -114,14 +113,14 @@ func TestIterSanity(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
+		getActiveTransactions: func() []common.TxnID {
 			panic("TODO")
 		},
 	}
@@ -131,7 +130,7 @@ func TestIterSanity(t *testing.T) {
 		PageID: 23,
 	}
 
-	TransactionID := txns.TxnID(1)
+	TransactionID := common.TxnID(1)
 	chain := NewTxnLogChain(logger, TransactionID)
 
 	types := generateSequence(t, chain, dataPageId, 100)

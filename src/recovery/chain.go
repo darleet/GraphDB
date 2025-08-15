@@ -4,28 +4,30 @@ import (
 	"fmt"
 
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 type TxnLogChain struct {
 	logger        *TxnLogger
-	TransactionID txns.TxnID
+	TransactionID common.TxnID
 
-	lastLocations map[txns.TxnID]common.LogRecordLocationInfo
+	lastLocations map[common.TxnID]common.LogRecordLocInfo
 	err           error
 }
 
-func NewTxnLogChain(logger *TxnLogger, TransactionID txns.TxnID) *TxnLogChain {
+func NewTxnLogChain(
+	logger *TxnLogger,
+	TransactionID common.TxnID,
+) *TxnLogChain {
 	return &TxnLogChain{
 		logger:        logger,
 		TransactionID: TransactionID,
 
-		lastLocations: map[txns.TxnID]common.LogRecordLocationInfo{},
+		lastLocations: map[common.TxnID]common.LogRecordLocInfo{},
 	}
 }
 
 func (c *TxnLogChain) SwitchTransactionID(
-	TransactionID txns.TxnID,
+	TransactionID common.TxnID,
 ) *TxnLogChain {
 	if c.err != nil {
 		return c
@@ -180,8 +182,8 @@ func (c *TxnLogChain) CheckpointBegin() *TxnLogChain {
 }
 
 func (c *TxnLogChain) CheckpointEnd(
-	ATT []txns.TxnID,
-	DPT map[common.PageIdentity]common.LogRecordLocationInfo,
+	ATT []common.TxnID,
+	DPT map[common.PageIdentity]common.LogRecordLocInfo,
 ) *TxnLogChain {
 	if c.err != nil {
 		return c
@@ -192,7 +194,7 @@ func (c *TxnLogChain) CheckpointEnd(
 	return c
 }
 
-func (c *TxnLogChain) Loc() common.LogRecordLocationInfo {
+func (c *TxnLogChain) Loc() common.LogRecordLocInfo {
 	return c.lastLocations[c.TransactionID]
 }
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 type LogRecord interface {
@@ -20,7 +19,7 @@ type RevertableLogRecord interface {
 	LogRecord
 	Undo(
 		newLSN common.LSN,
-		parentLogLocation common.LogRecordLocationInfo,
+		parentLogLocation common.LogRecordLocInfo,
 	) CompensationLogRecord
 }
 
@@ -39,10 +38,10 @@ var (
 
 type BeginLogRecord struct {
 	lsn   common.LSN
-	txnID txns.TxnID
+	txnID common.TxnID
 }
 
-func NewBeginLogRecord(lsn common.LSN, txnID txns.TxnID) BeginLogRecord {
+func NewBeginLogRecord(lsn common.LSN, txnID common.TxnID) BeginLogRecord {
 	return BeginLogRecord{
 		lsn:   lsn,
 		txnID: txnID,
@@ -59,8 +58,8 @@ func (l *BeginLogRecord) String() string {
 
 type UpdateLogRecord struct {
 	lsn               common.LSN
-	txnID             txns.TxnID
-	parentLogLocation common.LogRecordLocationInfo
+	txnID             common.TxnID
+	parentLogLocation common.LogRecordLocInfo
 	modifiedRecordID  common.RecordID
 	beforeValue       []byte
 	afterValue        []byte
@@ -84,7 +83,7 @@ func (r *UpdateLogRecord) String() string {
 
 func (r *UpdateLogRecord) Undo(
 	lsn common.LSN,
-	parentLogLocation common.LogRecordLocationInfo,
+	parentLogLocation common.LogRecordLocInfo,
 ) CompensationLogRecord {
 	return NewCompensationLogRecord(
 		lsn,
@@ -100,8 +99,8 @@ func (r *UpdateLogRecord) Undo(
 
 func NewUpdateLogRecord(
 	lsn common.LSN,
-	txnID txns.TxnID,
-	parentLogLocation common.LogRecordLocationInfo,
+	txnID common.TxnID,
+	parentLogLocation common.LogRecordLocInfo,
 	modifiedRecordID common.RecordID,
 	beforeValue []byte,
 	afterValue []byte,
@@ -120,8 +119,8 @@ func NewUpdateLogRecord(
 
 type InsertLogRecord struct {
 	lsn               common.LSN
-	txnID             txns.TxnID
-	parentLogLocation common.LogRecordLocationInfo
+	txnID             common.TxnID
+	parentLogLocation common.LogRecordLocInfo
 	modifiedRecordID  common.RecordID
 	value             []byte
 }
@@ -143,8 +142,8 @@ func (r *InsertLogRecord) String() string {
 
 func NewInsertLogRecord(
 	lsn common.LSN,
-	txnID txns.TxnID,
-	parentLogLocation common.LogRecordLocationInfo,
+	txnID common.TxnID,
+	parentLogLocation common.LogRecordLocInfo,
 	modifiedRecordID common.RecordID,
 	value []byte,
 ) InsertLogRecord {
@@ -159,7 +158,7 @@ func NewInsertLogRecord(
 
 func (r *InsertLogRecord) Undo(
 	lsn common.LSN,
-	parentLogLocation common.LogRecordLocationInfo,
+	parentLogLocation common.LogRecordLocInfo,
 ) CompensationLogRecord {
 	return NewCompensationLogRecord(
 		lsn,
@@ -175,15 +174,15 @@ func (r *InsertLogRecord) Undo(
 
 type DeleteLogRecord struct {
 	lsn               common.LSN
-	txnID             txns.TxnID
-	parentLogLocation common.LogRecordLocationInfo
+	txnID             common.TxnID
+	parentLogLocation common.LogRecordLocInfo
 	modifiedRecordID  common.RecordID
 }
 
 func NewDeleteLogRecord(
 	lsn common.LSN,
-	txnID txns.TxnID,
-	parentLogLocation common.LogRecordLocationInfo,
+	txnID common.TxnID,
+	parentLogLocation common.LogRecordLocInfo,
 	modifiedRecordID common.RecordID,
 ) DeleteLogRecord {
 	return DeleteLogRecord{
@@ -210,7 +209,7 @@ func (r *DeleteLogRecord) String() string {
 
 func (r *DeleteLogRecord) Undo(
 	lsn common.LSN,
-	parentLogLocation common.LogRecordLocationInfo,
+	parentLogLocation common.LogRecordLocInfo,
 ) CompensationLogRecord {
 	return NewCompensationLogRecord(
 		lsn,
@@ -226,8 +225,8 @@ func (r *DeleteLogRecord) Undo(
 
 type CommitLogRecord struct {
 	lsn               common.LSN
-	txnID             txns.TxnID
-	parentLogLocation common.LogRecordLocationInfo
+	txnID             common.TxnID
+	parentLogLocation common.LogRecordLocInfo
 }
 
 func (r *CommitLogRecord) LSN() common.LSN {
@@ -236,8 +235,8 @@ func (r *CommitLogRecord) LSN() common.LSN {
 
 func NewCommitLogRecord(
 	lsn common.LSN,
-	txnID txns.TxnID,
-	parentLogLocation common.LogRecordLocationInfo,
+	txnID common.TxnID,
+	parentLogLocation common.LogRecordLocInfo,
 ) CommitLogRecord {
 	return CommitLogRecord{
 		lsn:               lsn,
@@ -257,8 +256,8 @@ func (r *CommitLogRecord) String() string {
 
 type AbortLogRecord struct {
 	lsn               common.LSN
-	txnID             txns.TxnID
-	parentLogLocation common.LogRecordLocationInfo
+	txnID             common.TxnID
+	parentLogLocation common.LogRecordLocInfo
 }
 
 func (r *AbortLogRecord) LSN() common.LSN {
@@ -274,8 +273,8 @@ func (r *AbortLogRecord) String() string {
 	)
 }
 
-func NewAbortLogRecord(lsn common.LSN, txnID txns.TxnID,
-	parentLogLocation common.LogRecordLocationInfo,
+func NewAbortLogRecord(lsn common.LSN, txnID common.TxnID,
+	parentLogLocation common.LogRecordLocInfo,
 ) AbortLogRecord {
 	return AbortLogRecord{
 		lsn:               lsn,
@@ -286,16 +285,16 @@ func NewAbortLogRecord(lsn common.LSN, txnID txns.TxnID,
 
 type TxnEndLogRecord struct {
 	lsn               common.LSN
-	txnID             txns.TxnID
-	parentLogLocation common.LogRecordLocationInfo
+	txnID             common.TxnID
+	parentLogLocation common.LogRecordLocInfo
 }
 
 func (r *TxnEndLogRecord) LSN() common.LSN {
 	return r.lsn
 }
 
-func NewTxnEndLogRecord(lsn common.LSN, txnID txns.TxnID,
-	parentLogLocation common.LogRecordLocationInfo) TxnEndLogRecord {
+func NewTxnEndLogRecord(lsn common.LSN, txnID common.TxnID,
+	parentLogLocation common.LogRecordLocInfo) TxnEndLogRecord {
 	return TxnEndLogRecord{
 		lsn:               lsn,
 		txnID:             txnID,
@@ -322,8 +321,8 @@ const (
 
 type CompensationLogRecord struct {
 	lsn               common.LSN
-	txnID             txns.TxnID
-	parentLogLocation common.LogRecordLocationInfo
+	txnID             common.TxnID
+	parentLogLocation common.LogRecordLocInfo
 	nextUndoLSN       common.LSN
 	clrType           CLRtype
 	modifiedRecordID  common.RecordID
@@ -351,8 +350,8 @@ func (r *CompensationLogRecord) String() string {
 
 func NewCompensationLogRecord(
 	lsn common.LSN,
-	txnID txns.TxnID,
-	parentLogLocation common.LogRecordLocationInfo,
+	txnID common.TxnID,
+	parentLogLocation common.LogRecordLocInfo,
 	modifiedRecordID common.RecordID,
 	clrType CLRtype,
 	nextUndoLSN common.LSN,
@@ -393,14 +392,14 @@ func (l *CheckpointBeginLogRecord) String() string {
 
 type CheckpointEndLogRecord struct {
 	lsn                common.LSN
-	activeTransactions []txns.TxnID
-	dirtyPageTable     map[common.PageIdentity]common.LogRecordLocationInfo
+	activeTransactions []common.TxnID
+	dirtyPageTable     map[common.PageIdentity]common.LogRecordLocInfo
 }
 
 func NewCheckpointEnd(
 	lsn common.LSN,
-	activeTransacitons []txns.TxnID,
-	dirtyPageTable map[common.PageIdentity]common.LogRecordLocationInfo,
+	activeTransacitons []common.TxnID,
+	dirtyPageTable map[common.PageIdentity]common.LogRecordLocInfo,
 ) CheckpointEndLogRecord {
 	return CheckpointEndLogRecord{
 		lsn:                lsn,

@@ -7,11 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 func TestBeginLogRecord_MarshalUnmarshal(t *testing.T) {
-	original := NewBeginLogRecord(123, txns.TxnID(456))
+	original := NewBeginLogRecord(123, common.TxnID(456))
 
 	data, err := original.MarshalBinary()
 	if err != nil {
@@ -39,8 +38,8 @@ func TestBeginLogRecord_MarshalUnmarshal(t *testing.T) {
 func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewUpdateLogRecord(
 		123,
-		txns.TxnID(456),
-		common.LogRecordLocationInfo{
+		common.TxnID(456),
+		common.LogRecordLocInfo{
 			Lsn:      789,
 			Location: common.FileLocation{PageID: 101112, SlotNum: 13141},
 		},
@@ -112,8 +111,8 @@ func TestUpdateLogRecord_MarshalUnmarshal(t *testing.T) {
 func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewInsertLogRecord(
 		123,
-		txns.TxnID(456),
-		common.LogRecordLocationInfo{
+		common.TxnID(456),
+		common.LogRecordLocInfo{
 			Lsn:      789,
 			Location: common.FileLocation{PageID: 101112, SlotNum: 13115},
 		},
@@ -176,8 +175,8 @@ func TestInsertLogRecord_MarshalUnmarshal(t *testing.T) {
 func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCommitLogRecord(
 		123,
-		txns.TxnID(456),
-		common.LogRecordLocationInfo{
+		common.TxnID(456),
+		common.LogRecordLocInfo{
 			Lsn:      789,
 			Location: common.FileLocation{PageID: 101112, SlotNum: 13115},
 		},
@@ -218,8 +217,8 @@ func TestCommitLogRecord_MarshalUnmarshal(t *testing.T) {
 func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewAbortLogRecord(
 		123,
-		txns.TxnID(456),
-		common.LogRecordLocationInfo{
+		common.TxnID(456),
+		common.LogRecordLocInfo{
 			Lsn:      789,
 			Location: common.FileLocation{PageID: 101112, SlotNum: 13145},
 		},
@@ -260,8 +259,8 @@ func TestAbortLogRecord_MarshalUnmarshal(t *testing.T) {
 func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewTxnEndLogRecord(
 		123,
-		txns.TxnID(456),
-		common.LogRecordLocationInfo{
+		common.TxnID(456),
+		common.LogRecordLocInfo{
 			Lsn:      789,
 			Location: common.FileLocation{PageID: 101112, SlotNum: 13415},
 		},
@@ -302,8 +301,8 @@ func TestTxnEndLogRecord_MarshalUnmarshal(t *testing.T) {
 func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewCompensationLogRecord(
 		123,
-		txns.TxnID(456),
-		common.LogRecordLocationInfo{
+		common.TxnID(456),
+		common.LogRecordLocInfo{
 			Lsn:      789,
 			Location: common.FileLocation{PageID: 101112, SlotNum: 13145},
 		},
@@ -333,7 +332,7 @@ func TestCompensationLogRecord_MarshalUnmarshal(t *testing.T) {
 
 func TestInvalidTypeTag(t *testing.T) {
 	// Create a valid record first
-	original := NewBeginLogRecord(123, txns.TxnID(456))
+	original := NewBeginLogRecord(123, common.TxnID(456))
 
 	data, err := original.MarshalBinary()
 	assert.NoError(t, err)
@@ -354,7 +353,7 @@ func TestEmptyData(t *testing.T) {
 
 func TestPartialData(t *testing.T) {
 	// Create a valid record first
-	original := NewBeginLogRecord(123, txns.TxnID(456))
+	original := NewBeginLogRecord(123, common.TxnID(456))
 
 	data, err := original.MarshalBinary()
 	assert.NoError(t, err)
@@ -420,8 +419,8 @@ func TestCheckpointBegin_TruncatedData(t *testing.T) {
 }
 
 func TestCheckpointEnd_MarshalUnmarshal(t *testing.T) {
-	activeTxns := []txns.TxnID{123, 456, 789}
-	dirtyPages := map[common.PageIdentity]common.LogRecordLocationInfo{
+	activeTxns := []common.TxnID{123, 456, 789}
+	dirtyPages := map[common.PageIdentity]common.LogRecordLocInfo{
 		{PageID: 1, FileID: 1}: {
 			Lsn:      100,
 			Location: common.FileLocation{},
@@ -495,8 +494,8 @@ func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
 	// Create a valid record first
 	original := NewCheckpointEnd(
 		999,
-		[]txns.TxnID{123},
-		make(map[common.PageIdentity]common.LogRecordLocationInfo),
+		[]common.TxnID{123},
+		make(map[common.PageIdentity]common.LogRecordLocInfo),
 	)
 
 	data, err := original.MarshalBinary()
@@ -515,8 +514,8 @@ func TestCheckpointEnd_InvalidTypeTag(t *testing.T) {
 func TestDeleteLogRecord_MarshalUnmarshal(t *testing.T) {
 	original := NewDeleteLogRecord(
 		123,
-		txns.TxnID(456),
-		common.LogRecordLocationInfo{
+		common.TxnID(456),
+		common.LogRecordLocInfo{
 			Lsn:      789,
 			Location: common.FileLocation{PageID: 101112, SlotNum: 13141},
 		},
@@ -543,8 +542,8 @@ func TestDeleteLogRecord_MarshalUnmarshal(t *testing.T) {
 func TestDeleteLogRecord_MarshalBinary_EmptyBeforeValue(t *testing.T) {
 	original := NewDeleteLogRecord(
 		1,
-		txns.TxnID(2),
-		common.LogRecordLocationInfo{
+		common.TxnID(2),
+		common.LogRecordLocInfo{
 			Lsn:      3,
 			Location: common.FileLocation{PageID: 4, SlotNum: 5},
 		},
@@ -566,8 +565,8 @@ func TestDeleteLogRecord_MarshalBinary_EmptyBeforeValue(t *testing.T) {
 func TestDeleteLogRecord_UnmarshalBinary_InvalidTypeTag(t *testing.T) {
 	original := NewDeleteLogRecord(
 		1,
-		txns.TxnID(2),
-		common.LogRecordLocationInfo{
+		common.TxnID(2),
+		common.LogRecordLocInfo{
 			Lsn:      3,
 			Location: common.FileLocation{PageID: 4, SlotNum: 5},
 		},
@@ -597,8 +596,8 @@ func TestDeleteLogRecord_UnmarshalBinary_EmptyData(t *testing.T) {
 func TestDeleteLogRecord_UnmarshalBinary_TruncatedData(t *testing.T) {
 	original := NewDeleteLogRecord(
 		1,
-		txns.TxnID(2),
-		common.LogRecordLocationInfo{
+		common.TxnID(2),
+		common.LogRecordLocInfo{
 			Lsn:      3,
 			Location: common.FileLocation{PageID: 4, SlotNum: 5},
 		},

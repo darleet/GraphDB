@@ -265,18 +265,16 @@ func (m *Manager) FlushAllPages() error {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
-	var err error = nil
+	var err error
 	for pgIdent, pgInfo := range m.pageTable {
 		if !pgInfo.isDirty {
 			continue
 		}
 
 		frame := &m.frames[pgInfo.frameID]
-		func() {
-			frame.Lock()
-			err = errors.Join(err, m.diskManager.WritePage(frame, pgIdent))
-			frame.Unlock()
-		}()
+		frame.Lock()
+		err = errors.Join(err, m.diskManager.WritePage(frame, pgIdent))
+		frame.Unlock()
 
 		pgInfo.isDirty = false
 		m.pageTable[pgIdent] = pgInfo

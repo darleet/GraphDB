@@ -9,7 +9,6 @@ import (
 
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 type LogRecordTypeTag byte
@@ -592,7 +591,7 @@ func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	c.activeTransactions = make([]txns.TxnID, activeTxnsLen)
+	c.activeTransactions = make([]common.TxnID, activeTxnsLen)
 	for i := range c.activeTransactions {
 		if err := binary.Read(reader, binary.BigEndian, &c.activeTransactions[i]); err != nil {
 			return err
@@ -606,7 +605,7 @@ func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 	}
 
 	c.dirtyPageTable = make(
-		map[common.PageIdentity]common.LogRecordLocationInfo,
+		map[common.PageIdentity]common.LogRecordLocInfo,
 		dirtyPagesLen,
 	)
 
@@ -616,7 +615,7 @@ func (c *CheckpointEndLogRecord) UnmarshalBinary(data []byte) error {
 			return err
 		}
 
-		var logInfo common.LogRecordLocationInfo
+		var logInfo common.LogRecordLocInfo
 		if err := binary.Read(reader, binary.BigEndian, &logInfo); err != nil {
 			return err
 		}

@@ -47,11 +47,12 @@ func TestBankTransactions(t *testing.T) {
 	logger := &TxnLogger{
 		pool:      pool,
 		logfileID: generatedFileIDs[0],
-		lastLogLocation: common.LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn:      0,
 			Location: common.FileLocation{PageID: 0, SlotNum: 0},
 		},
 	}
+
 	files := generatedFileIDs[1:]
 
 	START_BALANCE := uint32(60)
@@ -72,12 +73,14 @@ func TestBankTransactions(t *testing.T) {
 	)
 	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
+	txnsTicker := atomic.Uint64{}
+
 	totalMoney := uint32(0)
 	for id := range recordValues {
 		page, err := pool.GetPageNoCreate(id.PageIdentity())
 		require.NoError(t, err)
 		page.Lock()
-		page.Update(id.SlotNum, utils.Uint32ToBytes(START_BALANCE))
+		page.Update(utils.Uint32ToBytes(START_BALANCE), id, NoLogs())
 		totalMoney += START_BALANCE
 		page.Unlock()
 		assert.NoError(t, pool.Unpin(id.PageIdentity()))
@@ -88,14 +91,13 @@ func TestBankTransactions(t *testing.T) {
 		IDs = append(IDs, i)
 	}
 
-	txnsTicker := atomic.Uint64{}
 	locker := txns.NewLocker()
 
 	succ := atomic.Uint64{}
 	wg := sync.WaitGroup{}
 	task := func() {
 		defer wg.Done()
-		txnID := txns.TxnID(txnsTicker.Add(1))
+		txnID := common.TxnID(txnsTicker.Add(1))
 
 		res := generateUniqueInts[int](t, 2, 0, len(IDs)-1)
 		me := IDs[res[0]]

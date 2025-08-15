@@ -2,7 +2,6 @@ package recovery
 
 import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 type txnStatus byte
@@ -14,12 +13,12 @@ const (
 
 type ATTEntry struct {
 	status          txnStatus
-	logLocationInfo common.LogRecordLocationInfo
+	logLocationInfo common.LogRecordLocInfo
 }
 
 func NewATTEntry(
 	status txnStatus,
-	location common.LogRecordLocationInfo,
+	location common.LogRecordLocInfo,
 ) ATTEntry {
 	return ATTEntry{
 		status:          status,
@@ -29,18 +28,18 @@ func NewATTEntry(
 
 // Lecture #21: Database Crash Recovery @CMU
 type ActiveTransactionsTable struct {
-	table map[txns.TxnID]ATTEntry
+	table map[common.TxnID]ATTEntry
 }
 
 func NewActiveTransactionsTable() ActiveTransactionsTable {
 	return ActiveTransactionsTable{
-		table: map[txns.TxnID]ATTEntry{},
+		table: map[common.TxnID]ATTEntry{},
 	}
 }
 
 // returns true iff it is the first record for the transaction
 func (att *ActiveTransactionsTable) Insert(
-	id txns.TxnID,
+	id common.TxnID,
 	tag LogRecordTypeTag,
 	entry ATTEntry,
 ) bool {
