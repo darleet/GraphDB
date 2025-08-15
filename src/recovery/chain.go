@@ -42,7 +42,7 @@ func (c *TxnLogChain) Begin() *TxnLogChain {
 		return c
 	}
 
-	c.lastLocations[c.TransactionID], c.err = c.logger.appendBegin(
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendBegin(
 		c.TransactionID,
 	)
 
@@ -62,7 +62,7 @@ func (c *TxnLogChain) Insert(
 		return c
 	}
 
-	c.lastLocations[c.TransactionID], c.err = c.logger.appendInsert(
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendInsert(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
 		recordID,
@@ -85,7 +85,7 @@ func (c *TxnLogChain) Update(
 		return c
 	}
 
-	c.lastLocations[c.TransactionID], c.err = c.logger.appendUpdate(
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendUpdate(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
 		recordID,
@@ -108,7 +108,7 @@ func (c *TxnLogChain) Delete(
 		return c
 	}
 
-	c.lastLocations[c.TransactionID], c.err = c.logger.appendDelete(
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendDelete(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
 		recordID,
@@ -127,7 +127,7 @@ func (c *TxnLogChain) Commit() *TxnLogChain {
 		return c
 	}
 
-	c.lastLocations[c.TransactionID], c.err = c.logger.appendCommit(
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendCommit(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
 	)
@@ -145,7 +145,7 @@ func (c *TxnLogChain) Abort() *TxnLogChain {
 		return c
 	}
 
-	c.lastLocations[c.TransactionID], c.err = c.logger.appendAbort(
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendAbort(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
 	)
@@ -163,7 +163,7 @@ func (c *TxnLogChain) TxnEnd() *TxnLogChain {
 		return c
 	}
 
-	c.lastLocations[c.TransactionID], c.err = c.logger.appendTxnEnd(
+	c.lastLocations[c.TransactionID], c.err = c.logger.AppendTxnEnd(
 		c.TransactionID,
 		c.lastLocations[c.TransactionID],
 	)

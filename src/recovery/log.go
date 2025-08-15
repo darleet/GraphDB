@@ -54,6 +54,7 @@ func NoLogs() *DummyLoggerWithContext {
 }
 
 var (
+	_ common.ITxnLogger            = &TxnLogger{}
 	_ common.ITxnLoggerWithContext = &txnLoggerWithContext{}
 	_ common.ITxnLoggerWithContext = &DummyLoggerWithContext{}
 )
@@ -370,7 +371,7 @@ func (l *TxnLogger) recoverPrepareCLRs(
 				}
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 
-				_, err := l.appendTxnEnd(record.txnID, entry.logLocationInfo)
+				_, err := l.AppendTxnEnd(record.txnID, entry.logLocationInfo)
 				assert.NoError(err)
 				break outer
 			case TypeInsert:
@@ -623,7 +624,6 @@ func (lockedLogger *TxnLogger) writeLogRecord(
 }
 
 func (l *TxnLogger) NewLSN() common.LSN {
-	panic("check this out!")
 	l.logRecordsCount++
 	lsn := common.LSN(l.logRecordsCount)
 	return lsn
@@ -651,7 +651,7 @@ func marshalRecordAndWrite[T LogRecord](
 	return logInfo, nil
 }
 
-func (l *TxnLogger) appendBegin(
+func (l *TxnLogger) AppendBegin(
 	TransactionID common.TxnID,
 ) (common.LogRecordLocInfo, error) {
 	l.mu.Lock()
@@ -661,7 +661,7 @@ func (l *TxnLogger) appendBegin(
 	return marshalRecordAndWrite(l, &r)
 }
 
-func (l *TxnLogger) appendUpdate(
+func (l *TxnLogger) AppendUpdate(
 	TransactionID common.TxnID,
 	prevLog common.LogRecordLocInfo,
 	recordID common.RecordID,
@@ -702,7 +702,7 @@ func loggerUndoRecord[T RevertableLogRecord](
 	return &clr, location, nil
 }
 
-func (l *TxnLogger) appendInsert(
+func (l *TxnLogger) AppendInsert(
 	txnID common.TxnID,
 	prevLog common.LogRecordLocInfo,
 	recordID common.RecordID,
@@ -721,7 +721,7 @@ func (l *TxnLogger) appendInsert(
 	return marshalRecordAndWrite(l, &r)
 }
 
-func (l *TxnLogger) appendDelete(
+func (l *TxnLogger) AppendDelete(
 	txnID common.TxnID,
 	prevLog common.LogRecordLocInfo,
 	recordID common.RecordID,
@@ -738,7 +738,7 @@ func (l *TxnLogger) appendDelete(
 	return marshalRecordAndWrite(l, &r)
 }
 
-func (l *TxnLogger) appendCommit(
+func (l *TxnLogger) AppendCommit(
 	txnID common.TxnID,
 	prevLog common.LogRecordLocInfo,
 ) (common.LogRecordLocInfo, error) {
@@ -749,7 +749,7 @@ func (l *TxnLogger) appendCommit(
 	return marshalRecordAndWrite(l, &r)
 }
 
-func (l *TxnLogger) appendAbort(
+func (l *TxnLogger) AppendAbort(
 	TransactionID common.TxnID,
 	prevLog common.LogRecordLocInfo,
 ) (common.LogRecordLocInfo, error) {
@@ -760,7 +760,7 @@ func (l *TxnLogger) appendAbort(
 	return marshalRecordAndWrite(l, &r)
 }
 
-func (l *TxnLogger) appendTxnEnd(
+func (l *TxnLogger) AppendTxnEnd(
 	TransactionID common.TxnID,
 	prevLog common.LogRecordLocInfo,
 ) (common.LogRecordLocInfo, error) {
@@ -954,7 +954,7 @@ func (l *DummyLoggerWithContext) Rollback() {
 
 func (l *txnLoggerWithContext) AppendBegin() error {
 	var err error
-	l.lastLogRecordLocation, err = l.logger.appendBegin(l.txnID)
+	l.lastLogRecordLocation, err = l.logger.AppendBegin(l.txnID)
 	return err
 }
 
@@ -962,7 +962,7 @@ func (l *txnLoggerWithContext) AppendDelete(
 	recordID common.RecordID,
 ) (common.LogRecordLocInfo, error) {
 	var err error
-	l.lastLogRecordLocation, err = l.logger.appendDelete(
+	l.lastLogRecordLocation, err = l.logger.AppendDelete(
 		l.txnID,
 		l.lastLogRecordLocation,
 		recordID,
@@ -975,7 +975,7 @@ func (l *txnLoggerWithContext) AppendInsert(
 	value []byte,
 ) (common.LogRecordLocInfo, error) {
 	var err error
-	l.lastLogRecordLocation, err = l.logger.appendInsert(
+	l.lastLogRecordLocation, err = l.logger.AppendInsert(
 		l.txnID,
 		l.lastLogRecordLocation,
 		recordID,
@@ -990,7 +990,7 @@ func (l *txnLoggerWithContext) AppendUpdate(
 	after []byte,
 ) (common.LogRecordLocInfo, error) {
 	var err error
-	l.lastLogRecordLocation, err = l.logger.appendUpdate(
+	l.lastLogRecordLocation, err = l.logger.AppendUpdate(
 		l.txnID,
 		l.lastLogRecordLocation,
 		recordID,
@@ -1002,7 +1002,7 @@ func (l *txnLoggerWithContext) AppendUpdate(
 
 func (l *txnLoggerWithContext) AppendCommit() error {
 	var err error
-	l.lastLogRecordLocation, err = l.logger.appendCommit(
+	l.lastLogRecordLocation, err = l.logger.AppendCommit(
 		l.txnID,
 		l.lastLogRecordLocation,
 	)
@@ -1011,7 +1011,7 @@ func (l *txnLoggerWithContext) AppendCommit() error {
 
 func (l *txnLoggerWithContext) AppendAbort() error {
 	var err error
-	l.lastLogRecordLocation, err = l.logger.appendAbort(
+	l.lastLogRecordLocation, err = l.logger.AppendAbort(
 		l.txnID,
 		l.lastLogRecordLocation,
 	)
@@ -1020,7 +1020,7 @@ func (l *txnLoggerWithContext) AppendAbort() error {
 
 func (l *txnLoggerWithContext) AppendTxnEnd() error {
 	var err error
-	l.lastLogRecordLocation, err = l.logger.appendTxnEnd(
+	l.lastLogRecordLocation, err = l.logger.AppendTxnEnd(
 		l.txnID,
 		l.lastLogRecordLocation,
 	)
