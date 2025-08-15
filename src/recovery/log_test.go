@@ -733,16 +733,16 @@ func TestLoggerRollback(t *testing.T) {
 			defer wg.Done()
 
 			txnID := common.TxnID(txnID.Add(1))
-			chain := NewTxnLogChain(logger, txnID)
-			require.NoError(t, chain.Begin().Err())
+			logger := logger.WithContext(txnID)
+			require.NoError(t, logger.AppendBegin())
 
 			cLockOpt := locker.LockCatalog(
 				txnID,
 				txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 			)
 			if cLockOpt.IsNone() {
-				assert.NoError(t, chain.Abort().Err())
-				logger.Rollback(chain.Loc())
+				assert.NoError(t, logger.AppendAbort())
+				logger.Rollback()
 				return
 			}
 			cLock, cToken := cLockOpt.Unwrap().Destruct()
@@ -758,8 +758,8 @@ func TestLoggerRollback(t *testing.T) {
 					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 				)
 				if tLockOpt.IsNone() {
-					assert.NoError(t, chain.Abort().Err())
-					logger.Rollback(chain.Loc())
+					assert.NoError(t, logger.AppendAbort())
+					logger.Rollback()
 					return
 				}
 				tLock, tToken := tLockOpt.Unwrap().Destruct()
@@ -771,25 +771,23 @@ func TestLoggerRollback(t *testing.T) {
 					txns.PAGE_LOCK_EXCLUSIVE,
 				)
 				if pLockOpt.IsNone() {
-					assert.NoError(t, chain.Abort().Err())
-					logger.Rollback(chain.Loc())
+					assert.NoError(t, logger.AppendAbort())
+					logger.Rollback()
 					return
 				}
 				pLock, _ := pLockOpt.Unwrap().Destruct()
 				<-pLock
 
 				newValue := rand.Uint32()
-				oldValue := updatedValues[info.key]
-				chain.Update(
-					info.key,
-					utils.Uint32ToBytes(oldValue),
-					utils.Uint32ToBytes(newValue),
-				)
-
 				page, err := pool.GetPageNoCreate(info.key.PageIdentity())
 				require.NoError(t, err)
 				page.Lock()
-				page.Update(info.key.SlotNum, utils.Uint32ToBytes(newValue))
+				_, err = page.UpdateWithLogs(
+					utils.Uint32ToBytes(newValue),
+					info.key,
+					logger,
+				)
+				require.NoError(t, err)
 				page.Unlock()
 				require.NoError(t, pool.Unpin(info.key.PageIdentity()))
 			}
@@ -803,8 +801,8 @@ func TestLoggerRollback(t *testing.T) {
 					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 				)
 				if tLockOpt.IsNone() {
-					assert.NoError(t, chain.Abort().Err())
-					logger.Rollback(chain.Loc())
+					assert.NoError(t, logger.AppendAbort())
+					logger.Rollback()
 					return
 				}
 				tLock, tToken := tLockOpt.Unwrap().Destruct()
@@ -816,25 +814,24 @@ func TestLoggerRollback(t *testing.T) {
 					txns.PAGE_LOCK_EXCLUSIVE,
 				)
 				if pLockOpt.IsNone() {
-					assert.NoError(t, chain.Abort().Err())
-					logger.Rollback(chain.Loc())
+					assert.NoError(t, logger.AppendAbort())
+					logger.Rollback()
 					return
 				}
 				pLock, _ := pLockOpt.Unwrap().Destruct()
 				<-pLock
 
-				require.NoError(t, chain.Delete(info.key).Err())
 				page, err := pool.GetPageNoCreate(info.key.PageIdentity())
 				require.NoError(t, err)
 				page.Lock()
-				page.Delete(info.key.SlotNum)
+				_, err = page.DeleteWithLogs(info.key, logger)
+				require.NoError(t, err)
 				page.Unlock()
 				require.NoError(t, pool.Unpin(info.key.PageIdentity()))
 			}
 
-			require.NoError(t, chain.Abort().Err())
-			abortRecordLoc := chain.Loc()
-			logger.Rollback(abortRecordLoc)
+			require.NoError(t, logger.AppendAbort())
+			logger.Rollback()
 		}(batch)
 	}
 	wg.Wait()
