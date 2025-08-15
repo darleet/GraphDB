@@ -370,7 +370,7 @@ func (l *TxnLogger) recoverPrepareCLRs(
 				}
 				assert.Assert(clrsFound == 0, "CLRs aren't balanced out")
 
-				_, err := l.AppendTxnEnd(record.txnID, entry.logLocationInfo)
+				_, err := l.appendTxnEnd(record.txnID, entry.logLocationInfo)
 				assert.NoError(err)
 				break outer
 			case TypeInsert:

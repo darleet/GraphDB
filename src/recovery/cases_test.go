@@ -80,7 +80,7 @@ func TestBankTransactions(t *testing.T) {
 		page, err := pool.GetPageNoCreate(id.PageIdentity())
 		require.NoError(t, err)
 		page.Lock()
-		page.Update(utils.Uint32ToBytes(START_BALANCE), id, NoLogs())
+		page.Update(id.SlotNum, utils.Uint32ToBytes(START_BALANCE))
 		totalMoney += START_BALANCE
 		page.Unlock()
 		assert.NoError(t, pool.Unpin(id.PageIdentity()))
@@ -98,12 +98,13 @@ func TestBankTransactions(t *testing.T) {
 	task := func() {
 		defer wg.Done()
 		txnID := common.TxnID(txnsTicker.Add(1))
+		logger := logger.WithContext(txnID)
 
 		res := generateUniqueInts[int](t, 2, 0, len(IDs)-1)
 		me := IDs[res[0]]
 		first := IDs[res[1]]
 
-		lastLogRecord, err := logger.AppendBegin(txnID)
+		err := logger.AppendBegin()
 		require.NoError(t, err)
 
 		catalogLockOption := locker.LockCatalog(
@@ -121,12 +122,9 @@ func TestBankTransactions(t *testing.T) {
 			txns.GRANULAR_LOCK_INTENTION_SHARED,
 		)
 		if tableLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 
@@ -139,12 +137,9 @@ func TestBankTransactions(t *testing.T) {
 			txns.PAGE_LOCK_SHARED,
 		)
 		if myPageLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 		myPageLock, myPageToken := myPageLockOpt.Unwrap().Destruct()
@@ -159,12 +154,9 @@ func TestBankTransactions(t *testing.T) {
 		myPage.RUnlock()
 
 		if myBalance == 0 {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 
@@ -175,12 +167,9 @@ func TestBankTransactions(t *testing.T) {
 			txns.PAGE_LOCK_SHARED,
 		)
 		if firstPageLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 		firstPageLock, firstPageToken := firstPageLockOpt.Unwrap().
@@ -204,12 +193,9 @@ func TestBankTransactions(t *testing.T) {
 			txns.PAGE_LOCK_EXCLUSIVE,
 		)
 		if myPageUpgradeLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 		<-myPageUpgradeLockOpt.Unwrap()
@@ -219,26 +205,23 @@ func TestBankTransactions(t *testing.T) {
 			txns.PAGE_LOCK_EXCLUSIVE,
 		)
 		if firstPageUpgradeLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 		<-firstPageUpgradeLockOpt.Unwrap()
 
 		myPage.Lock()
 		myNewBalance := utils.Uint32ToBytes(myBalance - transferAmount)
-		myPage.Update(me.SlotNum, myNewBalance)
+		myPage.UpdateWithLogs(myNewBalance, me, logger)
 		myPage.Unlock()
 
 		firstPage.Lock()
 		firstNewBalance := utils.Uint32ToBytes(
 			firstBalance + transferAmount,
 		)
-		firstPage.Update(first.SlotNum, firstNewBalance)
+		firstPage.UpdateWithLogs(firstNewBalance, first, logger)
 		firstPage.Unlock()
 
 		myPage.RLock()
@@ -260,15 +243,12 @@ func TestBankTransactions(t *testing.T) {
 		firstPage.RUnlock()
 
 		if myNewBalanceFromPage < rollbackCutoff {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
-		_, err = logger.AppendCommit(txnID, lastLogRecord)
+		err = logger.AppendCommit()
 		require.NoError(t, err)
 		succ.Add(1)
 	}

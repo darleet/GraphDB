@@ -97,12 +97,12 @@ func (p *SlottedPage) SetPageLSN(lsn common.LSN) {
 
 var ErrNoSpaceLeft error = errors.New("the page is full")
 
-func (p *SlottedPage) Insert(
+func (p *SlottedPage) InsertWithLogs(
 	data []byte,
 	pageIdent common.PageIdentity,
 	ctxLogger common.ITxnLoggerWithContext,
 ) (uint16, common.LogRecordLocInfo, error) {
-	slotOpt := p.insertPrepare(data)
+	slotOpt := p.InsertPrepare(data)
 	if slotOpt.IsNone() {
 		return 0, common.NewNilLogRecordLocation(), ErrNoSpaceLeft
 	}
@@ -114,13 +114,13 @@ func (p *SlottedPage) Insert(
 		SlotNum: slot,
 	}
 	logRecordLoc, err := ctxLogger.AppendInsert(recordID, data)
-	p.insertCommit(slot)
+	p.InsertCommit(slot)
 	p.SetPageLSN(logRecordLoc.Lsn)
 
 	return slot, logRecordLoc, err
 }
 
-func (p *SlottedPage) insertPrepare(data []byte) optional.Optional[uint16] {
+func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
 	header := p.getHeader()
 	// space required to store both the array and it's length
 	requiredLength := int(unsafe.Sizeof(uint16(1))) + len(data)
@@ -159,7 +159,7 @@ func (p *SlottedPage) insertPrepare(data []byte) optional.Optional[uint16] {
 	return optional.Some(curSlot)
 }
 
-func (p *SlottedPage) insertCommit(slotHandle uint16) {
+func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	header := p.getHeader()
 	assert.Assert(
 		uint16(slotHandle) < header.slotsCount,
@@ -203,7 +203,15 @@ func (p *SlottedPage) Read(slotID uint16) []byte {
 	return p.getBytesBySlotPtr(ptr)
 }
 
-func (p *SlottedPage) Delete(
+func (p *SlottedPage) Delete(slotID uint16) {
+	ptr := p.assertSlotInserted(slotID)
+	p.getHeader().getSlots()[slotID] = newSlotPtr(
+		SlotStatusDeleted,
+		ptr.RecordOffset(),
+	)
+}
+
+func (p *SlottedPage) DeleteWithLogs(
 	recordID common.RecordID,
 	ctxLogger common.ITxnLoggerWithContext,
 ) (common.LogRecordLocInfo, error) {
@@ -236,7 +244,15 @@ func (p *SlottedPage) UndoDelete(slotID uint16) {
 	p.UnsafeOverrideSlotStatus(slotID, SlotStatusInserted)
 }
 
-func (p *SlottedPage) Update(
+func (p *SlottedPage) Update(slotID uint16, newData []byte) {
+	data := p.Read(slotID)
+	assert.Assert(len(data) == len(newData))
+
+	clear(data)
+	copy(data, newData)
+}
+
+func (p *SlottedPage) UpdateWithLogs(
 	newData []byte,
 	recordID common.RecordID,
 	ctxLogger common.ITxnLoggerWithContext,
