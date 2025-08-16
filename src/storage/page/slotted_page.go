@@ -45,7 +45,7 @@ func (s slotPointer) RecordOffset() uint16 {
 	return uint16(s) & slotOffsetMask
 }
 
-func (s slotPointer) RecordInfo() slotStatus {
+func (s slotPointer) slotInfo() slotStatus {
 	res := (uint16(s) & (^slotOffsetMask)) >> slotOffsetSize
 	return slotStatus(res)
 }
@@ -114,9 +114,12 @@ func (p *SlottedPage) InsertWithLogs(
 		SlotNum: slot,
 	}
 	logRecordLoc, err := ctxLogger.AppendInsert(recordID, data)
+	if err != nil {
+		return 0, common.NewNilLogRecordLocation(), err
+	}
+
 	p.InsertCommit(slot)
 	p.SetPageLSN(logRecordLoc.Lsn)
-
 	return slot, logRecordLoc, err
 }
 
@@ -171,10 +174,24 @@ func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	slots := header.getSlots()
 	ptr := slots[slotHandle]
 	assert.Assert(
-		ptr.RecordInfo() == SlotStatusPrepareInsert,
+		ptr.slotInfo() == SlotStatusPrepareInsert,
 		"tried to commit an insert to a wrong slot",
 	)
 	slots[slotHandle] = newSlotPtr(SlotStatusInserted, ptr.RecordOffset())
+}
+
+func (p *SlottedPage) UndoInsert(slotID uint16) {
+	header := p.getHeader()
+	assert.Assert(slotID < header.slotsCount, "slotID is too large")
+	ptr := header.getSlots()[slotID]
+	slotInfo := ptr.slotInfo()
+
+	assert.Assert(
+		slotInfo == SlotStatusPrepareInsert || slotInfo == SlotStatusInserted,
+		"tried to call `UndoInsert` on a slot with status %d", ptr.slotInfo(),
+	)
+
+	p.UnsafeOverrideSlotStatus(slotID, SlotStatusDeleted)
 }
 
 func (p *SlottedPage) getBytesBySlotPtr(ptr slotPointer) []byte {
@@ -192,8 +209,8 @@ func (p *SlottedPage) assertSlotInserted(slotID uint16) slotPointer {
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
-		ptr.RecordInfo() == SlotStatusInserted,
-		"tried to read from a slot with status %d", ptr.RecordInfo(),
+		ptr.slotInfo() == SlotStatusInserted,
+		"tried to read from a slot with status %d", ptr.slotInfo(),
 	)
 	return ptr
 }
@@ -237,8 +254,8 @@ func (p *SlottedPage) UndoDelete(slotID uint16) {
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
-		ptr.RecordInfo() == SlotStatusDeleted,
-		"tried to UndoDelete from a slot with status %d", ptr.RecordInfo(),
+		ptr.slotInfo() == SlotStatusDeleted,
+		"tried to UndoDelete from a slot with status %d", ptr.slotInfo(),
 	)
 
 	p.UnsafeOverrideSlotStatus(slotID, SlotStatusInserted)

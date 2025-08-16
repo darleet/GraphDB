@@ -806,7 +806,7 @@ func (l *TxnLogger) activateCLR(record *CompensationLogRecord) {
 
 	switch record.clrType {
 	case CLRtypeInsert:
-		panic("IMPLEMENT a dedicated `UndoInsert` method!")
+		page.UndoInsert(record.modifiedRecordID.SlotNum)
 	case CLRtypeUpdate:
 		page.Update(record.modifiedRecordID.SlotNum, record.afterValue)
 	case CLRtypeDelete:
@@ -953,35 +953,44 @@ func (l *DummyLoggerWithContext) Rollback() {
 }
 
 func (l *txnLoggerWithContext) AppendBegin() error {
-	var err error
-	l.lastLogRecordLocation, err = l.logger.AppendBegin(l.txnID)
-	return err
+	loc, err := l.logger.AppendBegin(l.txnID)
+	if err != nil {
+		return err
+	}
+	l.lastLogRecordLocation = loc
+	return nil
 }
 
 func (l *txnLoggerWithContext) AppendDelete(
 	recordID common.RecordID,
 ) (common.LogRecordLocInfo, error) {
-	var err error
-	l.lastLogRecordLocation, err = l.logger.AppendDelete(
+	loc, err := l.logger.AppendDelete(
 		l.txnID,
 		l.lastLogRecordLocation,
 		recordID,
 	)
-	return l.lastLogRecordLocation, err
+	if err != nil {
+		return common.NewNilLogRecordLocation(), err
+	}
+	l.lastLogRecordLocation = loc
+	return l.lastLogRecordLocation, nil
 }
 
 func (l *txnLoggerWithContext) AppendInsert(
 	recordID common.RecordID,
 	value []byte,
 ) (common.LogRecordLocInfo, error) {
-	var err error
-	l.lastLogRecordLocation, err = l.logger.AppendInsert(
+	loc, err := l.logger.AppendInsert(
 		l.txnID,
 		l.lastLogRecordLocation,
 		recordID,
 		value,
 	)
-	return l.lastLogRecordLocation, err
+	if err != nil {
+		return common.NewNilLogRecordLocation(), err
+	}
+	l.lastLogRecordLocation = loc
+	return l.lastLogRecordLocation, nil
 }
 
 func (l *txnLoggerWithContext) AppendUpdate(
@@ -989,42 +998,54 @@ func (l *txnLoggerWithContext) AppendUpdate(
 	before []byte,
 	after []byte,
 ) (common.LogRecordLocInfo, error) {
-	var err error
-	l.lastLogRecordLocation, err = l.logger.AppendUpdate(
+	loc, err := l.logger.AppendUpdate(
 		l.txnID,
 		l.lastLogRecordLocation,
 		recordID,
 		before,
 		after,
 	)
-	return l.lastLogRecordLocation, err
+	if err != nil {
+		return common.NewNilLogRecordLocation(), err
+	}
+	l.lastLogRecordLocation = loc
+	return l.lastLogRecordLocation, nil
 }
 
 func (l *txnLoggerWithContext) AppendCommit() error {
-	var err error
-	l.lastLogRecordLocation, err = l.logger.AppendCommit(
+	loc, err := l.logger.AppendCommit(
 		l.txnID,
 		l.lastLogRecordLocation,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	l.lastLogRecordLocation = loc
+	return nil
 }
 
 func (l *txnLoggerWithContext) AppendAbort() error {
-	var err error
-	l.lastLogRecordLocation, err = l.logger.AppendAbort(
+	loc, err := l.logger.AppendAbort(
 		l.txnID,
 		l.lastLogRecordLocation,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	l.lastLogRecordLocation = loc
+	return nil
 }
 
 func (l *txnLoggerWithContext) AppendTxnEnd() error {
-	var err error
-	l.lastLogRecordLocation, err = l.logger.AppendTxnEnd(
+	loc, err := l.logger.AppendTxnEnd(
 		l.txnID,
 		l.lastLogRecordLocation,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	l.lastLogRecordLocation = loc
+	return nil
 }
 
 func (l *txnLoggerWithContext) Rollback() {
