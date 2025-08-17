@@ -47,7 +47,7 @@ func TestBankTransactions(t *testing.T) {
 	logger := &txnLogger{
 		pool:      pool,
 		logfileID: generatedFileIDs[0],
-		lastLogLocation: common.LogRecordLocInfo{
+		curLogPage: common.LogRecordLocInfo{
 			Lsn:      0,
 			Location: common.FileLocation{PageID: 0, SlotNum: 0},
 		},

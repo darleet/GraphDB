@@ -24,6 +24,13 @@ func (p Pair[T, K]) Destruct() (T, K) {
 	return p.First, p.Second
 }
 
+func ToBytes[T any](v T) []byte {
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.BigEndian, v)
+	assert.NoError(err)
+	return buf.Bytes()
+}
+
 func Uint32ToBytes(num uint32) []byte {
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.BigEndian, num)

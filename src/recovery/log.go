@@ -13,8 +13,63 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 )
 
+type loggerInfoPage page.SlottedPage
+
+const (
+	loggerMasterRecordSlot = iota
+	loggerLastLocationSlot
+)
+
+func (p *loggerInfoPage) GetMasterRecord() common.LSN {
+	o := (*page.SlottedPage)(p)
+	return common.LSN(utils.BytesToUint32(o.Read(loggerMasterRecordSlot)))
+}
+
+func (p *loggerInfoPage) GetLastLocation() common.LogRecordLocInfo {
+	o := (*page.SlottedPage)(p)
+	var loc common.LogRecordLocInfo
+	assert.NoError(loc.UnmarshalBinary(o.Read(loggerLastLocationSlot)))
+	return loc
+}
+
+func (p *loggerInfoPage) setInfo(
+	newLSN common.LSN,
+	newLocation common.FileLocation,
+) {
+	o := (*page.SlottedPage)(p)
+	o.Lock()
+	defer o.Unlock()
+	oldValue := common.LSN(
+		utils.BytesToUint32((o.Read(loggerMasterRecordSlot))),
+	)
+	if oldValue >= newLSN {
+		return
+	}
+	o.Update(loggerMasterRecordSlot, utils.ToBytes(newLSN))
+
+	data, err := newLocation.MarshalBinary()
+	assert.NoError(err)
+	o.Update(loggerLastLocationSlot, data)
+}
+
+func (p *loggerInfoPage) Clear() {
+	o := (*page.SlottedPage)(p)
+	o.Clear()
+
+	slotOpt := o.Insert(utils.Uint32ToBytes(0))
+	assert.Assert(slotOpt.IsSome())
+	assert.Assert(slotOpt.Unwrap() == loggerMasterRecordSlot)
+
+	dummyRecord := common.LogRecordLocInfo{}
+	slotOpt = page.InsertSerializable(o, &dummyRecord)
+	assert.Assert(slotOpt.IsSome())
+	assert.Assert(slotOpt.Unwrap() == loggerLastLocationSlot)
+}
+
 type txnLogger struct {
-	pool bufferpool.BufferPool
+	pool       bufferpool.BufferPool
+	logfileID  common.FileID
+	masterPage *page.SlottedPage
 
 	// ================
 	// лок на запись логов. Нужно для четкой упорядоченности
@@ -22,8 +77,8 @@ type txnLogger struct {
 	mu sync.Mutex
 	// "где-то" лежит на диске
 	logRecordsCount uint64
-	logfileID       common.FileID
-	lastLogLocation common.LogRecordLocInfo
+	curLogPage      common.PageID
+	lastFlushedPage common.PageID
 	// ================
 
 	getActiveTransactions func() []common.TxnID // Прийдет из лок менеджера
@@ -33,19 +88,22 @@ func newTxnLogger(
 	pool bufferpool.BufferPool,
 	logFileID common.FileID,
 ) *txnLogger {
+	panic("INIT THE FIELDS PROPERLY!")
 	l := &txnLogger{
-		pool:            pool,
-		logfileID:       logFileID,
-		lastLogLocation: common.LogRecordLocInfo{},
+		pool:       pool,
+		logfileID:  logFileID,
+		curLogPage: common.PageID(0),
 		getActiveTransactions: func() []common.TxnID {
 			panic("TODO")
 		},
+		lastFlushedPage: 0,
 	}
 
 	// this will load master log record's page into memory
-	// note that we don't call Unpin(). We are going to need this
+	// note that we don't call `Unpin()`. We are going to need this
 	// page during replacement.
-	_, err := pool.GetPage(common.PageIdentity{
+	var err error
+	l.masterPage, err = pool.GetPage(common.PageIdentity{
 		FileID: logFileID,
 		PageID: 0,
 	})
@@ -613,7 +671,7 @@ func (lockedLogger *txnLogger) writeLogRecord(
 ) (common.FileLocation, error) {
 	pageInfo := common.PageIdentity{
 		FileID: lockedLogger.logfileID,
-		PageID: lockedLogger.lastLogLocation.Location.PageID,
+		PageID: lockedLogger.curLogPage.PageID,
 	}
 
 	p, err := lockedLogger.pool.GetPage(pageInfo)
@@ -626,11 +684,11 @@ func (lockedLogger *txnLogger) writeLogRecord(
 	lockedLogger.pool.Unpin(pageInfo)
 	if slotNumberOpt.IsSome() {
 		slotNumber := slotNumberOpt.Unwrap()
-		lockedLogger.lastLogLocation.Location.SlotNum = slotNumber
-		return lockedLogger.lastLogLocation.Location, err
+		lockedLogger.curLogPage.SlotNum = slotNumber
+		return lockedLogger.curLogPage, err
 	}
 
-	lockedLogger.lastLogLocation.Location.PageID++
+	lockedLogger.curLogPage.PageID++
 	pageInfo.PageID++
 
 	p, err = lockedLogger.pool.GetPage(pageInfo)
@@ -648,9 +706,9 @@ func (lockedLogger *txnLogger) writeLogRecord(
 	p.Unlock()
 
 	lockedLogger.pool.Unpin(pageInfo)
-	lockedLogger.lastLogLocation.Location.SlotNum = slotNumberOpt.Unwrap()
+	lockedLogger.curLogPage.SlotNum = slotNumberOpt.Unwrap()
 
-	return lockedLogger.lastLogLocation.Location, err
+	return lockedLogger.curLogPage, err
 }
 
 func (l *txnLogger) NewLSN() common.LSN {

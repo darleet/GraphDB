@@ -25,7 +25,7 @@ func TestChainSanity(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocInfo{
+		curLogPage: common.LogRecordLocInfo{
 			Lsn: 123,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
@@ -248,7 +248,7 @@ func TestChain(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocInfo{
+		curLogPage: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,

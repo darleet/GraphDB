@@ -1,6 +1,7 @@
 package page
 
 import (
+	"encoding"
 	"errors"
 	"sync"
 	"unsafe"
@@ -344,4 +345,22 @@ func (p *SlottedPage) UnsafeOverrideSlotStatus(
 	slot := header.getSlots()[slotNumber]
 
 	header.getSlots()[slotNumber] = newSlotPtr(newStatus, slot.RecordOffset())
+}
+
+func Get[T encoding.BinaryUnmarshaler](
+	p *SlottedPage,
+	slotID uint16,
+	dst T,
+) error {
+	data := p.Read(slotID)
+	return dst.UnmarshalBinary(data)
+}
+
+func InsertSerializable[T encoding.BinaryMarshaler](
+	p *SlottedPage,
+	obj T,
+) optional.Optional[uint16] {
+	bytes, err := obj.MarshalBinary()
+	assert.Assert(err != nil)
+	return p.Insert(bytes)
 }

@@ -113,7 +113,7 @@ func TestIterSanity(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocInfo{
+		curLogPage: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,

@@ -29,7 +29,7 @@ func TestValidRecovery(t *testing.T) {
 	logger := &txnLogger{
 		pool:            pool,
 		logfileID:       1,
-		lastLogLocation: loggerStart,
+		curLogPage: loggerStart,
 	}
 
 	defer func() {
@@ -76,7 +76,7 @@ func TestValidRecovery(t *testing.T) {
 	logger2 := &txnLogger{
 		pool:            pool,
 		logfileID:       logger.logfileID,
-		lastLogLocation: logger.lastLogLocation,
+		curLogPage: logger.curLogPage,
 	}
 	checkpoint := common.FileLocation{PageID: 0, SlotNum: 0}
 	logger2.Recover(checkpoint)
@@ -115,7 +115,7 @@ func TestFailedTxn(t *testing.T) {
 	logger := &txnLogger{
 		pool:            pool,
 		logfileID:       1,
-		lastLogLocation: logStart,
+		curLogPage: logStart,
 	}
 	pageIdent := common.PageIdentity{FileID: 1, PageID: 42}
 
@@ -221,7 +221,7 @@ func TestMassiveRecovery(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocInfo{
+		curLogPage: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
@@ -470,7 +470,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocInfo{
+		curLogPage: common.LogRecordLocInfo{
 			Lsn: 0,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
@@ -679,7 +679,7 @@ func TestLoggerRollback(t *testing.T) {
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
 		logfileID:       logPageId.FileID,
-		lastLogLocation: common.LogRecordLocInfo{
+		curLogPage: common.LogRecordLocInfo{
 			Lsn:      0,
 			Location: logStartLocation,
 		},
