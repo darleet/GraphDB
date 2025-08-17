@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
@@ -42,15 +43,16 @@ func TestBankTransactions(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock()
 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
-	generatedFileIDs := generateUniqueInts[uint64](t, 2, 0, 1024)
+	generatedFileIDs := generateUniqueInts[common.FileID](t, 2, 0, 1024)
 	logger := &TxnLogger{
 		pool:      pool,
 		logfileID: generatedFileIDs[0],
-		lastLogLocation: LogRecordLocationInfo{
+		lastLogLocation: common.LogRecordLocInfo{
 			Lsn:      0,
-			Location: FileLocation{PageID: 0, SlotNum: 0},
+			Location: common.FileLocation{PageID: 0, SlotNum: 0},
 		},
 	}
+
 	files := generatedFileIDs[1:]
 
 	START_BALANCE := uint32(60)
@@ -71,6 +73,8 @@ func TestBankTransactions(t *testing.T) {
 	)
 	require.NoError(t, pool.EnsureAllPagesUnpinned())
 
+	txnsTicker := atomic.Uint64{}
+
 	totalMoney := uint32(0)
 	for id := range recordValues {
 		page, err := pool.GetPageNoCreate(id.PageIdentity())
@@ -82,70 +86,57 @@ func TestBankTransactions(t *testing.T) {
 		assert.NoError(t, pool.Unpin(id.PageIdentity()))
 	}
 
-	IDs := []RecordID{}
+	IDs := []common.RecordID{}
 	for i := range recordValues {
 		IDs = append(IDs, i)
 	}
 
-	txnsTicker := atomic.Uint64{}
 	locker := txns.NewLocker()
 
 	succ := atomic.Uint64{}
 	wg := sync.WaitGroup{}
 	task := func() {
 		defer wg.Done()
-		txnID := txns.TxnID(txnsTicker.Add(1))
+		txnID := common.TxnID(txnsTicker.Add(1))
+		logger := logger.WithContext(txnID)
 
 		res := generateUniqueInts[int](t, 2, 0, len(IDs)-1)
 		me := IDs[res[0]]
 		first := IDs[res[1]]
 
-		lastLogRecord, err := logger.AppendBegin(txnID)
+		err := logger.AppendBegin()
 		require.NoError(t, err)
 
-		catalogLockOption := locker.LockCatalog(
+		ctoken := locker.LockCatalog(
 			txnID,
 			txns.GRANULAR_LOCK_INTENTION_SHARED,
 		)
-		require.True(t, catalogLockOption.IsSome())
-		n, ctoken := catalogLockOption.Unwrap().Destruct()
-		<-n
+		require.NotNil(t, ctoken)
 		defer locker.Unlock(ctoken)
 
-		tableLockOpt := locker.LockFile(
+		ttoken := locker.LockFile(
 			ctoken,
-			txns.FileID(me.FileID),
+			common.FileID(me.FileID),
 			txns.GRANULAR_LOCK_INTENTION_SHARED,
 		)
-		if tableLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+		if ttoken == nil {
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 
-		tableLock, ttoken := tableLockOpt.Unwrap().Destruct()
-		<-tableLock
-
-		myPageLockOpt := locker.LockPage(
+		myPageToken := locker.LockPage(
 			ttoken,
-			txns.PageID(me.PageID),
+			common.PageID(me.PageID),
 			txns.PAGE_LOCK_SHARED,
 		)
-		if myPageLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+		if myPageToken == nil {
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
-		myPageLock, myPageToken := myPageLockOpt.Unwrap().Destruct()
-		<-myPageLock
 
 		myPage, err := pool.GetPageNoCreate(me.PageIdentity())
 		require.NoError(t, err)
@@ -156,33 +147,24 @@ func TestBankTransactions(t *testing.T) {
 		myPage.RUnlock()
 
 		if myBalance == 0 {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
 
 		// try to read the first guy's balance
-		firstPageLockOpt := locker.LockPage(
+		firstPageToken := locker.LockPage(
 			ttoken,
-			txns.PageID(first.PageID),
+			common.PageID(first.PageID),
 			txns.PAGE_LOCK_SHARED,
 		)
-		if firstPageLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+		if firstPageToken == nil {
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
-		firstPageLock, firstPageToken := firstPageLockOpt.Unwrap().
-			Destruct()
-		<-firstPageLock
 
 		firstPage, err := pool.GetPageNoCreate(first.PageIdentity())
 		require.NoError(t, err)
@@ -196,46 +178,30 @@ func TestBankTransactions(t *testing.T) {
 
 		// transfering
 		transferAmount := uint32(rand.Intn(int(myBalance)))
-		myPageUpgradeLockOpt := locker.UpgradePageLock(
-			myPageToken,
-			txns.PAGE_LOCK_EXCLUSIVE,
-		)
-		if myPageUpgradeLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+		if !locker.UpgradePageLock(myPageToken, txns.PAGE_LOCK_EXCLUSIVE) {
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
-		<-myPageUpgradeLockOpt.Unwrap()
 
-		firstPageUpgradeLockOpt := locker.UpgradePageLock(
-			firstPageToken,
-			txns.PAGE_LOCK_EXCLUSIVE,
-		)
-		if firstPageUpgradeLockOpt.IsNone() {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+		if !locker.UpgradePageLock(firstPageToken, txns.PAGE_LOCK_EXCLUSIVE) {
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
-		<-firstPageUpgradeLockOpt.Unwrap()
 
 		myPage.Lock()
 		myNewBalance := utils.Uint32ToBytes(myBalance - transferAmount)
-		myPage.Update(me.SlotNum, myNewBalance)
+		_, err = myPage.UpdateWithLogs(myNewBalance, me, logger)
+		require.NoError(t, err)
 		myPage.Unlock()
 
 		firstPage.Lock()
-		firstNewBalance := utils.Uint32ToBytes(
-			firstBalance + transferAmount,
-		)
-		firstPage.Update(first.SlotNum, firstNewBalance)
+		firstNewBalance := utils.Uint32ToBytes(firstBalance + transferAmount)
+		_, err = firstPage.UpdateWithLogs(firstNewBalance, first, logger)
+		require.NoError(t, err)
 		firstPage.Unlock()
 
 		myPage.RLock()
@@ -257,15 +223,12 @@ func TestBankTransactions(t *testing.T) {
 		firstPage.RUnlock()
 
 		if myNewBalanceFromPage < rollbackCutoff {
-			lastLogRecord, err = logger.AppendAbort(
-				txnID,
-				lastLogRecord,
-			)
+			err = logger.AppendAbort()
 			require.NoError(t, err)
-			logger.Rollback(lastLogRecord)
+			logger.Rollback()
 			return
 		}
-		_, err = logger.AppendCommit(txnID, lastLogRecord)
+		err = logger.AppendCommit()
 		require.NoError(t, err)
 		succ.Add(1)
 	}
