@@ -194,14 +194,14 @@ func TestBankTransactions(t *testing.T) {
 
 		myPage.Lock()
 		myNewBalance := utils.Uint32ToBytes(myBalance - transferAmount)
-		myPage.UpdateWithLogs(myNewBalance, me, logger)
+		_, err = myPage.UpdateWithLogs(myNewBalance, me, logger)
+		require.NoError(t, err)
 		myPage.Unlock()
 
 		firstPage.Lock()
-		firstNewBalance := utils.Uint32ToBytes(
-			firstBalance + transferAmount,
-		)
-		firstPage.UpdateWithLogs(firstNewBalance, first, logger)
+		firstNewBalance := utils.Uint32ToBytes(firstBalance + transferAmount)
+		_, err = firstPage.UpdateWithLogs(firstNewBalance, first, logger)
+		require.NoError(t, err)
 		firstPage.Unlock()
 
 		myPage.RLock()
