@@ -14,7 +14,7 @@ import (
 )
 
 type TxnLogger struct {
-	pool bufferpool.BufferPool[*page.SlottedPage]
+	pool bufferpool.BufferPool
 
 	// ================
 	// лок на запись логов. Нужно для четкой упорядоченности

@@ -41,10 +41,10 @@ type DiskManager[T Page] interface {
 	WritePage(page T, pageIdent common.PageIdentity) error
 }
 
-type BufferPool[T Page] interface {
+type BufferPool interface {
 	Unpin(common.PageIdentity) error
-	GetPage(common.PageIdentity) (T, error)
-	GetPageNoCreate(common.PageIdentity) (T, error)
+	GetPage(common.PageIdentity) (*page.SlottedPage, error)
+	GetPageNoCreate(common.PageIdentity) (*page.SlottedPage, error)
 	FlushPage(common.PageIdentity) error
 }
 
@@ -96,7 +96,7 @@ func New(
 }
 
 var (
-	_ BufferPool[*page.SlottedPage] = &Manager{}
+	_ BufferPool = &Manager{}
 )
 
 func (m *Manager) Unpin(pIdent common.PageIdentity) error {

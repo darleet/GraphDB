@@ -17,7 +17,7 @@ type BufferPool_mock struct {
 }
 
 var (
-	_ BufferPool[*page.SlottedPage] = &BufferPool_mock{}
+	_ BufferPool = &BufferPool_mock{}
 )
 
 func NewBufferPoolMock() *BufferPool_mock {

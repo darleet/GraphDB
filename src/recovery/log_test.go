@@ -17,7 +17,6 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
-	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
@@ -189,7 +188,7 @@ func TestFailedTxn(t *testing.T) {
 
 func insertValueNoLogs(
 	t *testing.T,
-	pool bufferpool.BufferPool[*page.SlottedPage],
+	pool bufferpool.BufferPool,
 	pageId common.PageIdentity,
 	data []byte,
 ) (optional.Optional[uint16], error) {
@@ -434,7 +433,7 @@ func assertLogRecord(
 
 func assertLogRecordWithRetrieval(
 	t *testing.T,
-	pool bufferpool.BufferPool[*page.SlottedPage],
+	pool bufferpool.BufferPool,
 	recordID common.RecordID,
 	expectedRecordType LogRecordTypeTag,
 	expectedTransactionID common.TxnID,

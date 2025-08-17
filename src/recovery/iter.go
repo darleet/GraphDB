@@ -12,14 +12,14 @@ type LogRecordsIter struct {
 	logfileID common.FileID
 	curLoc    common.FileLocation
 
-	pool       bufferpool.BufferPool[*page.SlottedPage]
+	pool       bufferpool.BufferPool
 	lockedPage *page.SlottedPage
 }
 
 func newLogRecordIter(
 	logfileID common.FileID,
 	curLoc common.FileLocation,
-	pool bufferpool.BufferPool[*page.SlottedPage],
+	pool bufferpool.BufferPool,
 	lockedPage *page.SlottedPage,
 ) *LogRecordsIter {
 	return &LogRecordsIter{
