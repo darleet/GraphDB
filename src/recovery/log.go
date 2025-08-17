@@ -85,6 +85,48 @@ func (l *TxnLogger) iter(
 	return iter, nil
 }
 
+func logRecordToString(tag LogRecordTypeTag, untypedRecord any) string {
+	switch tag {
+	case TypeBegin:
+		r := assert.Cast[BeginLogRecord](untypedRecord)
+		return r.String()
+	case TypeInsert:
+		r := assert.Cast[InsertLogRecord](untypedRecord)
+		return r.String()
+	case TypeUpdate:
+		r := assert.Cast[UpdateLogRecord](untypedRecord)
+		return r.String()
+	case TypeDelete:
+		r := assert.Cast[DeleteLogRecord](untypedRecord)
+		return r.String()
+	case TypeCommit:
+		r := assert.Cast[CommitLogRecord](untypedRecord)
+		return r.String()
+	case TypeAbort:
+		r := assert.Cast[AbortLogRecord](untypedRecord)
+		return r.String()
+	case TypeTxnEnd:
+		r := assert.Cast[TxnEndLogRecord](untypedRecord)
+		return r.String()
+	case TypeCheckpointBegin:
+		r := assert.Cast[CheckpointBeginLogRecord](untypedRecord)
+		return r.String()
+	case TypeCheckpointEnd:
+		r := assert.Cast[CheckpointEndLogRecord](untypedRecord)
+		return r.String()
+	case TypeCompensation:
+		r := assert.Cast[CompensationLogRecord](untypedRecord)
+		return r.String()
+	default:
+		assert.Assert(
+			tag < TypeUnknown,
+			"unknown log record type tag: %#v",
+			tag,
+		)
+		panic("unreachable")
+	}
+}
+
 func (l *TxnLogger) Dump(start common.FileLocation, b *strings.Builder) {
 	iter, err := l.iter(start)
 	if err != nil {
@@ -96,43 +138,10 @@ func (l *TxnLogger) Dump(start common.FileLocation, b *strings.Builder) {
 		if err != nil {
 			return
 		}
-
 		loc := iter.Location()
 		fmt.Fprintf(b, "[%d@%d]: ", loc.PageID, loc.SlotNum)
-		switch tag {
-		case TypeBegin:
-			r := assert.Cast[BeginLogRecord](record)
-			b.WriteString(r.String())
-		case TypeInsert:
-			r := assert.Cast[InsertLogRecord](record)
-			b.WriteString(r.String())
-		case TypeUpdate:
-			r := assert.Cast[UpdateLogRecord](record)
-			b.WriteString(r.String())
-		case TypeDelete:
-			r := assert.Cast[DeleteLogRecord](record)
-			b.WriteString(r.String())
-		case TypeCommit:
-			r := assert.Cast[CommitLogRecord](record)
-			b.WriteString(r.String())
-		case TypeAbort:
-			r := assert.Cast[AbortLogRecord](record)
-			b.WriteString(r.String())
-		case TypeTxnEnd:
-			r := assert.Cast[TxnEndLogRecord](record)
-			b.WriteString(r.String())
-		case TypeCheckpointBegin:
-			r := assert.Cast[CheckpointBeginLogRecord](record)
-			b.WriteString(r.String())
-		case TypeCheckpointEnd:
-			r := assert.Cast[CheckpointEndLogRecord](record)
-			b.WriteString(r.String())
-		case TypeCompensation:
-			r := assert.Cast[CompensationLogRecord](record)
-			b.WriteString(r.String())
-		}
+		b.WriteString(logRecordToString(tag, record))
 		b.WriteString("\n")
-
 		success, err := iter.MoveForward()
 		if err != nil || !success {
 			break

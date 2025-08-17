@@ -21,9 +21,14 @@ type PageIdentity struct {
 
 func (p PageIdentity) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	_ = binary.Write(buf, binary.BigEndian, p.FileID)
-	_ = binary.Write(buf, binary.BigEndian, p.PageID)
-
+	err := binary.Write(buf, binary.BigEndian, p.FileID)
+	if err != nil {
+		return nil, err
+	}
+	err = binary.Write(buf, binary.BigEndian, p.PageID)
+	if err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
 }
 
