@@ -736,47 +736,41 @@ func TestLoggerRollback(t *testing.T) {
 			logger := logger.WithContext(txnID)
 			require.NoError(t, logger.AppendBegin())
 
-			cLockOpt := locker.LockCatalog(
+			cToken := locker.LockCatalog(
 				txnID,
 				txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 			)
-			if cLockOpt.IsNone() {
+			if cToken == nil {
 				assert.NoError(t, logger.AppendAbort())
 				logger.Rollback()
 				return
 			}
-			cLock, cToken := cLockOpt.Unwrap().Destruct()
-			<-cLock
 			defer locker.Unlock(cToken)
 
 			for j := range len(batch) * 3 / 2 {
 				info := batch[j%len(batch)]
 
-				tLockOpt := locker.LockFile(
+				tToken := locker.LockFile(
 					cToken,
 					common.FileID(info.key.FileID),
 					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 				)
-				if tLockOpt.IsNone() {
+				if tToken == nil {
 					assert.NoError(t, logger.AppendAbort())
 					logger.Rollback()
 					return
 				}
-				tLock, tToken := tLockOpt.Unwrap().Destruct()
-				<-tLock
 
-				pLockOpt := locker.LockPage(
+				ptoken := locker.LockPage(
 					tToken,
 					common.PageID(info.key.PageID),
 					txns.PAGE_LOCK_EXCLUSIVE,
 				)
-				if pLockOpt.IsNone() {
+				if ptoken == nil {
 					assert.NoError(t, logger.AppendAbort())
 					logger.Rollback()
 					return
 				}
-				pLock, _ := pLockOpt.Unwrap().Destruct()
-				<-pLock
 
 				newValue := rand.Uint32()
 				page, err := pool.GetPageNoCreate(info.key.PageIdentity())
@@ -795,31 +789,27 @@ func TestLoggerRollback(t *testing.T) {
 			for j := range len(batch) / 3 {
 				info := batch[j]
 
-				tLockOpt := locker.LockFile(
+				tToken := locker.LockFile(
 					cToken,
 					common.FileID(info.key.FileID),
 					txns.GRANULAR_LOCK_INTENTION_EXCLUSIVE,
 				)
-				if tLockOpt.IsNone() {
+				if tToken == nil {
 					assert.NoError(t, logger.AppendAbort())
 					logger.Rollback()
 					return
 				}
-				tLock, tToken := tLockOpt.Unwrap().Destruct()
-				<-tLock
 
-				pLockOpt := locker.LockPage(
+				ptoken := locker.LockPage(
 					tToken,
 					common.PageID(info.key.PageID),
 					txns.PAGE_LOCK_EXCLUSIVE,
 				)
-				if pLockOpt.IsNone() {
+				if ptoken == nil {
 					assert.NoError(t, logger.AppendAbort())
 					logger.Rollback()
 					return
 				}
-				pLock, _ := pLockOpt.Unwrap().Destruct()
-				<-pLock
 
 				page, err := pool.GetPageNoCreate(info.key.PageIdentity())
 				require.NoError(t, err)

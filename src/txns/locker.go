@@ -2,8 +2,6 @@ package txns
 
 import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
-	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
 )
 
 type Locker struct {
@@ -60,7 +58,7 @@ func newPageLockToken(
 func (l *Locker) LockCatalog(
 	txnID common.TxnID,
 	lockMode GranularLockMode,
-) optional.Optional[utils.Pair[<-chan struct{}, *catalogLockToken]] {
+) *catalogLockToken {
 	r := TxnLockRequest[GranularLockMode, struct{}]{
 		txnID:    txnID,
 		objectId: struct{}{},
@@ -69,46 +67,35 @@ func (l *Locker) LockCatalog(
 
 	n := l.catalogLockManager.Lock(r)
 	if n == nil {
-		return optional.None[utils.Pair[<-chan struct{}, *catalogLockToken]]()
+		return nil
 	}
+	<-n
 
-	return optional.Some(
-		utils.Pair[<-chan struct{}, *catalogLockToken]{
-			First:  n,
-			Second: newCatalogLockToken(r.txnID),
-		},
-	)
+	return newCatalogLockToken(r.txnID)
 }
 
 func (l *Locker) LockFile(
 	t *catalogLockToken,
 	fileID common.FileID,
 	lockMode GranularLockMode,
-) optional.Optional[utils.Pair[<-chan struct{}, *fileLockToken]] {
+) *fileLockToken {
 	n := l.fileLockManager.Lock(TxnLockRequest[GranularLockMode, common.FileID]{
 		txnID:    t.txnID,
 		objectId: fileID,
 		lockMode: lockMode,
 	})
 	if n == nil {
-		return optional.None[utils.Pair[<-chan struct{}, *fileLockToken]]()
+		return nil
 	}
-
-	tt := newFileLockToken(t.txnID, fileID)
-
-	return optional.Some(
-		utils.Pair[<-chan struct{}, *fileLockToken]{
-			First:  n,
-			Second: tt,
-		},
-	)
+	<-n
+	return newFileLockToken(t.txnID, fileID)
 }
 
 func (l *Locker) LockPage(
 	t *fileLockToken,
 	pageID common.PageID,
 	lockMode PageLockMode,
-) optional.Optional[utils.Pair[<-chan struct{}, *pageLockToken]] {
+) *pageLockToken {
 	pageIdent := common.PageIdentity{
 		FileID: t.fileID,
 		PageID: pageID,
@@ -122,15 +109,11 @@ func (l *Locker) LockPage(
 
 	n := l.pageLockManager.Lock(lockRequest)
 	if n == nil {
-		return optional.None[utils.Pair[<-chan struct{}, *pageLockToken]]()
+		return nil
 	}
+	<-n
 
-	return optional.Some(
-		utils.Pair[<-chan struct{}, *pageLockToken]{
-			First:  n,
-			Second: newPageLockToken(t.txnID, pageIdent),
-		},
-	)
+	return newPageLockToken(t.txnID, pageIdent)
 }
 
 func (l *Locker) Unlock(t *catalogLockToken) {
@@ -142,7 +125,7 @@ func (l *Locker) Unlock(t *catalogLockToken) {
 func (l *Locker) UpgradeCatalogLock(
 	t *catalogLockToken,
 	lockMode GranularLockMode,
-) optional.Optional[<-chan struct{}] {
+) bool {
 	n := l.catalogLockManager.Upgrade(
 		TxnLockRequest[GranularLockMode, struct{}]{
 			txnID:    t.txnID,
@@ -152,15 +135,16 @@ func (l *Locker) UpgradeCatalogLock(
 	)
 
 	if n == nil {
-		return optional.None[<-chan struct{}]()
+		return false
 	}
-	return optional.Some(n)
+	<-n
+	return true
 }
 
 func (l *Locker) UpgradeFileLock(
 	t *fileLockToken,
 	lockMode GranularLockMode,
-) optional.Optional[<-chan struct{}] {
+) bool {
 	n := l.fileLockManager.Upgrade(
 		TxnLockRequest[GranularLockMode, common.FileID]{
 			txnID:    t.txnID,
@@ -169,15 +153,16 @@ func (l *Locker) UpgradeFileLock(
 		},
 	)
 	if n == nil {
-		return optional.None[<-chan struct{}]()
+		return false
 	}
-	return optional.Some(n)
+	<-n
+	return true
 }
 
 func (l *Locker) UpgradePageLock(
 	t *pageLockToken,
 	lockMode PageLockMode,
-) optional.Optional[<-chan struct{}] {
+) bool {
 	lockRequest := TxnLockRequest[PageLockMode, common.PageIdentity]{
 		txnID:    t.txnID,
 		objectId: t.pageID,
@@ -186,7 +171,8 @@ func (l *Locker) UpgradePageLock(
 
 	n := l.pageLockManager.Upgrade(lockRequest)
 	if n == nil {
-		return optional.None[<-chan struct{}]()
+		return false
 	}
-	return optional.Some(n)
+	<-n
+	return true
 }

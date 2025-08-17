@@ -107,43 +107,36 @@ func TestBankTransactions(t *testing.T) {
 		err := logger.AppendBegin()
 		require.NoError(t, err)
 
-		catalogLockOption := locker.LockCatalog(
+		ctoken := locker.LockCatalog(
 			txnID,
 			txns.GRANULAR_LOCK_INTENTION_SHARED,
 		)
-		require.True(t, catalogLockOption.IsSome())
-		n, ctoken := catalogLockOption.Unwrap().Destruct()
-		<-n
+		require.NotNil(t, ctoken)
 		defer locker.Unlock(ctoken)
 
-		tableLockOpt := locker.LockFile(
+		ttoken := locker.LockFile(
 			ctoken,
 			common.FileID(me.FileID),
 			txns.GRANULAR_LOCK_INTENTION_SHARED,
 		)
-		if tableLockOpt.IsNone() {
+		if ttoken == nil {
 			err = logger.AppendAbort()
 			require.NoError(t, err)
 			logger.Rollback()
 			return
 		}
 
-		tableLock, ttoken := tableLockOpt.Unwrap().Destruct()
-		<-tableLock
-
-		myPageLockOpt := locker.LockPage(
+		myPageToken := locker.LockPage(
 			ttoken,
 			common.PageID(me.PageID),
 			txns.PAGE_LOCK_SHARED,
 		)
-		if myPageLockOpt.IsNone() {
+		if myPageToken == nil {
 			err = logger.AppendAbort()
 			require.NoError(t, err)
 			logger.Rollback()
 			return
 		}
-		myPageLock, myPageToken := myPageLockOpt.Unwrap().Destruct()
-		<-myPageLock
 
 		myPage, err := pool.GetPageNoCreate(me.PageIdentity())
 		require.NoError(t, err)
@@ -161,20 +154,17 @@ func TestBankTransactions(t *testing.T) {
 		}
 
 		// try to read the first guy's balance
-		firstPageLockOpt := locker.LockPage(
+		firstPageToken := locker.LockPage(
 			ttoken,
 			common.PageID(first.PageID),
 			txns.PAGE_LOCK_SHARED,
 		)
-		if firstPageLockOpt.IsNone() {
+		if firstPageToken == nil {
 			err = logger.AppendAbort()
 			require.NoError(t, err)
 			logger.Rollback()
 			return
 		}
-		firstPageLock, firstPageToken := firstPageLockOpt.Unwrap().
-			Destruct()
-		<-firstPageLock
 
 		firstPage, err := pool.GetPageNoCreate(first.PageIdentity())
 		require.NoError(t, err)
@@ -188,29 +178,19 @@ func TestBankTransactions(t *testing.T) {
 
 		// transfering
 		transferAmount := uint32(rand.Intn(int(myBalance)))
-		myPageUpgradeLockOpt := locker.UpgradePageLock(
-			myPageToken,
-			txns.PAGE_LOCK_EXCLUSIVE,
-		)
-		if myPageUpgradeLockOpt.IsNone() {
+		if !locker.UpgradePageLock(myPageToken, txns.PAGE_LOCK_EXCLUSIVE) {
 			err = logger.AppendAbort()
 			require.NoError(t, err)
 			logger.Rollback()
 			return
 		}
-		<-myPageUpgradeLockOpt.Unwrap()
 
-		firstPageUpgradeLockOpt := locker.UpgradePageLock(
-			firstPageToken,
-			txns.PAGE_LOCK_EXCLUSIVE,
-		)
-		if firstPageUpgradeLockOpt.IsNone() {
+		if !locker.UpgradePageLock(firstPageToken, txns.PAGE_LOCK_EXCLUSIVE) {
 			err = logger.AppendAbort()
 			require.NoError(t, err)
 			logger.Rollback()
 			return
 		}
-		<-firstPageUpgradeLockOpt.Unwrap()
 
 		myPage.Lock()
 		myNewBalance := utils.Uint32ToBytes(myBalance - transferAmount)
