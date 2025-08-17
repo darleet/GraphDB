@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 )
@@ -27,22 +28,16 @@ func NewBufferPoolMock() *BufferPool_mock {
 	}
 }
 
-func (b *BufferPool_mock) Unpin(pageID common.PageIdentity) error {
+func (b *BufferPool_mock) Unpin(pageID common.PageIdentity) {
 	b.pinCountMu.Lock()
 	defer b.pinCountMu.Unlock()
 
 	pinCount, ok := b.pinCounts[pageID]
-	if !ok {
-		return fmt.Errorf("page %v not found in pin counts", pageID)
-	}
-
-	if pinCount <= 0 {
-		return fmt.Errorf("page %v has already been unpinned", pageID)
-	}
+	assert.Assert(ok, "page %v not found in pin counts", pageID)
+	assert.Assert(pinCount > 0, "page %v has already been unpinned", pageID)
 
 	newPinCount := pinCount - 1
 	b.pinCounts[pageID] = newPinCount
-	return nil
 }
 
 func (b *BufferPool_mock) GetPage(

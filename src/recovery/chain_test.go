@@ -20,7 +20,7 @@ func TestChainSanity(t *testing.T) {
 		PageID: 321,
 	}
 
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
@@ -91,7 +91,7 @@ func TestChainSanity(t *testing.T) {
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
 
-	defer func() { assert.NoError(t, pool.Unpin(logPageId)) }()
+	defer func() { pool.Unpin(logPageId) }()
 
 	page.RLock()
 	defer page.RUnlock()
@@ -243,7 +243,7 @@ func TestChain(t *testing.T) {
 		PageID: 23,
 	}
 
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
@@ -286,7 +286,7 @@ func TestChain(t *testing.T) {
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
 
-	defer func() { assert.NoError(t, pool.Unpin(logPageId)) }()
+	defer func() { pool.Unpin(logPageId) }()
 
 	page.RLock()
 	defer page.RUnlock()

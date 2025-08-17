@@ -42,7 +42,7 @@ type DiskManager[T Page] interface {
 }
 
 type BufferPool interface {
-	Unpin(common.PageIdentity) error
+	Unpin(common.PageIdentity)
 	GetPage(common.PageIdentity) (*page.SlottedPage, error)
 	GetPageNoCreate(common.PageIdentity) (*page.SlottedPage, error)
 	FlushPage(common.PageIdentity) error
@@ -60,7 +60,7 @@ type Manager struct {
 	frames      []page.SlottedPage
 	emptyFrames []uint64
 
-	logfile common.FileID
+	logger common.ITxnLogger
 
 	replacer Replacer
 
@@ -82,7 +82,7 @@ func New(
 		emptyFrames[i] = uint64(i)
 	}
 
-	return &Manager{
+	m := &Manager{
 		poolSize:    poolSize,
 		pageTable:   map[common.PageIdentity]frameInfo{},
 		frames:      make([]page.SlottedPage, poolSize),
@@ -91,33 +91,31 @@ func New(
 		diskManager: diskManager,
 		fastPath:    sync.Mutex{},
 		slowPath:    sync.Mutex{},
-		logfile:     0,
-	}, nil
+		logger:      nil,
+	}
+
+	return m, nil
+}
+
+func (m *Manager) SetLogger(l common.ITxnLogger) {
+	m.logger = l
 }
 
 var (
 	_ BufferPool = &Manager{}
 )
 
-func (m *Manager) Unpin(pIdent common.PageIdentity) error {
+func (m *Manager) Unpin(pIdent common.PageIdentity) {
 	m.fastPath.Lock()
 	defer m.fastPath.Unlock()
 
 	frameInfo, ok := m.pageTable[pIdent]
-	if !ok {
-		return ErrNoSuchPage
-	}
-
+	assert.Assert(ok, "coulnd't unpin page %+v: page not found")
 	assert.Assert(frameInfo.pinCount > 0, "invalid pin count")
 
 	frameInfo.pinCount--
 	m.pageTable[pIdent] = frameInfo
-	if frameInfo.pinCount == 0 {
-		// TODO: переделать это через ref count?
-		m.replacer.Unpin(pIdent)
-	}
-
-	return nil
+	m.replacer.Unpin(pIdent)
 }
 
 func (m *Manager) pin(pIdent common.PageIdentity) {
@@ -192,10 +190,12 @@ func (m *Manager) GetPage(
 
 	victimPage := &m.frames[victimInfo.frameID]
 	if victimInfo.isDirty {
-		err = m.diskManager.WritePage(
-			victimPage,
-			victimPageIdent,
-		)
+		masterRecord := m.logger.GetMasterRecord()
+		if victimPage.PageLSN() > masterRecord {
+			m.logger.Flush()
+		}
+
+		err = m.diskManager.WritePage(victimPage, victimPageIdent)
 		if err != nil {
 			return nil, err
 		}

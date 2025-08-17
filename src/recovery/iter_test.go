@@ -108,7 +108,7 @@ func TestIterSanity(t *testing.T) {
 		PageID: 321,
 	}
 
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,

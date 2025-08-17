@@ -26,7 +26,7 @@ func TestValidRecovery(t *testing.T) {
 		Lsn:      0,
 		Location: common.FileLocation{PageID: 0, SlotNum: 0},
 	}
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		logfileID:       1,
 		lastLogLocation: loggerStart,
@@ -73,7 +73,7 @@ func TestValidRecovery(t *testing.T) {
 	}
 
 	// Simulate a crash and recovery
-	logger2 := &TxnLogger{
+	logger2 := &txnLogger{
 		pool:            pool,
 		logfileID:       logger.logfileID,
 		lastLogLocation: logger.lastLogLocation,
@@ -83,7 +83,7 @@ func TestValidRecovery(t *testing.T) {
 
 	// Check that the page contains the "after" value
 	p, err := pool.GetPage(dataPageID)
-	defer func(pageID common.PageIdentity) { assert.NoError(t, pool.Unpin(pageID)) }(
+	defer func(pageID common.PageIdentity) { pool.Unpin(pageID) }(
 		dataPageID,
 	)
 
@@ -112,7 +112,7 @@ func TestFailedTxn(t *testing.T) {
 		Lsn:      0,
 		Location: common.FileLocation{PageID: 0, SlotNum: 0},
 	}
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		logfileID:       1,
 		lastLogLocation: logStart,
@@ -194,20 +194,17 @@ func insertValueNoLogs(
 ) (optional.Optional[uint16], error) {
 	p, err := pool.GetPage(pageId)
 	require.NoError(t, err)
-	defer func(pgID common.PageIdentity) { require.NoError(t, pool.Unpin(pgID)) }(
-		pageId,
-	)
+	defer func(pgID common.PageIdentity) { pool.Unpin(pgID) }(pageId)
 
 	p.Lock()
 	defer p.Unlock()
 
-	insertHandle := p.InsertPrepare(data)
-	if insertHandle.IsNone() {
+	slotOpt := p.Insert(data)
+	if slotOpt.IsNone() {
 		return optional.None[uint16](), nil
 	}
 
-	p.InsertCommit(insertHandle.Unwrap())
-	return insertHandle, nil
+	return slotOpt, nil
 }
 
 func TestMassiveRecovery(t *testing.T) {
@@ -219,7 +216,7 @@ func TestMassiveRecovery(t *testing.T) {
 		PageID: 321,
 	}
 
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
@@ -325,7 +322,7 @@ func TestMassiveRecovery(t *testing.T) {
 						p, err := pool.GetPageNoCreate(pageID)
 						require.NoError(t, err)
 
-						defer func() { require.NoError(t, pool.Unpin(pageID)) }()
+						defer func() { pool.Unpin(pageID) }()
 
 						p.Lock()
 						defer p.Unlock()
@@ -369,7 +366,7 @@ func TestMassiveRecovery(t *testing.T) {
 			}
 			p, err := pool.GetPageNoCreate(dataPageId)
 			require.NoError(t, err)
-			defer func() { require.NoError(t, pool.Unpin(dataPageId)) }()
+			defer func() { pool.Unpin(dataPageId) }()
 
 			p.RLock()
 			defer p.RUnlock()
@@ -456,7 +453,7 @@ func assertLogRecordWithRetrieval(
 	)
 
 	page.RUnlock()
-	require.NoError(t, pool.Unpin(recordID.PageIdentity()))
+	pool.Unpin(recordID.PageIdentity())
 }
 
 func TestLoggerValidConcurrentWrites(t *testing.T) {
@@ -468,7 +465,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 		PageID: 321,
 	}
 
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
@@ -677,7 +674,7 @@ func TestLoggerRollback(t *testing.T) {
 		SlotNum: 0,
 	}
 
-	logger := &TxnLogger{
+	logger := &txnLogger{
 		pool:            pool,
 		mu:              sync.Mutex{},
 		logRecordsCount: 0,
@@ -782,7 +779,7 @@ func TestLoggerRollback(t *testing.T) {
 				)
 				require.NoError(t, err)
 				page.Unlock()
-				require.NoError(t, pool.Unpin(info.key.PageIdentity()))
+				pool.Unpin(info.key.PageIdentity())
 			}
 
 			for j := range len(batch) / 3 {
@@ -816,7 +813,7 @@ func TestLoggerRollback(t *testing.T) {
 				_, err = page.DeleteWithLogs(info.key, logger)
 				require.NoError(t, err)
 				page.Unlock()
-				require.NoError(t, pool.Unpin(info.key.PageIdentity()))
+				pool.Unpin(info.key.PageIdentity())
 			}
 
 			require.NoError(t, logger.AppendAbort())
@@ -833,7 +830,7 @@ func TestLoggerRollback(t *testing.T) {
 			}
 			page, err := pool.GetPageNoCreate(pageID)
 			assert.NoError(t, err)
-			defer func() { assert.NoError(t, pool.Unpin(pageID)) }()
+			defer func() { pool.Unpin(pageID) }()
 
 			data := page.Read(k.SlotNum)
 			assert.Equal(t, data, utils.Uint32ToBytes(v))
@@ -862,7 +859,7 @@ func TestLoggerRollback(t *testing.T) {
 // committed at the end.
 func fillPages(
 	t *testing.T,
-	logger *TxnLogger,
+	logger *txnLogger,
 	txnID common.TxnID,
 	length int,
 	fileIDs []common.FileID,
@@ -882,14 +879,14 @@ func fillPages(
 			p, err := logger.pool.GetPage(pageID)
 			require.NoError(t, err)
 			success := func() bool {
-				defer func() { require.NoError(t, logger.pool.Unpin(pageID)) }()
+				defer func() { logger.pool.Unpin(pageID) }()
 				p.Lock()
 				defer p.Unlock()
 
 				value := rand.Uint32() % limit
 				insertedValue := utils.Uint32ToBytes(value)
 
-				slotOpt := p.InsertPrepare(insertedValue)
+				slotOpt := p.Insert(insertedValue)
 				if slotOpt.IsNone() {
 					return false
 				}
@@ -902,7 +899,6 @@ func fillPages(
 					},
 					insertedValue,
 				)
-				p.InsertCommit(slot)
 
 				res[common.RecordID{
 					FileID:  pageID.FileID,
