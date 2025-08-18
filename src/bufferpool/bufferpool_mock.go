@@ -19,8 +19,6 @@ type BufferPool_mock struct {
 	pinCounts  map[common.PageIdentity]int
 
 	leakedPages map[common.PageIdentity]struct{}
-
-	logger common.ITxnLogger
 }
 
 var (
@@ -41,13 +39,7 @@ func NewBufferPoolMock(leakedPages []common.PageIdentity) *BufferPool_mock {
 	}
 }
 
-func (b *BufferPool_mock) WithLogger(l common.ITxnLogger) {
-	b.logger = l
-}
-
 func (b *BufferPool_mock) Unpin(pageID common.PageIdentity) {
-	assert.Assert(b.logger != nil)
-
 	b.pinCountMu.Lock()
 	defer b.pinCountMu.Unlock()
 
@@ -62,8 +54,6 @@ func (b *BufferPool_mock) Unpin(pageID common.PageIdentity) {
 func (b *BufferPool_mock) GetPage(
 	pageID common.PageIdentity,
 ) (*page.SlottedPage, error) {
-	assert.Assert(b.logger != nil)
-
 	b.pagesMu.RLock()
 	p, exists := b.pages[pageID]
 	b.pagesMu.RUnlock()
@@ -99,8 +89,6 @@ func (b *BufferPool_mock) GetPage(
 func (b *BufferPool_mock) GetPageNoCreate(
 	pageID common.PageIdentity,
 ) (*page.SlottedPage, error) {
-	assert.Assert(b.logger != nil)
-
 	b.pagesMu.RLock()
 	p, exists := b.pages[pageID]
 	b.pagesMu.RUnlock()
@@ -117,8 +105,6 @@ func (b *BufferPool_mock) GetPageNoCreate(
 
 // can only be called before Unpin and after page.unlock
 func (b *BufferPool_mock) FlushPage(pageID common.PageIdentity) error {
-	assert.Assert(b.logger != nil)
-
 	b.pagesMu.Lock()
 	defer b.pagesMu.Unlock()
 
@@ -133,8 +119,6 @@ func (b *BufferPool_mock) FlushPage(pageID common.PageIdentity) error {
 }
 
 func (b *BufferPool_mock) MarkDirty(pageID common.PageIdentity) {
-	assert.Assert(b.logger != nil)
-
 	b.pagesMu.Lock()
 	defer b.pagesMu.Unlock()
 
@@ -145,8 +129,6 @@ func (b *BufferPool_mock) MarkDirty(pageID common.PageIdentity) {
 }
 
 func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
-	assert.Assert(b.logger != nil)
-
 	b.pinCountMu.RLock()
 	defer b.pinCountMu.RUnlock()
 
