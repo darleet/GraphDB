@@ -3,7 +3,7 @@ package common
 type ITxnLogger interface {
 	NewLSN() LSN
 	GetMasterRecord() LSN
-	Flush()
+	Flush() error
 	AppendAbort(txnID TxnID, prevLog LogRecordLocInfo) (LogRecordLocInfo, error)
 	AppendBegin(TransactionID TxnID) (LogRecordLocInfo, error)
 	AppendCommit(

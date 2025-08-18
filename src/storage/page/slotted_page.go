@@ -361,6 +361,6 @@ func InsertSerializable[T encoding.BinaryMarshaler](
 	obj T,
 ) optional.Optional[uint16] {
 	bytes, err := obj.MarshalBinary()
-	assert.Assert(err != nil)
+	assert.NoError(err)
 	return p.Insert(bytes)
 }

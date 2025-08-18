@@ -40,20 +40,30 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 }
 
 func TestBankTransactions(t *testing.T) {
-	pool := bufferpool.NewBufferPoolMock()
+	generatedFileIDs := generateUniqueInts[common.FileID](t, 2, 0, 1024)
+
+	masterRecordPageIdent := common.PageIdentity{
+		FileID: generatedFileIDs[0],
+		PageID: masterRecordPage,
+	}
+	pool := bufferpool.NewBufferPoolMock(
+		[]common.PageIdentity{
+			masterRecordPageIdent,
+		},
+	)
+	files := generatedFileIDs[1:]
 	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
 
-	generatedFileIDs := generateUniqueInts[common.FileID](t, 2, 0, 1024)
-	logger := &txnLogger{
-		pool:      pool,
-		logfileID: generatedFileIDs[0],
-		curLogPage: common.LogRecordLocInfo{
-			Lsn:      0,
-			Location: common.FileLocation{PageID: 0, SlotNum: 0},
+	setupLoggerMasterPage(
+		t,
+		pool,
+		masterRecordPageIdent,
+		common.LogRecordLocInfo{
+			Lsn:      1,
+			Location: common.FileLocation{PageID: 1, SlotNum: 0},
 		},
-	}
-
-	files := generatedFileIDs[1:]
+	)
+	logger := newTxnLogger(pool, generatedFileIDs[0])
 
 	START_BALANCE := uint32(60)
 	rollbackCutoff := START_BALANCE / 3
@@ -80,7 +90,7 @@ func TestBankTransactions(t *testing.T) {
 		page, err := pool.GetPageNoCreate(id.PageIdentity())
 		require.NoError(t, err)
 		page.Lock()
-		page.Update(id.SlotNum, utils.Uint32ToBytes(START_BALANCE))
+		page.Update(id.SlotNum, utils.ToBytes[uint32](START_BALANCE))
 		totalMoney += START_BALANCE
 		page.Unlock()
 		pool.Unpin(id.PageIdentity())
@@ -143,7 +153,7 @@ func TestBankTransactions(t *testing.T) {
 		defer func() { pool.Unpin(me.PageIdentity()) }()
 
 		myPage.RLock()
-		myBalance := utils.BytesToUint32(myPage.Read(me.SlotNum))
+		myBalance := utils.FromBytes[uint32](myPage.Read(me.SlotNum))
 		myPage.RUnlock()
 
 		if myBalance == 0 {
@@ -171,7 +181,7 @@ func TestBankTransactions(t *testing.T) {
 		defer func() { pool.Unpin(first.PageIdentity()) }()
 
 		firstPage.RLock()
-		firstBalance := utils.BytesToUint32(
+		firstBalance := utils.FromBytes[uint32](
 			firstPage.Read(first.SlotNum),
 		)
 		firstPage.RUnlock()
@@ -193,26 +203,26 @@ func TestBankTransactions(t *testing.T) {
 		}
 
 		myPage.Lock()
-		myNewBalance := utils.Uint32ToBytes(myBalance - transferAmount)
+		myNewBalance := utils.ToBytes[uint32](myBalance - transferAmount)
 		_, err = myPage.UpdateWithLogs(myNewBalance, me, logger)
 		require.NoError(t, err)
 		myPage.Unlock()
 
 		firstPage.Lock()
-		firstNewBalance := utils.Uint32ToBytes(firstBalance + transferAmount)
+		firstNewBalance := utils.ToBytes[uint32](firstBalance + transferAmount)
 		_, err = firstPage.UpdateWithLogs(firstNewBalance, first, logger)
 		require.NoError(t, err)
 		firstPage.Unlock()
 
 		myPage.RLock()
-		myNewBalanceFromPage := utils.BytesToUint32(
+		myNewBalanceFromPage := utils.FromBytes[uint32](
 			myPage.Read(me.SlotNum),
 		)
 		require.Equal(t, myNewBalanceFromPage, myBalance-transferAmount)
 		myPage.RUnlock()
 
 		firstPage.RLock()
-		firstNewBalanceFromPage := utils.BytesToUint32(
+		firstNewBalanceFromPage := utils.FromBytes[uint32](
 			firstPage.Read(first.SlotNum),
 		)
 		require.Equal(
@@ -247,7 +257,7 @@ func TestBankTransactions(t *testing.T) {
 		page, err := pool.GetPageNoCreate(id.PageIdentity())
 		require.NoError(t, err)
 		page.RLock()
-		curMoney := utils.BytesToUint32(page.Read(id.SlotNum))
+		curMoney := utils.FromBytes[uint32](page.Read(id.SlotNum))
 		finalTotalMoney += curMoney
 		page.RUnlock()
 		pool.Unpin(id.PageIdentity())

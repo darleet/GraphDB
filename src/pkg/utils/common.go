@@ -31,17 +31,10 @@ func ToBytes[T any](v T) []byte {
 	return buf.Bytes()
 }
 
-func Uint32ToBytes(num uint32) []byte {
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.BigEndian, num)
-	assert.NoError(err)
-	return buf.Bytes()
-}
-
-func BytesToUint32(b []byte) uint32 {
-	var num uint32
+func FromBytes[T any](b []byte) T {
+	var v T
 	buf := bytes.NewReader(b)
-	err := binary.Read(buf, binary.BigEndian, &num)
+	err := binary.Read(buf, binary.BigEndian, &v)
 	assert.NoError(err)
-	return num
+	return v
 }

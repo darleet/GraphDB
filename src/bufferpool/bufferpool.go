@@ -45,6 +45,7 @@ type BufferPool interface {
 	Unpin(common.PageIdentity)
 	GetPage(common.PageIdentity) (*page.SlottedPage, error)
 	GetPageNoCreate(common.PageIdentity) (*page.SlottedPage, error)
+	MarkDirty(common.PageIdentity)
 	FlushPage(common.PageIdentity) error
 }
 
@@ -59,8 +60,6 @@ type Manager struct {
 	pageTable   map[common.PageIdentity]frameInfo
 	frames      []page.SlottedPage
 	emptyFrames []uint64
-
-	logger common.ITxnLogger
 
 	replacer Replacer
 
@@ -91,14 +90,9 @@ func New(
 		diskManager: diskManager,
 		fastPath:    sync.Mutex{},
 		slowPath:    sync.Mutex{},
-		logger:      nil,
 	}
 
 	return m, nil
-}
-
-func (m *Manager) SetLogger(l common.ITxnLogger) {
-	m.logger = l
 }
 
 var (
@@ -167,7 +161,6 @@ func (m *Manager) GetPage(
 		if err != nil {
 			return nil, err
 		}
-		page.UnsafeInitLatch()
 
 		m.frames[frameID] = *page
 		m.pageTable[pIdent] = frameInfo{
@@ -190,11 +183,6 @@ func (m *Manager) GetPage(
 
 	victimPage := &m.frames[victimInfo.frameID]
 	if victimInfo.isDirty {
-		masterRecord := m.logger.GetMasterRecord()
-		if victimPage.PageLSN() > masterRecord {
-			m.logger.Flush()
-		}
-
 		err = m.diskManager.WritePage(victimPage, victimPageIdent)
 		if err != nil {
 			return nil, err
@@ -206,7 +194,6 @@ func (m *Manager) GetPage(
 	if err != nil {
 		return nil, err
 	}
-	page.UnsafeInitLatch()
 
 	m.frames[victimInfo.frameID] = *page
 	m.pageTable[pIdent] = frameInfo{
@@ -216,6 +203,20 @@ func (m *Manager) GetPage(
 	}
 	m.replacer.Pin(pIdent)
 	return page, nil
+}
+
+func (m *Manager) MarkDirty(pageIdent common.PageIdentity) {
+	m.fastPath.Lock()
+	defer m.fastPath.Unlock()
+
+	frameInfo, ok := m.pageTable[pageIdent]
+	assert.Assert(
+		ok,
+		"couldn't mark page %+v as dirty: page not found",
+		pageIdent,
+	)
+	frameInfo.isDirty = true
+	m.pageTable[pageIdent] = frameInfo
 }
 
 func (m *Manager) reserveFrame() uint64 {
@@ -237,7 +238,7 @@ func (m *Manager) FlushPage(pIdent common.PageIdentity) error {
 
 	frameInfo, ok := m.pageTable[pIdent]
 	if !ok {
-		return fmt.Errorf("no frame for such page: %v", pIdent)
+		return ErrNoSuchPage
 	}
 
 	if !frameInfo.isDirty {
@@ -274,5 +275,5 @@ func (m *Manager) FlushAllPages() error {
 		m.pageTable[pgIdent] = pgInfo
 	}
 
-	return nil
+	return err
 }

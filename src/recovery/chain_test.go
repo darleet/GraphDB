@@ -1,7 +1,6 @@
 package recovery
 
 import (
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,31 +10,52 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 )
 
-func TestChainSanity(t *testing.T) {
-	pool := bufferpool.NewBufferPoolMock()
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+func setupLoggerMasterPage(
+	t *testing.T,
+	pool bufferpool.BufferPool,
+	pgIdent common.PageIdentity,
+	rec common.LogRecordLocInfo,
+) {
+	pg, err := pool.GetPage(common.PageIdentity{
+		FileID: pgIdent.FileID,
+		PageID: pgIdent.PageID,
+	})
+	require.NoError(t, err)
+	defer pool.Unpin(pgIdent)
 
+	masterPage := (*loggerInfoPage)(pg)
+	masterPage.Setup()
+	masterPage.setInfo(rec)
+}
+
+func TestChainSanity(t *testing.T) {
 	logPageId := common.PageIdentity{
 		FileID: 42,
 		PageID: 321,
 	}
 
-	logger := &txnLogger{
-		pool:            pool,
-		mu:              sync.Mutex{},
-		logRecordsCount: 0,
-		logfileID:       logPageId.FileID,
-		curLogPage: common.LogRecordLocInfo{
+	masterRecordPageIdent := common.PageIdentity{
+		FileID: logPageId.FileID,
+		PageID: masterRecordPage,
+	}
+	pool := bufferpool.NewBufferPoolMock([]common.PageIdentity{
+		masterRecordPageIdent,
+	})
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+
+	setupLoggerMasterPage(
+		t,
+		pool,
+		masterRecordPageIdent,
+		common.LogRecordLocInfo{
 			Lsn: 123,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []common.TxnID {
-			panic("TODO")
-		},
-	}
+	)
+	logger := newTxnLogger(pool, logPageId.FileID)
 
 	txnID := common.TxnID(89)
 	chain := NewTxnLogChain(logger, txnID)
@@ -236,29 +256,33 @@ func TestChainSanity(t *testing.T) {
 }
 
 func TestChain(t *testing.T) {
-	pool := bufferpool.NewBufferPoolMock()
-
-	logPageId := common.PageIdentity{
-		FileID: 42,
-		PageID: 23,
+	logFileID := common.FileID(42)
+	masterRecordPageIdent := common.PageIdentity{
+		FileID: logFileID,
+		PageID: masterRecordPage,
 	}
 
-	logger := &txnLogger{
-		pool:            pool,
-		mu:              sync.Mutex{},
-		logRecordsCount: 0,
-		logfileID:       logPageId.FileID,
-		curLogPage: common.LogRecordLocInfo{
-			Lsn: 0,
+	pool := bufferpool.NewBufferPoolMock(
+		[]common.PageIdentity{masterRecordPageIdent},
+	)
+
+	logPageId := common.PageIdentity{
+		FileID: logFileID,
+		PageID: 23,
+	}
+	setupLoggerMasterPage(
+		t,
+		pool,
+		masterRecordPageIdent,
+		common.LogRecordLocInfo{
+			Lsn: 1,
 			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []common.TxnID {
-			panic("TODO")
-		},
-	}
+	)
+	logger := newTxnLogger(pool, logPageId.FileID)
 
 	dataPageId := common.PageIdentity{
 		FileID: 1,
