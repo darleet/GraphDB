@@ -63,7 +63,7 @@ func TestBankTransactions(t *testing.T) {
 			Location: common.FileLocation{PageID: 1, SlotNum: 0},
 		},
 	)
-	logger := newTxnLogger(pool, generatedFileIDs[0])
+	logger := NewTxnLogger(pool, generatedFileIDs[0])
 
 	START_BALANCE := uint32(60)
 	rollbackCutoff := START_BALANCE / 3

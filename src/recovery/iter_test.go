@@ -123,7 +123,7 @@ func TestIterSanity(t *testing.T) {
 			Location: common.FileLocation{PageID: logPageId.PageID, SlotNum: 0},
 		},
 	)
-	logger := newTxnLogger(pool, logPageId.FileID)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
 	dataPageId := common.PageIdentity{
 		FileID: 123,

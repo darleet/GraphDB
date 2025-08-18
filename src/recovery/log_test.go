@@ -43,7 +43,7 @@ func TestValidRecovery(t *testing.T) {
 		loggerStart,
 	)
 
-	logger := newTxnLogger(pool, logPageId.FileID)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
 	defer func() {
 		if recover() != nil {
@@ -86,7 +86,7 @@ func TestValidRecovery(t *testing.T) {
 	}
 
 	// Simulate a crash and recovery
-	logger2 := newTxnLogger(pool, logger.logfileID)
+	logger2 := NewTxnLogger(pool, logger.logfileID)
 	checkpoint := common.FileLocation{PageID: 1, SlotNum: 0}
 	logger2.Recover(checkpoint)
 
@@ -137,7 +137,7 @@ func TestFailedTxn(t *testing.T) {
 		masterRecordPageIdent,
 		logStart,
 	)
-	logger := newTxnLogger(pool, logPageId.FileID)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 	pageIdent := common.PageIdentity{FileID: 13, PageID: 7}
 
 	TransactionID := common.TxnID(100)
@@ -256,7 +256,7 @@ func TestMassiveRecovery(t *testing.T) {
 			},
 		},
 	)
-	logger := newTxnLogger(pool, logPageId.FileID)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
 	INIT := []byte("init")
 	NEW := []byte("new1")
@@ -506,7 +506,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 			},
 		},
 	)
-	logger := newTxnLogger(pool, logFileID)
+	logger := NewTxnLogger(pool, logFileID)
 
 	dataPageId := common.PageIdentity{
 		FileID: 33,
@@ -716,7 +716,7 @@ func TestLoggerRollback(t *testing.T) {
 			Location: logStartLocation,
 		},
 	)
-	logger := newTxnLogger(pool, logPageId.FileID)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
 	defer func() {
 		assert.NoError(t, pool.EnsureAllPagesUnpinned())

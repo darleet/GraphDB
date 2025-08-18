@@ -87,7 +87,16 @@ type txnLogger struct {
 	getActiveTransactions func() []common.TxnID // Прийдет из лок менеджера
 }
 
-func newTxnLogger(
+
+/*
+ * TODO: Разобраться где именн хранить
+ * 1. точку начала (№ страницы лог файла) последнего чекпоинта
+ *    Не обязательно сразу флашить на диск. Обязательно флашим
+ *    точку оканчания чекпоинта <---- откуда восстанавливаться
+ * 2. № страницы последней записи <---- куда начать писать
+ *    после инициализации (флашить НЕ обязательно)
+ */
+func NewTxnLogger(
 	pool bufferpool.BufferPool,
 	logFileID common.FileID,
 ) *txnLogger {
@@ -282,18 +291,6 @@ func (l *txnLogger) Dump(start common.FileLocation, b *strings.Builder) {
 			break
 		}
 	}
-}
-
-/*
- * TODO: Разобраться где именн хранить
- * 1. точку начала (№ страницы лог файла) последнего чекпоинта
- *    Не обязательно сразу флашить на диск. Обязательно флашим
- *    точку оканчания чекпоинта <---- откуда восстанавливаться
- * 2. № страницы последней записи <---- куда начать писать
- *    после инициализации (флашить НЕ обязательно)
- */
-func NewTxnLogger() {
-	panic("not implemented")
 }
 
 func (l *txnLogger) Recover(checkpointLocation common.FileLocation) {

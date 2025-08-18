@@ -55,7 +55,7 @@ func TestChainSanity(t *testing.T) {
 			},
 		},
 	)
-	logger := newTxnLogger(pool, logPageId.FileID)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
 	txnID := common.TxnID(89)
 	chain := NewTxnLogChain(logger, txnID)
@@ -282,7 +282,7 @@ func TestChain(t *testing.T) {
 			},
 		},
 	)
-	logger := newTxnLogger(pool, logPageId.FileID)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
 	dataPageId := common.PageIdentity{
 		FileID: 1,
