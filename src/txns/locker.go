@@ -6,9 +6,9 @@ import (
 )
 
 type Locker struct {
-	catalogLockManager *Manager[GranularLockMode, struct{}]
-	fileLockManager    *Manager[GranularLockMode, common.FileID] // for indexes and tables
-	pageLockManager    *Manager[PageLockMode, common.PageIdentity]
+	catalogLockManager *lockManager[GranularLockMode, struct{}]
+	fileLockManager    *lockManager[GranularLockMode, common.FileID] // for indexes and tables
+	pageLockManager    *lockManager[PageLockMode, common.PageIdentity]
 }
 
 func NewLocker() *Locker {
