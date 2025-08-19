@@ -106,6 +106,16 @@ func TestBankTransactions(t *testing.T) {
 	}
 
 	locker := txns.NewLocker()
+	defer func() {
+		stillLockedTxns := locker.GetActiveTransactions()
+		assert.Equal(
+			t,
+			0,
+			len(stillLockedTxns),
+			"There are still locked transactions: %+v",
+			stillLockedTxns,
+		)
+	}()
 
 	succ := atomic.Uint64{}
 	wg := sync.WaitGroup{}

@@ -741,6 +741,16 @@ func TestLoggerRollback(t *testing.T) {
 	maps.Copy(updatedValues, recordValues)
 
 	locker := txns.NewLocker()
+	defer func() {
+		stillLockedTxns := locker.GetActiveTransactions()
+		assert.Equal(
+			t,
+			0,
+			len(stillLockedTxns),
+			"There are still locked transactions: %+v",
+			stillLockedTxns,
+		)
+	}()
 
 	txnID := atomic.Uint64{}
 	wg := sync.WaitGroup{}

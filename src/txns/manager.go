@@ -204,3 +204,14 @@ func (m *Manager[LockModeType, ObjectID]) UnlockAll(
 		q.Unlock(unlockRequest)
 	}
 }
+
+func (m *Manager[LockModeType, ObjectID]) GetActiveTransactions() map[common.TxnID]struct{} {
+	m.lockedRecordsGuard.Lock()
+	defer m.lockedRecordsGuard.Unlock()
+
+	activeTxns := make(map[common.TxnID]struct{})
+	for txnID := range m.lockedRecords {
+		activeTxns[txnID] = struct{}{}
+	}
+	return activeTxns
+}

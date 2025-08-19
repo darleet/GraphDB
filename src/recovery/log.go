@@ -758,18 +758,18 @@ func (lockedLogger *txnLogger) writeLogRecord(
 	return lockedLogger.lastRecordLocation, err
 }
 
-func (lockerLogger *txnLogger) NewLSN() common.LSN {
-	lockerLogger.logRecordsCount++
-	lsn := common.LSN(lockerLogger.logRecordsCount)
+func (lockedLogger *txnLogger) NewLSN() common.LSN {
+	lockedLogger.logRecordsCount++
+	lsn := common.LSN(lockedLogger.logRecordsCount)
 	return lsn
 }
 
-func (lockerLogger *txnLogger) GetMasterRecord() common.LSN {
+func (lockedLogger *txnLogger) GetMasterRecord() common.LSN {
 	masterRecordPageIdent := common.PageIdentity{
-		FileID: lockerLogger.logfileID,
+		FileID: lockedLogger.logfileID,
 		PageID: masterRecordPage,
 	}
-	masterRecordPage, err := lockerLogger.pool.GetPageNoCreate(
+	masterRecordPage, err := lockedLogger.pool.GetPageNoCreate(
 		masterRecordPageIdent,
 	)
 	assert.Assert(
@@ -782,7 +782,7 @@ func (lockerLogger *txnLogger) GetMasterRecord() common.LSN {
 		masterRecordPage.Read(loggerMasterRecordSlot),
 	)
 	masterRecordPage.Unlock()
-	lockerLogger.pool.Unpin(masterRecordPageIdent)
+	lockedLogger.pool.Unpin(masterRecordPageIdent)
 	return masterRecord
 }
 
