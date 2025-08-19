@@ -41,7 +41,7 @@ func TestChainSanity(t *testing.T) {
 	pool := bufferpool.NewBufferPoolMock([]common.PageIdentity{
 		masterRecordPageIdent,
 	})
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked()) }()
 
 	setupLoggerMasterPage(
 		t,
@@ -106,7 +106,7 @@ func TestChainSanity(t *testing.T) {
 		TxnEnd()
 
 	require.NoError(t, chain.Err())
-	require.NoError(t, pool.EnsureAllPagesUnpinned())
+	require.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
@@ -305,7 +305,7 @@ func TestChain(t *testing.T) {
 		Update(common.RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 0}, []byte("first"), []byte("updat"))
 
 	require.NoError(t, chain.Err())
-	require.NoError(t, pool.EnsureAllPagesUnpinned())
+	require.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)

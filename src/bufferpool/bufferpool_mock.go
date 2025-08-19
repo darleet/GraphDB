@@ -128,15 +128,23 @@ func (b *BufferPool_mock) MarkDirty(pageID common.PageIdentity) {
 	b.isDirty[pageID] = true
 }
 
-func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
+func (b *BufferPool_mock) EnsureAllPagesUnpinnedAndUnlocked() error {
+	b.pagesMu.Lock()
+	defer b.pagesMu.Unlock()
+
 	b.pinCountMu.RLock()
 	defer b.pinCountMu.RUnlock()
 
 	pinnedIDs := map[common.PageIdentity]int{}
 	unpinnedLeaked := map[common.PageIdentity]struct{}{}
+	notPinnedPages := map[common.PageIdentity]struct{}{}
+	lockedPages := map[common.PageIdentity]struct{}{}
 
-	for pageID, pinCount := range b.pinCounts {
-		if _, ok := b.leakedPages[pageID]; ok {
+	for pageID, page := range b.pages {
+		pinCount, ok := b.pinCounts[pageID]
+		if !ok {
+			notPinnedPages[pageID] = struct{}{}
+		} else if _, ok := b.leakedPages[pageID]; ok {
 			if pinCount <= 0 {
 				unpinnedLeaked[pageID] = struct{}{}
 			}
@@ -144,6 +152,11 @@ func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
 			if pinCount != 0 {
 				pinnedIDs[pageID] = pinCount
 			}
+		}
+		if !page.TryLock() {
+			lockedPages[pageID] = struct{}{}
+		} else {
+			page.Unlock()
 		}
 	}
 
@@ -159,6 +172,20 @@ func (b *BufferPool_mock) EnsureAllPagesUnpinned() error {
 		err = errors.Join(err, fmt.Errorf(
 			"not all leaked pages were properly unpinned: %+v",
 			unpinnedLeaked,
+		))
+	}
+
+	if len(notPinnedPages) > 0 {
+		err = errors.Join(err, fmt.Errorf(
+			"found pages in the page table that weren't found in the pinCount table: %+v",
+			notPinnedPages,
+		))
+	}
+
+	if len(lockedPages) > 0 {
+		err = errors.Join(err, fmt.Errorf(
+			"found pages that were locked and not properly unlocked: %+v",
+			lockedPages,
 		))
 	}
 

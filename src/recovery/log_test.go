@@ -51,7 +51,7 @@ func TestValidRecovery(t *testing.T) {
 			logger.Dump(loggerStart.Location, b)
 			println(b.String())
 		}
-		assert.NoError(t, pool.EnsureAllPagesUnpinned())
+		assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 	}()
 
 	dataPageID := common.PageIdentity{FileID: 42, PageID: 123}
@@ -215,7 +215,7 @@ func insertValueNoLogs(
 ) (optional.Optional[uint16], error) {
 	p, err := pool.GetPage(pageId)
 	require.NoError(t, err)
-	defer func(pgID common.PageIdentity) { pool.Unpin(pgID) }(pageId)
+	defer pool.Unpin(pageId)
 
 	p.Lock()
 	defer p.Unlock()
@@ -242,7 +242,7 @@ func TestMassiveRecovery(t *testing.T) {
 		masterRecordPageIdent,
 	})
 
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked()) }()
 
 	setupLoggerMasterPage(
 		t,
@@ -347,7 +347,7 @@ func TestMassiveRecovery(t *testing.T) {
 						p, err := pool.GetPageNoCreate(pageID)
 						require.NoError(t, err)
 
-						defer func() { pool.Unpin(pageID) }()
+						defer pool.Unpin(pageID)
 
 						p.Lock()
 						defer p.Unlock()
@@ -492,7 +492,7 @@ func TestLoggerValidConcurrentWrites(t *testing.T) {
 		masterRecordPageIdent,
 	})
 
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked()) }()
 
 	setupLoggerMasterPage(
 		t,
@@ -719,7 +719,7 @@ func TestLoggerRollback(t *testing.T) {
 	logger := NewTxnLogger(pool, logPageId.FileID)
 
 	defer func() {
-		assert.NoError(t, pool.EnsureAllPagesUnpinned())
+		assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 	}()
 
 	files := []common.FileID{}
@@ -735,7 +735,7 @@ func TestLoggerRollback(t *testing.T) {
 	}
 
 	recordValues := fillPages(t, logger, math.MaxUint64, 20000, files, 1024)
-	require.NoError(t, pool.EnsureAllPagesUnpinned())
+	require.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 
 	updatedValues := make(map[common.RecordID]uint32, len(recordValues))
 	maps.Copy(updatedValues, recordValues)

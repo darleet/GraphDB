@@ -112,7 +112,7 @@ func TestIterSanity(t *testing.T) {
 		masterRecordPageIdent,
 	})
 
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked()) }()
 
 	setupLoggerMasterPage(
 		t,
@@ -134,6 +134,8 @@ func TestIterSanity(t *testing.T) {
 	chain := NewTxnLogChain(logger, TransactionID)
 
 	types := generateSequence(t, chain, dataPageId, 100)
+	assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
+
 	iter, err := logger.iter(common.FileLocation{
 		PageID:  logPageId.PageID,
 		SlotNum: 0,

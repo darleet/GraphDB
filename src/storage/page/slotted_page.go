@@ -311,6 +311,10 @@ func (p *SlottedPage) UpdateWithLogs(
 	return logRecordLoc, err
 }
 
+func (p *SlottedPage) TryLock() bool {
+	return p.getHeader().latch.TryLock()
+}
+
 func (p *SlottedPage) Lock() {
 	p.getHeader().latch.Lock()
 }

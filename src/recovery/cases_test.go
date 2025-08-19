@@ -40,6 +40,10 @@ func generateUniqueInts[T Integer](t *testing.T, n, min, max int) []T {
 }
 
 func TestBankTransactions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping slow test in short mode")
+	}
+
 	generatedFileIDs := generateUniqueInts[common.FileID](t, 2, 0, 1024)
 
 	masterRecordPageIdent := common.PageIdentity{
@@ -52,7 +56,7 @@ func TestBankTransactions(t *testing.T) {
 		},
 	)
 	files := generatedFileIDs[1:]
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked()) }()
 
 	setupLoggerMasterPage(
 		t,
@@ -81,7 +85,7 @@ func TestBankTransactions(t *testing.T) {
 		files,
 		START_BALANCE,
 	)
-	require.NoError(t, pool.EnsureAllPagesUnpinned())
+	require.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 
 	txnsTicker := atomic.Uint64{}
 

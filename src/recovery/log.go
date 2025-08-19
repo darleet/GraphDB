@@ -63,7 +63,10 @@ func (p *loggerInfoPage) Setup() {
 	assert.Assert(slotOpt.IsSome())
 	assert.Assert(slotOpt.Unwrap() == loggerMasterRecordSlot)
 
-	dummyRecord := common.FileLocation{}
+	dummyRecord := common.FileLocation{
+		PageID:  1,
+		SlotNum: 0,
+	}
 	slotOpt = page.InsertSerializable(o, &dummyRecord)
 	assert.Assert(slotOpt.IsSome())
 	assert.Assert(slotOpt.Unwrap() == loggerLastLocationSlot)
@@ -87,9 +90,8 @@ type txnLogger struct {
 	getActiveTransactions func() []common.TxnID // Прийдет из лок менеджера
 }
 
-
 /*
- * TODO: Разобраться где именн хранить
+ * TODO: Разобраться где именно хранить
  * 1. точку начала (№ страницы лог файла) последнего чекпоинта
  *    Не обязательно сразу флашить на диск. Обязательно флашим
  *    точку оканчания чекпоинта <---- откуда восстанавливаться
@@ -218,7 +220,6 @@ func (l *txnLogger) iter(
 		return nil, err
 	}
 
-	p.RLock()
 	iter := newLogRecordIter(
 		l.logfileID,
 		start,
@@ -757,27 +758,31 @@ func (lockedLogger *txnLogger) writeLogRecord(
 	return lockedLogger.lastRecordLocation, err
 }
 
-func (l *txnLogger) NewLSN() common.LSN {
-	l.logRecordsCount++
-	lsn := common.LSN(l.logRecordsCount)
+func (lockerLogger *txnLogger) NewLSN() common.LSN {
+	lockerLogger.logRecordsCount++
+	lsn := common.LSN(lockerLogger.logRecordsCount)
 	return lsn
 }
 
-func (l *txnLogger) GetMasterRecord() common.LSN {
+func (lockerLogger *txnLogger) GetMasterRecord() common.LSN {
 	masterRecordPageIdent := common.PageIdentity{
-		FileID: l.logfileID,
-		PageID: 0,
+		FileID: lockerLogger.logfileID,
+		PageID: masterRecordPage,
 	}
-	masterRecordPage, err := l.pool.GetPageNoCreate(masterRecordPageIdent)
+	masterRecordPage, err := lockerLogger.pool.GetPageNoCreate(
+		masterRecordPageIdent,
+	)
 	assert.Assert(
 		err != nil,
 		"the page should have been loaded into memory on buffer pool init. err: %v",
 		err,
 	)
 	masterRecordPage.Lock()
-	masterRecord := utils.FromBytes[common.LSN](masterRecordPage.Read(0))
+	masterRecord := utils.FromBytes[common.LSN](
+		masterRecordPage.Read(loggerMasterRecordSlot),
+	)
 	masterRecordPage.Unlock()
-	l.pool.Unpin(masterRecordPageIdent)
+	lockerLogger.pool.Unpin(masterRecordPageIdent)
 	return masterRecord
 }
 

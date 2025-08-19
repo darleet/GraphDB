@@ -109,7 +109,9 @@ func (m *Manager) Unpin(pIdent common.PageIdentity) {
 
 	frameInfo.pinCount--
 	m.pageTable[pIdent] = frameInfo
-	m.replacer.Unpin(pIdent)
+	if frameInfo.pinCount == 0 {
+		m.replacer.Unpin(pIdent)
+	}
 }
 
 func (m *Manager) pin(pIdent common.PageIdentity) {
@@ -159,6 +161,7 @@ func (m *Manager) GetPage(
 	if frameID != noFrame {
 		page, err := m.diskManager.ReadPage(pIdent)
 		if err != nil {
+			m.emptyFrames = append(m.emptyFrames, frameID)
 			return nil, err
 		}
 
