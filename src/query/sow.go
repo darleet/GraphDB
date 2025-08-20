@@ -13,8 +13,8 @@ import (
 )
 
 // traverseNeighborsWithDepth enqueues unvisited neighbors at next depth if <= targetDepth.
-func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v VertexWithDepthAndRID,
-	targetDepth uint32, seen Visited, q Queue) (err error) {
+func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWithDepthAndRID,
+	targetDepth uint32, seen storage.Visited, q storage.Queue) (err error) {
 	curDepth := v.D
 
 	it, err := e.se.Neighbors(t, v.V)
@@ -53,7 +53,7 @@ func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v VertexWithDepthA
 		nd := curDepth + 1
 
 		if nd <= targetDepth {
-			err = q.Enqueue(VertexWithDepthAndRID{V: u.V, D: nd, R: u.R})
+			err = q.Enqueue(storage.VertexWithDepthAndRID{V: u.V, D: nd, R: u.R})
 			if err != nil {
 				return fmt.Errorf("failed to enqueue vertex: %w", err)
 			}
@@ -64,10 +64,10 @@ func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v VertexWithDepthA
 }
 
 func (e *Executor) bfsWithDepth(
-	tx common.TxnID, start VertexIDWithRID,
+	tx common.TxnID, start storage.VertexIDWithRID,
 	targetDepth uint32,
-) (result []VertexIDWithRID, err error) {
-	result = make([]VertexIDWithRID, 0)
+) (result []storage.VertexIDWithRID, err error) {
+	result = make([]storage.VertexIDWithRID, 0)
 
 	q, err := e.se.NewQueue(tx)
 	if err != nil {
@@ -90,17 +90,17 @@ func (e *Executor) bfsWithDepth(
 		return nil, fmt.Errorf("failed to set start vertex: %w", err)
 	}
 
-	err = q.Enqueue(VertexWithDepthAndRID{V: start.V, D: 0, R: start.R})
+	err = q.Enqueue(storage.VertexWithDepthAndRID{V: start.V, D: 0, R: start.R})
 	if err != nil {
 		return nil, fmt.Errorf("failed to enqueue start vertex: %w", err)
 	}
 
 	for {
-		var v VertexWithDepthAndRID
+		var v storage.VertexWithDepthAndRID
 
 		v, err = q.Dequeue()
 		if err != nil {
-			if errors.Is(err, ErrQueueEmpty) {
+			if errors.Is(err, storage.ErrQueueEmpty) {
 				break
 			}
 
@@ -112,7 +112,7 @@ func (e *Executor) bfsWithDepth(
 		}
 
 		if v.D == targetDepth {
-			result = append(result, VertexIDWithRID{V: v.V, R: v.R})
+			result = append(result, storage.VertexIDWithRID{V: v.V, R: v.R})
 
 			continue
 		}
@@ -128,7 +128,7 @@ func (e *Executor) bfsWithDepth(
 
 // GetVertexesOnDepth is the first query from SOW. It returns all vertexes on a given depth.
 // We will use BFS on graph because DFS cannot calculate right depth on graphs (except trees).
-func (e *Executor) GetVertexesOnDepth(start storage.VertexID, targetDepth uint32) (r []VertexIDWithRID, err error) {
+func (e *Executor) GetVertexesOnDepth(start storage.VertexID, targetDepth uint32) (r []storage.VertexIDWithRID, err error) {
 	if e.se == nil {
 		return nil, errors.New("storage engine is nil")
 	}
@@ -147,14 +147,14 @@ func (e *Executor) GetVertexesOnDepth(start storage.VertexID, targetDepth uint32
 		}
 	}()
 
-	var st VertexIDWithRID
+	var st storage.VertexIDWithRID
 
 	st, err = e.se.GetVertexRID(tx, start)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get start vertex: %w", err)
 	}
 
-	var res []VertexIDWithRID
+	var res []storage.VertexIDWithRID
 
 	res, err = e.bfsWithDepth(tx, st, targetDepth)
 	if err != nil {
@@ -171,7 +171,7 @@ func (e *Executor) GetVertexesOnDepth(start storage.VertexID, targetDepth uint32
 
 // GetAllVertexesWithFieldValue is the second query from SOW.
 // It returns all vertexes with a given field value.
-func (e *Executor) GetAllVertexesWithFieldValue(field string, value []byte) (res []*Vertex, err error) {
+func (e *Executor) GetAllVertexesWithFieldValue(field string, value []byte) (res []*storage.Vertex, err error) {
 	if e.se == nil {
 		return nil, errors.New("storage engine is nil")
 	}
@@ -190,7 +190,7 @@ func (e *Executor) GetAllVertexesWithFieldValue(field string, value []byte) (res
 		}
 	}()
 
-	var verticesIter VerticesIter
+	var verticesIter storage.VerticesIter
 
 	verticesIter, err = e.se.AllVerticesWithValue(tx, field, value)
 	if err != nil {
@@ -200,7 +200,7 @@ func (e *Executor) GetAllVertexesWithFieldValue(field string, value []byte) (res
 		err = errors.Join(err, verticesIter.Close())
 	}()
 
-	res = make([]*Vertex, 0, 1024)
+	res = make([]*storage.Vertex, 0, 1024)
 
 	for v := range verticesIter.Seq() {
 		res = append(res, v)
@@ -218,7 +218,7 @@ func (e *Executor) GetAllVertexesWithFieldValue(field string, value []byte) (res
 // It returns all vertexes with a given field value and uses filter on edges (degree of vertex
 // with condition on edge).
 func (e *Executor) GetAllVertexesWithFieldValue2(field string, value []byte,
-	filter EdgeFilter, cutoffDegree uint64) (res []*Vertex, err error) {
+	filter storage.EdgeFilter, cutoffDegree uint64) (res []*storage.Vertex, err error) {
 	if e.se == nil {
 		return nil, errors.New("storage engine is nil")
 	}
@@ -239,7 +239,7 @@ func (e *Executor) GetAllVertexesWithFieldValue2(field string, value []byte,
 		}
 	}()
 
-	var verticesIter VerticesIter
+	var verticesIter storage.VerticesIter
 
 	verticesIter, err = e.se.AllVerticesWithValue(tx, field, value)
 	if err != nil {
@@ -252,7 +252,7 @@ func (e *Executor) GetAllVertexesWithFieldValue2(field string, value []byte,
 		}
 	}()
 
-	res = make([]*Vertex, 0, 1024)
+	res = make([]*storage.Vertex, 0, 1024)
 
 	for v := range verticesIter.Seq() {
 		var cnt uint64
@@ -277,10 +277,11 @@ func (e *Executor) GetAllVertexesWithFieldValue2(field string, value []byte,
 	return res, nil
 }
 
-func (e *Executor) sumAttributeOverProperNeighbors(tx common.TxnID, v *Vertex, field string, filter EdgeFilter) (r float64, err error) {
+func (e *Executor) sumAttributeOverProperNeighbors(tx common.TxnID, v *storage.Vertex, field string,
+	filter storage.EdgeFilter) (r float64, err error) {
 	var res float64
 
-	var nIter VerticesIter
+	var nIter storage.VerticesIter
 
 	nIter, err = e.se.GetNeighborsWithEdgeFilter(tx, v.ID, filter)
 	if err != nil {
@@ -313,8 +314,8 @@ func (e *Executor) sumAttributeOverProperNeighbors(tx common.TxnID, v *Vertex, f
 // SumNeighborAttributes is the forth query from SOW. For each vertex it computes
 // the sum of a given attribute over its neighboring vertices, subject to a constraint on the edge
 // or attribute value (e.g., only include neighbors whose attribute exceeds a given threshold).
-func (e *Executor) SumNeighborAttributes(field string, filter EdgeFilter,
-	pred SumNeighborAttributesFilter) (r AssociativeArray[storage.VertexID, float64], err error) {
+func (e *Executor) SumNeighborAttributes(field string, filter storage.EdgeFilter,
+	pred storage.SumNeighborAttributesFilter) (r storage.AssociativeArray[storage.VertexID, float64], err error) {
 	if e.se == nil {
 		return nil, errors.New("storage engine is nil")
 	}
@@ -339,7 +340,7 @@ func (e *Executor) SumNeighborAttributes(field string, filter EdgeFilter,
 		return nil, fmt.Errorf("failed to create aggregation associative array: %w", err)
 	}
 
-	var verticesIter VerticesIter
+	var verticesIter storage.VerticesIter
 
 	verticesIter, err = e.se.GetAllVertices(tx)
 	if err != nil {
@@ -379,8 +380,8 @@ func (e *Executor) SumNeighborAttributes(field string, filter EdgeFilter,
 }
 
 func (e *Executor) countCommonNeighbors(tx common.TxnID, left storage.VertexID,
-	leftNeighbors AssociativeArray[storage.VertexID, struct{}]) (r uint64, err error) {
-	var rightNeighborsIter NeighborIter
+	leftNeighbors storage.AssociativeArray[storage.VertexID, struct{}]) (r uint64, err error) {
+	var rightNeighborsIter storage.NeighborIter
 
 	rightNeighborsIter, err = e.se.Neighbors(tx, left)
 	if err != nil {
@@ -406,10 +407,10 @@ func (e *Executor) countCommonNeighbors(tx common.TxnID, left storage.VertexID,
 	return r, nil
 }
 
-func (e *Executor) getVertexTriangleCount(tx common.TxnID, v *Vertex) (r uint64, err error) {
+func (e *Executor) getVertexTriangleCount(tx common.TxnID, v *storage.Vertex) (r uint64, err error) {
 	r = 0
 
-	var leftNeighborsIter NeighborIter
+	var leftNeighborsIter storage.NeighborIter
 
 	leftNeighborsIter, err = e.se.Neighbors(tx, v.ID)
 	if err != nil {
@@ -476,7 +477,7 @@ func (e *Executor) GetAllTriangles() (r uint64, err error) {
 		}
 	}()
 
-	var verticesIter VerticesIter
+	var verticesIter storage.VerticesIter
 
 	verticesIter, err = e.se.GetAllVertices(tx)
 	if err != nil {
