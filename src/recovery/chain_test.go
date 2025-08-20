@@ -1,54 +1,74 @@
 package recovery
 
 import (
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 )
 
-func TestChainSanity(t *testing.T) {
-	pool := bufferpool.NewBufferPoolMock()
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
+func setupLoggerMasterPage(
+	t *testing.T,
+	pool bufferpool.BufferPool,
+	pgIdent common.PageIdentity,
+	rec common.LogRecordLocInfo,
+) {
+	pg, err := pool.GetPage(common.PageIdentity{
+		FileID: pgIdent.FileID,
+		PageID: pgIdent.PageID,
+	})
+	require.NoError(t, err)
+	defer pool.Unpin(pgIdent)
 
-	logPageId := bufferpool.PageIdentity{
+	masterPage := (*loggerInfoPage)(pg)
+	masterPage.Setup()
+	masterPage.setInfo(rec)
+}
+
+func TestChainSanity(t *testing.T) {
+	logPageId := common.PageIdentity{
 		FileID: 42,
 		PageID: 321,
 	}
 
-	logger := &TxnLogger{
-		pool:            pool,
-		mu:              sync.Mutex{},
-		logRecordsCount: 0,
-		logfileID:       logPageId.FileID,
-		lastLogLocation: LogRecordLocationInfo{
+	masterRecordPageIdent := common.PageIdentity{
+		FileID: logPageId.FileID,
+		PageID: masterRecordPage,
+	}
+	pool := bufferpool.NewBufferPoolMock([]common.PageIdentity{
+		masterRecordPageIdent,
+	})
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked()) }()
+
+	setupLoggerMasterPage(
+		t,
+		pool,
+		masterRecordPageIdent,
+		common.LogRecordLocInfo{
 			Lsn: 123,
-			Location: FileLocation{
+			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
-			panic("TODO")
-		},
-	}
+	)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
-	txnID := txns.TxnID(89)
+	txnID := common.TxnID(89)
 	chain := NewTxnLogChain(logger, txnID)
 
 	insertSlotNumber := uint16(6)
-	insertPageID := bufferpool.PageIdentity{
+	insertPageID := common.PageIdentity{
 		FileID: 1,
 		PageID: 2,
 	}
 	insert := []byte("insert")
 
 	updateSlotNumber := uint16(7)
-	updatePageID := bufferpool.PageIdentity{
+	updatePageID := common.PageIdentity{
 		FileID: 2,
 		PageID: 1,
 	}
@@ -56,19 +76,19 @@ func TestChainSanity(t *testing.T) {
 	updateTo := []byte("updateNew")
 
 	deleteSlotNumber := uint16(8)
-	deletePageID := bufferpool.PageIdentity{
+	deletePageID := common.PageIdentity{
 		FileID: 3,
 		PageID: 1,
 	}
 
-	checkpointATT := []txns.TxnID{1, 2, 3}
-	checkpointDPT := map[bufferpool.PageIdentity]LogRecordLocationInfo{
+	checkpointATT := []common.TxnID{1, 2, 3}
+	checkpointDPT := map[common.PageIdentity]common.LogRecordLocInfo{
 		{
 			FileID: 42,
 			PageID: 123,
 		}: {
 			Lsn: 5,
-			Location: FileLocation{
+			Location: common.FileLocation{
 				PageID:  6,
 				SlotNum: 7,
 			},
@@ -76,9 +96,9 @@ func TestChainSanity(t *testing.T) {
 	}
 
 	chain.Begin().
-		Insert(RecordID{FileID: insertPageID.FileID, PageID: insertPageID.PageID, SlotNum: insertSlotNumber}, insert).
-		Update(RecordID{FileID: updatePageID.FileID, PageID: updatePageID.PageID, SlotNum: updateSlotNumber}, updateFrom, updateTo).
-		Delete(RecordID{FileID: deletePageID.FileID, PageID: deletePageID.PageID, SlotNum: deleteSlotNumber}).
+		Insert(common.RecordID{FileID: insertPageID.FileID, PageID: insertPageID.PageID, SlotNum: insertSlotNumber}, insert).
+		Update(common.RecordID{FileID: updatePageID.FileID, PageID: updatePageID.PageID, SlotNum: updateSlotNumber}, updateFrom, updateTo).
+		Delete(common.RecordID{FileID: deletePageID.FileID, PageID: deletePageID.PageID, SlotNum: deleteSlotNumber}).
 		Abort().
 		Commit().
 		CheckpointBegin().
@@ -86,12 +106,12 @@ func TestChainSanity(t *testing.T) {
 		TxnEnd()
 
 	require.NoError(t, chain.Err())
-	require.NoError(t, pool.EnsureAllPagesUnpinned())
+	require.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
 
-	defer func() { assert.NoError(t, pool.Unpin(logPageId)) }()
+	defer func() { pool.Unpin(logPageId) }()
 
 	page.RLock()
 	defer page.RUnlock()
@@ -236,57 +256,61 @@ func TestChainSanity(t *testing.T) {
 }
 
 func TestChain(t *testing.T) {
-	pool := bufferpool.NewBufferPoolMock()
-
-	logPageId := bufferpool.PageIdentity{
-		FileID: 42,
-		PageID: 23,
+	logFileID := common.FileID(42)
+	masterRecordPageIdent := common.PageIdentity{
+		FileID: logFileID,
+		PageID: masterRecordPage,
 	}
 
-	logger := &TxnLogger{
-		pool:            pool,
-		mu:              sync.Mutex{},
-		logRecordsCount: 0,
-		logfileID:       logPageId.FileID,
-		lastLogLocation: LogRecordLocationInfo{
-			Lsn: 0,
-			Location: FileLocation{
+	pool := bufferpool.NewBufferPoolMock(
+		[]common.PageIdentity{masterRecordPageIdent},
+	)
+
+	logPageId := common.PageIdentity{
+		FileID: logFileID,
+		PageID: 23,
+	}
+	setupLoggerMasterPage(
+		t,
+		pool,
+		masterRecordPageIdent,
+		common.LogRecordLocInfo{
+			Lsn: 1,
+			Location: common.FileLocation{
 				PageID:  logPageId.PageID,
 				SlotNum: 0,
 			},
 		},
-		getActiveTransactions: func() []txns.TxnID {
-			panic("TODO")
-		},
-	}
+	)
+	logger := NewTxnLogger(pool, logPageId.FileID)
 
-	dataPageId := bufferpool.PageIdentity{
+	dataPageId := common.PageIdentity{
 		FileID: 1,
 		PageID: 0,
 	}
 
-	TransactionID_1 := txns.TxnID(1)
-	TransactionID_2 := txns.TxnID(2)
+	TransactionID_1 := common.TxnID(1)
+	TransactionID_2 := common.TxnID(2)
 
 	chain := NewTxnLogChain(logger, TransactionID_1)
 
 	// interleaving
 	chain.Begin().
-		Insert(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 0}, []byte("first")).
+		Insert(common.RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 0}, []byte("first")).
 		SwitchTransactionID(TransactionID_2).
 		Begin().
-		Insert(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 1}, []byte("second")).
-		Update(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 1}, []byte("second"), []byte("sec0nd")).
+		Insert(common.RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 1}, []byte("second")).
+		Update(common.RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 1}, []byte("second"), []byte("sec0nd")).
 		SwitchTransactionID(TransactionID_1).
-		Update(RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 0}, []byte("first"), []byte("updat"))
+		Update(common.RecordID{FileID: dataPageId.FileID, PageID: dataPageId.PageID, SlotNum: 0}, []byte("first"), []byte("updat"))
 
 	require.NoError(t, chain.Err())
-	require.NoError(t, pool.EnsureAllPagesUnpinned())
+	require.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
 
 	page, err := pool.GetPage(logPageId)
 	require.NoError(t, err)
 
-	defer func() { assert.NoError(t, pool.Unpin(logPageId)) }()
+	defer func() { pool.Unpin(logPageId) }()
 
 	page.RLock()
 	defer page.RUnlock()

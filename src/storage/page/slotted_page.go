@@ -2,10 +2,12 @@ package page
 
 import (
 	"encoding"
+	"errors"
 	"sync"
 	"unsafe"
 
 	assert "github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/optional"
 )
 
@@ -20,6 +22,10 @@ const (
 
 type SlottedPage struct {
 	data [PageSize]byte
+}
+
+func (p *SlottedPage) UnsafeInitLatch() {
+	p.getHeader().latch = sync.RWMutex{}
 }
 
 type slotPointer uint16
@@ -40,7 +46,7 @@ func (s slotPointer) RecordOffset() uint16 {
 	return uint16(s) & slotOffsetMask
 }
 
-func (s slotPointer) RecordInfo() slotStatus {
+func (s slotPointer) slotInfo() slotStatus {
 	res := (uint16(s) & (^slotOffsetMask)) >> slotOffsetSize
 	return slotStatus(res)
 }
@@ -48,7 +54,7 @@ func (s slotPointer) RecordInfo() slotStatus {
 type header struct {
 	latch sync.RWMutex
 
-	dirty bool
+	pageLSN common.LSN
 
 	freeStart uint16
 	freeEnd   uint16
@@ -74,13 +80,34 @@ func NewSlottedPage() *SlottedPage {
 	p := &SlottedPage{
 		data: [PageSize]byte{},
 	}
-	head := p.getHeader()
-	head.freeStart = uint16(unsafe.Sizeof(header{}))
-	head.freeEnd = PageSize
+	p.setupHeader()
 	return p
 }
 
-func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
+func (p *SlottedPage) setupHeader() {
+	head := p.getHeader()
+	head.freeStart = uint16(unsafe.Sizeof(header{}))
+	head.freeEnd = PageSize
+}
+
+func (p *SlottedPage) Clear() {
+	for i := range PageSize {
+		p.data[i] = 0
+	}
+	p.setupHeader()
+}
+
+func (p *SlottedPage) PageLSN() common.LSN {
+	header := p.getHeader()
+	return header.pageLSN
+}
+
+func (p *SlottedPage) SetPageLSN(lsn common.LSN) {
+	header := p.getHeader()
+	header.pageLSN = lsn
+}
+
+func (p *SlottedPage) insertPrepare(data []byte) optional.Optional[uint16] {
 	header := p.getHeader()
 	// space required to store both the array and it's length
 	requiredLength := int(unsafe.Sizeof(uint16(1))) + len(data)
@@ -119,7 +146,7 @@ func (p *SlottedPage) InsertPrepare(data []byte) optional.Optional[uint16] {
 	return optional.Some(curSlot)
 }
 
-func (p *SlottedPage) InsertCommit(slotHandle uint16) {
+func (p *SlottedPage) insertCommit(slotHandle uint16) {
 	header := p.getHeader()
 	assert.Assert(
 		uint16(slotHandle) < header.slotsCount,
@@ -131,28 +158,61 @@ func (p *SlottedPage) InsertCommit(slotHandle uint16) {
 	slots := header.getSlots()
 	ptr := slots[slotHandle]
 	assert.Assert(
-		ptr.RecordInfo() == SlotStatusPrepareInsert,
+		ptr.slotInfo() == SlotStatusPrepareInsert,
 		"tried to commit an insert to a wrong slot",
 	)
 	slots[slotHandle] = newSlotPtr(SlotStatusInserted, ptr.RecordOffset())
 }
 
-func Get[T encoding.BinaryUnmarshaler](
-	p *SlottedPage,
-	slotID uint16,
-	dst T,
-) error {
-	data := p.Read(slotID)
-	return dst.UnmarshalBinary(data)
+func (p *SlottedPage) Insert(data []byte) optional.Optional[uint16] {
+	slotOpt := p.insertPrepare(data)
+	if slotOpt.IsNone() {
+		return optional.None[uint16]()
+	}
+	p.insertCommit(slotOpt.Unwrap())
+	return slotOpt
 }
 
-func InsertSerializable[T encoding.BinaryMarshaler](
-	p *SlottedPage,
-	obj T,
-) optional.Optional[uint16] {
-	bytes, err := obj.MarshalBinary()
-	assert.Assert(err != nil)
-	return p.InsertPrepare(bytes)
+var ErrNoSpaceLeft error = errors.New("the page is full")
+
+func (p *SlottedPage) InsertWithLogs(
+	data []byte,
+	pageIdent common.PageIdentity,
+	ctxLogger common.ITxnLoggerWithContext,
+) (uint16, common.LogRecordLocInfo, error) {
+	slotOpt := p.insertPrepare(data)
+	if slotOpt.IsNone() {
+		return 0, common.NewNilLogRecordLocation(), ErrNoSpaceLeft
+	}
+
+	slot := slotOpt.Unwrap()
+	recordID := common.RecordID{
+		FileID:  pageIdent.FileID,
+		PageID:  pageIdent.PageID,
+		SlotNum: slot,
+	}
+	logRecordLoc, err := ctxLogger.AppendInsert(recordID, data)
+	if err != nil {
+		return 0, common.NewNilLogRecordLocation(), err
+	}
+
+	p.insertCommit(slot)
+	p.SetPageLSN(logRecordLoc.Lsn)
+	return slot, logRecordLoc, err
+}
+
+func (p *SlottedPage) UndoInsert(slotID uint16) {
+	header := p.getHeader()
+	assert.Assert(slotID < header.slotsCount, "slotID is too large")
+	ptr := header.getSlots()[slotID]
+	slotInfo := ptr.slotInfo()
+
+	assert.Assert(
+		slotInfo == SlotStatusPrepareInsert || slotInfo == SlotStatusInserted,
+		"tried to call `UndoInsert` on a slot with status %d", ptr.slotInfo(),
+	)
+
+	p.UnsafeOverrideSlotStatus(slotID, SlotStatusDeleted)
 }
 
 func (p *SlottedPage) getBytesBySlotPtr(ptr slotPointer) []byte {
@@ -170,8 +230,8 @@ func (p *SlottedPage) assertSlotInserted(slotID uint16) slotPointer {
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
-		ptr.RecordInfo() == SlotStatusInserted,
-		"tried to read from a slot with status %d", ptr.RecordInfo(),
+		ptr.slotInfo() == SlotStatusInserted,
+		"tried to read from a slot with status %d", ptr.slotInfo(),
 	)
 	return ptr
 }
@@ -189,16 +249,25 @@ func (p *SlottedPage) Delete(slotID uint16) {
 	)
 }
 
-func (p *SlottedPage) UnsafeOverrideSlotStatus(
-	slotNumber uint16,
-	newStatus slotStatus,
-) {
-	assert.Assert(slotNumber < p.NumSlots(), "slotNumber is too large")
+func (p *SlottedPage) DeleteWithLogs(
+	recordID common.RecordID,
+	ctxLogger common.ITxnLoggerWithContext,
+) (common.LogRecordLocInfo, error) {
+	// TODO: может всё-таки заносить значения, которые удаляем, в CLR?
+	ptr := p.assertSlotInserted(recordID.SlotNum)
 
-	header := p.getHeader()
-	slot := header.getSlots()[slotNumber]
+	logRecordLoc, err := ctxLogger.AppendDelete(recordID)
+	if err != nil {
+		return common.NewNilLogRecordLocation(), err
+	}
 
-	header.getSlots()[slotNumber] = newSlotPtr(newStatus, slot.RecordOffset())
+	p.getHeader().getSlots()[recordID.SlotNum] = newSlotPtr(
+		SlotStatusDeleted,
+		ptr.RecordOffset(),
+	)
+	p.SetPageLSN(logRecordLoc.Lsn)
+
+	return logRecordLoc, nil
 }
 
 func (p *SlottedPage) UndoDelete(slotID uint16) {
@@ -206,8 +275,8 @@ func (p *SlottedPage) UndoDelete(slotID uint16) {
 	assert.Assert(slotID < header.slotsCount, "slotID is too large")
 	ptr := header.getSlots()[slotID]
 	assert.Assert(
-		ptr.RecordInfo() == SlotStatusDeleted,
-		"tried to UndoDelete from a slot with status %d", ptr.RecordInfo(),
+		ptr.slotInfo() == SlotStatusDeleted,
+		"tried to UndoDelete from a slot with status %d", ptr.slotInfo(),
 	)
 
 	p.UnsafeOverrideSlotStatus(slotID, SlotStatusInserted)
@@ -219,6 +288,31 @@ func (p *SlottedPage) Update(slotID uint16, newData []byte) {
 
 	clear(data)
 	copy(data, newData)
+}
+
+func (p *SlottedPage) UpdateWithLogs(
+	newData []byte,
+	recordID common.RecordID,
+	ctxLogger common.ITxnLoggerWithContext,
+) (common.LogRecordLocInfo, error) {
+	data := p.Read(recordID.SlotNum)
+	assert.Assert(len(data) == len(newData))
+
+	before := make([]byte, len(data))
+	copy(before, data)
+	logRecordLoc, err := ctxLogger.AppendUpdate(recordID, before, newData)
+	if err != nil {
+		return common.NewNilLogRecordLocation(), err
+	}
+	clear(data)
+	copy(data, newData)
+	p.SetPageLSN(logRecordLoc.Lsn)
+
+	return logRecordLoc, err
+}
+
+func (p *SlottedPage) TryLock() bool {
+	return p.getHeader().latch.TryLock()
 }
 
 func (p *SlottedPage) Lock() {
@@ -237,18 +331,40 @@ func (p *SlottedPage) RUnlock() {
 	p.getHeader().latch.RUnlock()
 }
 
-func (p *SlottedPage) SetDirtiness(val bool) {
-	p.getHeader().dirty = val
-}
-
-func (p *SlottedPage) IsDirty() bool {
-	return p.getHeader().dirty
-}
-
 func (p *SlottedPage) GetData() []byte {
 	return p.data[:]
 }
 
 func (p *SlottedPage) SetData(data []byte) {
 	copy(p.data[:], data)
+}
+
+func (p *SlottedPage) UnsafeOverrideSlotStatus(
+	slotNumber uint16,
+	newStatus slotStatus,
+) {
+	assert.Assert(slotNumber < p.NumSlots(), "slotNumber is too large")
+
+	header := p.getHeader()
+	slot := header.getSlots()[slotNumber]
+
+	header.getSlots()[slotNumber] = newSlotPtr(newStatus, slot.RecordOffset())
+}
+
+func Get[T encoding.BinaryUnmarshaler](
+	p *SlottedPage,
+	slotID uint16,
+	dst T,
+) error {
+	data := p.Read(slotID)
+	return dst.UnmarshalBinary(data)
+}
+
+func InsertSerializable[T encoding.BinaryMarshaler](
+	p *SlottedPage,
+	obj T,
+) optional.Optional[uint16] {
+	bytes, err := obj.MarshalBinary()
+	assert.NoError(err)
+	return p.Insert(bytes)
 }

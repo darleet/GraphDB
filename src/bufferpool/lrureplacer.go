@@ -4,22 +4,28 @@ import (
 	"container/list"
 	"errors"
 	"sync"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 )
 
 type LRUReplacer struct {
 	mu     sync.Mutex
 	lru    *list.List
-	frames map[uint64]*list.Element
+	frames map[common.PageIdentity]*list.Element
 }
+
+var (
+	_ Replacer = &LRUReplacer{}
+)
 
 func NewLRUReplacer() *LRUReplacer {
 	return &LRUReplacer{
 		lru:    list.New(),
-		frames: make(map[uint64]*list.Element),
+		frames: make(map[common.PageIdentity]*list.Element),
 	}
 }
 
-func (l *LRUReplacer) Pin(frameID uint64) {
+func (l *LRUReplacer) Pin(frameID common.PageIdentity) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -29,7 +35,7 @@ func (l *LRUReplacer) Pin(frameID uint64) {
 	}
 }
 
-func (l *LRUReplacer) Unpin(frameID uint64) {
+func (l *LRUReplacer) Unpin(frameID common.PageIdentity) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -41,16 +47,16 @@ func (l *LRUReplacer) Unpin(frameID uint64) {
 	l.frames[frameID] = elem
 }
 
-func (l *LRUReplacer) ChooseVictim() (uint64, error) {
+func (l *LRUReplacer) ChooseVictim() (common.PageIdentity, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	elem := l.lru.Back()
 	if elem == nil {
-		return 0, errors.New("no victim available")
+		return common.PageIdentity{}, errors.New("no victim available")
 	}
 
-	frameID := elem.Value.(uint64)
+	frameID := elem.Value.(common.PageIdentity)
 
 	l.lru.Remove(elem)
 	delete(l.frames, frameID)

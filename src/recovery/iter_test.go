@@ -2,15 +2,14 @@ package recovery
 
 import (
 	"math/rand"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
-	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 // generateSequence creates a random sequence of log record operations for
@@ -38,7 +37,7 @@ import (
 func generateSequence(
 	t *testing.T,
 	chain *TxnLogChain,
-	dataPageId bufferpool.PageIdentity,
+	dataPageId common.PageIdentity,
 	length int,
 ) []LogRecordTypeTag {
 	chain.Begin()
@@ -53,32 +52,32 @@ func generateSequence(
 
 			//nolint:gosec
 			chain.Insert(
-				RecordID{
+				common.RecordID{
 					FileID:  dataPageId.FileID,
 					PageID:  dataPageId.PageID,
 					SlotNum: uint16(i),
 				},
-				utils.Uint32ToBytes(uint32(i)),
+				utils.ToBytes[uint32](uint32(i)),
 			)
 		case 1:
 			res[i] = TypeUpdate
 
 			//nolint:gosec
 			chain.Update(
-				RecordID{
+				common.RecordID{
 					FileID:  dataPageId.FileID,
 					PageID:  dataPageId.PageID,
 					SlotNum: uint16(i),
 				},
-				utils.Uint32ToBytes(uint32(i)),
-				utils.Uint32ToBytes(uint32(i+1)),
+				utils.ToBytes[uint32](uint32(i)),
+				utils.ToBytes[uint32](uint32(i+1)),
 			)
 		case 2:
 			res[i] = TypeDelete
 
 			//nolint:gosec
 			chain.Delete(
-				RecordID{
+				common.RecordID{
 					FileID:  dataPageId.FileID,
 					PageID:  dataPageId.PageID,
 					SlotNum: uint16(i),
@@ -100,41 +99,44 @@ func generateSequence(
 }
 
 func TestIterSanity(t *testing.T) {
-	pool := bufferpool.NewBufferPoolMock()
-	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinned()) }()
-
-	logPageId := bufferpool.PageIdentity{
+	logPageId := common.PageIdentity{
 		FileID: 42,
 		PageID: 321,
 	}
 
-	logger := &TxnLogger{
-		pool:            pool,
-		mu:              sync.Mutex{},
-		logRecordsCount: 0,
-		logfileID:       logPageId.FileID,
-		lastLogLocation: LogRecordLocationInfo{
-			Lsn: 0,
-			Location: FileLocation{
-				PageID:  logPageId.PageID,
-				SlotNum: 0,
-			},
-		},
-		getActiveTransactions: func() []txns.TxnID {
-			panic("TODO")
-		},
+	masterRecordPageIdent := common.PageIdentity{
+		FileID: logPageId.FileID,
+		PageID: masterRecordPage,
 	}
+	pool := bufferpool.NewBufferPoolMock([]common.PageIdentity{
+		masterRecordPageIdent,
+	})
 
-	dataPageId := bufferpool.PageIdentity{
+	defer func() { assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked()) }()
+
+	setupLoggerMasterPage(
+		t,
+		pool,
+		masterRecordPageIdent,
+		common.LogRecordLocInfo{
+			Lsn:      1,
+			Location: common.FileLocation{PageID: logPageId.PageID, SlotNum: 0},
+		},
+	)
+	logger := NewTxnLogger(pool, logPageId.FileID)
+
+	dataPageId := common.PageIdentity{
 		FileID: 123,
 		PageID: 23,
 	}
 
-	TransactionID := txns.TxnID(1)
+	TransactionID := common.TxnID(1)
 	chain := NewTxnLogChain(logger, TransactionID)
 
 	types := generateSequence(t, chain, dataPageId, 100)
-	iter, err := logger.iter(FileLocation{
+	assert.NoError(t, pool.EnsureAllPagesUnpinnedAndUnlocked())
+
+	iter, err := logger.iter(common.FileLocation{
 		PageID:  logPageId.PageID,
 		SlotNum: 0,
 	})

@@ -4,28 +4,30 @@ import (
 	"errors"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/storage/page"
 )
 
 type LogRecordsIter struct {
-	logfileID uint64
-	curLoc    FileLocation
+	logfileID common.FileID
+	curLoc    common.FileLocation
 
-	pool       bufferpool.BufferPool[*page.SlottedPage]
-	lockedPage *page.SlottedPage
+	pool        bufferpool.BufferPool
+	currentPage *page.SlottedPage
 }
 
 func newLogRecordIter(
-	logfileID uint64,
-	curLoc FileLocation,
-	pool bufferpool.BufferPool[*page.SlottedPage],
-	lockedPage *page.SlottedPage,
+	logfileID common.FileID,
+	curLoc common.FileLocation,
+	pool bufferpool.BufferPool,
+	startPage *page.SlottedPage,
 ) *LogRecordsIter {
 	return &LogRecordsIter{
-		logfileID:  logfileID,
-		curLoc:     curLoc,
-		pool:       pool,
-		lockedPage: lockedPage,
+		logfileID:   logfileID,
+		curLoc:      curLoc,
+		pool:        pool,
+		currentPage: startPage,
 	}
 }
 
@@ -33,22 +35,25 @@ var ErrInvalidIterator = errors.New("iterator is invalid")
 
 // Returns an error only if couldn't read the next page
 func (iter *LogRecordsIter) MoveForward() (res bool, err error) {
-	if iter.curLoc.SlotNum+1 < iter.lockedPage.NumSlots() {
+	assert.Assert(iter.currentPage != nil)
+
+	iter.currentPage.RLock()
+	if iter.curLoc.SlotNum+1 < iter.currentPage.NumSlots() {
 		iter.curLoc.SlotNum++
+		iter.currentPage.RUnlock()
 		return true, nil
 	}
+	iter.currentPage.RUnlock()
 
-	curPageID := bufferpool.PageIdentity{
+	curPageID := common.PageIdentity{
 		FileID: iter.logfileID,
 		PageID: iter.curLoc.PageID,
 	}
-	defer func(pageID bufferpool.PageIdentity) { err = iter.pool.Unpin(pageID) }(
-		curPageID,
-	)
-	defer iter.lockedPage.RUnlock()
+	iter.pool.Unpin(curPageID)
+	iter.currentPage = nil
 
 	newPage, err := iter.pool.GetPageNoCreate(
-		bufferpool.PageIdentity{
+		common.PageIdentity{
 			FileID: iter.logfileID,
 			PageID: iter.curLoc.PageID + 1,
 		})
@@ -62,17 +67,17 @@ func (iter *LogRecordsIter) MoveForward() (res bool, err error) {
 	iter.curLoc.PageID++
 	iter.curLoc.SlotNum = 0
 
-	newPage.RLock()
-	iter.lockedPage = newPage
-
+	iter.currentPage = newPage
 	return true, nil
 }
 
 func (iter *LogRecordsIter) ReadRecord() (LogRecordTypeTag, any, error) {
-	d := iter.lockedPage.Read(iter.curLoc.SlotNum)
+	iter.currentPage.RLock()
+	d := iter.currentPage.Read(iter.curLoc.SlotNum)
+	iter.currentPage.RUnlock()
 	return readLogRecord(d)
 }
 
-func (iter *LogRecordsIter) Location() FileLocation {
+func (iter *LogRecordsIter) Location() common.FileLocation {
 	return iter.curLoc
 }
