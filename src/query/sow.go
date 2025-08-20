@@ -3,14 +3,12 @@ package query
 import (
 	"errors"
 	"fmt"
-	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"math"
 
-	"github.com/Blackdeer1524/GraphDB/src/storage"
-
-	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-
 	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
+	"github.com/Blackdeer1524/GraphDB/src/storage"
+	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 )
 
 // traverseNeighborsWithDepth enqueues unvisited neighbors at next depth if <= targetDepth.

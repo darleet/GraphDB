@@ -2,14 +2,12 @@ package query
 
 import (
 	"errors"
-	"github.com/Blackdeer1524/GraphDB/src/query/mocks"
-	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"testing"
 
-	"github.com/Blackdeer1524/GraphDB/src/storage"
-
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-
+	"github.com/Blackdeer1524/GraphDB/src/query/mocks"
+	"github.com/Blackdeer1524/GraphDB/src/storage"
+	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

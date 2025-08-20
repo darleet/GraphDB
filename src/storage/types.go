@@ -4,8 +4,9 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"iter"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 )
 
 type VertexID uint64

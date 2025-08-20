@@ -2,13 +2,11 @@ package mocks
 
 import (
 	"fmt"
-	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"iter"
 
-	"github.com/Blackdeer1524/GraphDB/src/storage"
-
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
-
+	"github.com/Blackdeer1524/GraphDB/src/storage"
+	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"github.com/stretchr/testify/mock"
 )
 
