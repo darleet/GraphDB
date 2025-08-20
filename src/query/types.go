@@ -5,29 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+
+	"github.com/Blackdeer1524/GraphDB/src/storage"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 )
-
-type VertexID uint64
-
-type TxnID uint64
 
 var ErrQueueEmpty = errors.New("queue is empty")
 
-type RID struct {
-	FileID uint64
-	PageID uint64
-	SlotID uint16
-}
-
 type VertexWithDepthAndRID struct {
-	V VertexID
+	V storage.VertexID
 	D uint32
-	R RID
+	R common.RecordID
 }
 
 type VertexIDWithRID struct {
-	V VertexID
-	R RID
+	V storage.VertexID
+	R common.RecordID
 }
 
 func (v *VertexIDWithRID) MarshalBinary() ([]byte, error) {
@@ -57,16 +51,16 @@ type RawQueue interface {
 }
 
 type Visited interface {
-	Get(v VertexID) (bool, error)
-	Set(v VertexID, b bool) error
+	Get(v storage.VertexID) (bool, error)
+	Set(v storage.VertexID, b bool) error
 	Close() error
 }
 
 type TransactionManager interface {
-	Begin() (TxnID, error)
+	Begin() (common.TxnID, error)
 
-	RollbackTx(TxnID) error
-	CommitTx(TxnID) error
+	RollbackTx(common.TxnID) error
+	CommitTx(common.TxnID) error
 }
 
 type TypedQueue[T interface {
@@ -110,7 +104,7 @@ func (tq *TypedQueue[T]) Close() error {
 var ErrNoVertexesInGraph = errors.New("no vertexes")
 
 type Vertex struct {
-	ID   VertexID
+	ID   storage.VertexID
 	Data map[string]any
 }
 
@@ -120,8 +114,8 @@ type VerticesIter interface {
 }
 
 type Edge struct {
-	Src  VertexID
-	Dst  VertexID
+	Src  storage.VertexID
+	Dst  storage.VertexID
 	Data map[string]any
 }
 

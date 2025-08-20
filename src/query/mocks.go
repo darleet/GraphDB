@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"iter"
 
+	"github.com/Blackdeer1524/GraphDB/src/storage"
+
+	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
+
 	"github.com/stretchr/testify/mock"
 )
 
@@ -34,19 +38,19 @@ func (m *mockQueue) Close() error {
 
 // mockVisited is a simple map-based visited set.
 type mockVisited struct {
-	visited map[VertexID]bool
+	visited map[storage.VertexID]bool
 }
 
 func newMockVisited() *mockVisited {
-	return &mockVisited{visited: make(map[VertexID]bool)}
+	return &mockVisited{visited: make(map[storage.VertexID]bool)}
 }
 
-func (m *mockVisited) Get(v VertexID) (bool, error) {
+func (m *mockVisited) Get(v storage.VertexID) (bool, error) {
 	val, ok := m.visited[v]
 	return ok && val, nil
 }
 
-func (m *mockVisited) Set(v VertexID, val bool) error {
+func (m *mockVisited) Set(v storage.VertexID, val bool) error {
 	m.visited[v] = val
 	return nil
 }
@@ -127,10 +131,10 @@ type mockTransactionManager struct {
 	beginErr    error
 	commitErr   error
 	rollbackErr error
-	nextTxnID   TxnID
+	nextTxnID   common.TxnID
 }
 
-func (m *mockTransactionManager) Begin() (TxnID, error) {
+func (m *mockTransactionManager) Begin() (common.TxnID, error) {
 	if m.beginErr != nil {
 		return 0, m.beginErr
 	}
@@ -138,11 +142,11 @@ func (m *mockTransactionManager) Begin() (TxnID, error) {
 	return m.nextTxnID, nil
 }
 
-func (m *mockTransactionManager) CommitTx(_ TxnID) error {
+func (m *mockTransactionManager) CommitTx(_ common.TxnID) error {
 	return m.commitErr
 }
 
-func (m *mockTransactionManager) RollbackTx(_ TxnID) error {
+func (m *mockTransactionManager) RollbackTx(_ common.TxnID) error {
 	return m.rollbackErr
 }
 
@@ -150,24 +154,24 @@ type mockTxnManager struct {
 	mock.Mock
 }
 
-func (m *mockTxnManager) Begin() (TxnID, error) {
+func (m *mockTxnManager) Begin() (common.TxnID, error) {
 	args := m.Called()
 
-	return args.Get(0).(TxnID), args.Error(1)
+	return args.Get(0).(common.TxnID), args.Error(1)
 }
-func (m *mockTxnManager) CommitTx(tx TxnID) error {
+func (m *mockTxnManager) CommitTx(tx common.TxnID) error {
 	args := m.Called(tx)
 
 	return args.Error(0)
 }
-func (m *mockTxnManager) RollbackTx(tx TxnID) error {
+func (m *mockTxnManager) RollbackTx(tx common.TxnID) error {
 	args := m.Called(tx)
 	return args.Error(0)
 }
 
 type DataMockStorageEngine struct {
-	vertices     map[VertexID]RID
-	neighbors    map[VertexID][]VertexIDWithRID
+	vertices     map[storage.VertexID]common.RecordID
+	neighbors    map[storage.VertexID][]VertexIDWithRID
 	queueErr     error
 	bitMapErr    error
 	getRIDErr    error
@@ -175,38 +179,38 @@ type DataMockStorageEngine struct {
 }
 
 // newDataMockStorageEngine создаёт DataMockStorageEngine с заданным графом.
-func newDataMockStorageEngine(vertices []VertexID, edges [][]VertexID, neighborsErr, queueErr, bitMapErr, getRIDErr error) *DataMockStorageEngine {
+func newDataMockStorageEngine(vertices []storage.VertexID, edges [][]storage.VertexID, neighborsErr, queueErr, bitMapErr, getRIDErr error) *DataMockStorageEngine {
 	se := &DataMockStorageEngine{
-		vertices:     make(map[VertexID]RID),
-		neighbors:    make(map[VertexID][]VertexIDWithRID),
+		vertices:     make(map[storage.VertexID]common.RecordID),
+		neighbors:    make(map[storage.VertexID][]VertexIDWithRID),
 		neighborsErr: neighborsErr,
 		queueErr:     queueErr,
 		bitMapErr:    bitMapErr,
 		getRIDErr:    getRIDErr,
 	}
 	for _, v := range vertices {
-		se.vertices[v] = RID{PageID: uint64(v * 100)}
+		se.vertices[v] = common.RecordID{PageID: common.PageID(v * 100)}
 	}
 	for _, edge := range edges {
 		if len(edge) != 2 {
 			panic("edge must be a pair [u, v]")
 		}
 		u, v := edge[0], edge[1]
-		se.neighbors[u] = append(se.neighbors[u], VertexIDWithRID{V: v, R: RID{PageID: uint64(v * 100)}})
-		se.neighbors[v] = append(se.neighbors[v], VertexIDWithRID{V: u, R: RID{PageID: uint64(u * 100)}})
+		se.neighbors[u] = append(se.neighbors[u], VertexIDWithRID{V: v, R: common.RecordID{PageID: common.PageID(v * 100)}})
+		se.neighbors[v] = append(se.neighbors[v], VertexIDWithRID{V: u, R: common.RecordID{PageID: common.PageID(u * 100)}})
 	}
 	return se
 }
 
-func (m *DataMockStorageEngine) NewAggregationAssociativeArray(TxnID) (AssociativeArray[VertexID, float64], error) {
-	return NewInMemoryAssociativeArray[VertexID, float64](), nil
+func (m *DataMockStorageEngine) NewAggregationAssociativeArray(common.TxnID) (AssociativeArray[storage.VertexID, float64], error) {
+	return NewInMemoryAssociativeArray[storage.VertexID, float64](), nil
 }
 
-func (m *DataMockStorageEngine) GetNeighborsWithEdgeFilter(t TxnID, v VertexID, filter EdgeFilter) (VerticesIter, error) {
+func (m *DataMockStorageEngine) GetNeighborsWithEdgeFilter(t common.TxnID, v storage.VertexID, filter EdgeFilter) (VerticesIter, error) {
 	return &mockAllVerticesIter{}, nil
 }
 
-func (m *DataMockStorageEngine) GetAllVertices(t TxnID) (VerticesIter, error) {
+func (m *DataMockStorageEngine) GetAllVertices(t common.TxnID) (VerticesIter, error) {
 	vertices := make([]*Vertex, 0, len(m.vertices))
 	for v := range m.vertices {
 		vertices = append(vertices, &Vertex{ID: v})
@@ -225,29 +229,29 @@ func (m *DataMockStorageEngine) GetAllVertices(t TxnID) (VerticesIter, error) {
 	return n, nil
 }
 
-func (m *DataMockStorageEngine) CountOfFilteredEdges(t TxnID, v VertexID, f EdgeFilter) (uint64, error) {
+func (m *DataMockStorageEngine) CountOfFilteredEdges(t common.TxnID, v storage.VertexID, f EdgeFilter) (uint64, error) {
 	return 0, nil
 }
 
-func (m *DataMockStorageEngine) AllVerticesWithValue(t TxnID, field string, value []byte) (VerticesIter, error) {
+func (m *DataMockStorageEngine) AllVerticesWithValue(t common.TxnID, field string, value []byte) (VerticesIter, error) {
 	return &mockAllVerticesIter{}, nil
 }
 
-func (m *DataMockStorageEngine) NewQueue(_ TxnID) (Queue, error) {
+func (m *DataMockStorageEngine) NewQueue(_ common.TxnID) (Queue, error) {
 	if m.queueErr != nil {
 		return nil, m.queueErr
 	}
 	return &mockQueue{}, nil
 }
 
-func (m *DataMockStorageEngine) NewBitMap(_ TxnID) (Visited, error) {
+func (m *DataMockStorageEngine) NewBitMap(_ common.TxnID) (Visited, error) {
 	if m.bitMapErr != nil {
 		return nil, m.bitMapErr
 	}
 	return newMockVisited(), nil
 }
 
-func (m *DataMockStorageEngine) GetVertexRID(_ TxnID, v VertexID) (VertexIDWithRID, error) {
+func (m *DataMockStorageEngine) GetVertexRID(_ common.TxnID, v storage.VertexID) (VertexIDWithRID, error) {
 	if m.getRIDErr != nil {
 		return VertexIDWithRID{}, m.getRIDErr
 	}
@@ -258,7 +262,7 @@ func (m *DataMockStorageEngine) GetVertexRID(_ TxnID, v VertexID) (VertexIDWithR
 	return VertexIDWithRID{V: v, R: rid}, nil
 }
 
-func (m *DataMockStorageEngine) Neighbors(_ TxnID, v VertexID) (NeighborIter, error) {
+func (m *DataMockStorageEngine) Neighbors(_ common.TxnID, v storage.VertexID) (NeighborIter, error) {
 	if m.neighborsErr != nil {
 		return nil, m.neighborsErr
 	}
@@ -274,47 +278,47 @@ type MockStorageEngine struct {
 	mock.Mock
 }
 
-func (m *MockStorageEngine) NewAggregationAssociativeArray(t TxnID) (AssociativeArray[VertexID, float64], error) {
+func (m *MockStorageEngine) NewAggregationAssociativeArray(t common.TxnID) (AssociativeArray[storage.VertexID, float64], error) {
 	args := m.Called(t)
-	return args.Get(0).(AssociativeArray[VertexID, float64]), args.Error(1)
+	return args.Get(0).(AssociativeArray[storage.VertexID, float64]), args.Error(1)
 }
 
-func (m *MockStorageEngine) GetNeighborsWithEdgeFilter(t TxnID, v VertexID, filter EdgeFilter) (VerticesIter, error) {
+func (m *MockStorageEngine) GetNeighborsWithEdgeFilter(t common.TxnID, v storage.VertexID, filter EdgeFilter) (VerticesIter, error) {
 	args := m.Called(t, v, filter)
 	return args.Get(0).(VerticesIter), args.Error(1)
 }
 
-func (m *MockStorageEngine) GetAllVertices(t TxnID) (VerticesIter, error) {
+func (m *MockStorageEngine) GetAllVertices(t common.TxnID) (VerticesIter, error) {
 	args := m.Called(t)
 	return args.Get(0).(VerticesIter), args.Error(1)
 }
 
-func (m *MockStorageEngine) CountOfFilteredEdges(t TxnID, v VertexID, f EdgeFilter) (uint64, error) {
+func (m *MockStorageEngine) CountOfFilteredEdges(t common.TxnID, v storage.VertexID, f EdgeFilter) (uint64, error) {
 	args := m.Called(t, v, f)
 	return args.Get(0).(uint64), args.Error(1)
 }
 
-func (m *MockStorageEngine) AllVerticesWithValue(t TxnID, field string, value []byte) (VerticesIter, error) {
+func (m *MockStorageEngine) AllVerticesWithValue(t common.TxnID, field string, value []byte) (VerticesIter, error) {
 	args := m.Called(t, field, value)
 	return args.Get(0).(VerticesIter), args.Error(1)
 }
 
-func (m *MockStorageEngine) NewQueue(t TxnID) (Queue, error) {
+func (m *MockStorageEngine) NewQueue(t common.TxnID) (Queue, error) {
 	args := m.Called(t)
 	return args.Get(0).(Queue), args.Error(1)
 }
 
-func (m *MockStorageEngine) NewBitMap(t TxnID) (Visited, error) {
+func (m *MockStorageEngine) NewBitMap(t common.TxnID) (Visited, error) {
 	args := m.Called(t)
 	return args.Get(0).(Visited), args.Error(1)
 }
 
-func (m *MockStorageEngine) GetVertexRID(t TxnID, v VertexID) (VertexIDWithRID, error) {
+func (m *MockStorageEngine) GetVertexRID(t common.TxnID, v storage.VertexID) (VertexIDWithRID, error) {
 	args := m.Called(t, v)
 	return args.Get(0).(VertexIDWithRID), args.Error(1)
 }
 
-func (m *MockStorageEngine) Neighbors(t TxnID, v VertexID) (NeighborIter, error) {
+func (m *MockStorageEngine) Neighbors(t common.TxnID, v storage.VertexID) (NeighborIter, error) {
 	args := m.Called(t, v)
 	return args.Get(0).(NeighborIter), args.Error(1)
 }
