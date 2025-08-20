@@ -2,6 +2,8 @@ package query
 
 import (
 	"errors"
+	"github.com/Blackdeer1524/GraphDB/src/query/mocks"
+	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"testing"
 
 	"github.com/Blackdeer1524/GraphDB/src/storage"
@@ -15,7 +17,7 @@ import (
 
 // Tests for GetVertexesOnDepth
 func TestGetVertexesOnDepth_NilStorageEngine(t *testing.T) {
-	e := &Executor{se: nil, tm: &mockTransactionManager{}}
+	e := &Executor{se: nil, tm: &mocks.MockTransactionManager{}}
 
 	_, err := e.GetVertexesOnDepth(1, 0)
 	require.Error(t, err)
@@ -23,8 +25,8 @@ func TestGetVertexesOnDepth_NilStorageEngine(t *testing.T) {
 }
 
 func TestGetVertexesOnDepth_TransactionBeginError(t *testing.T) {
-	se := newDataMockStorageEngine(nil, nil, nil, nil, nil, nil)
-	tm := &mockTransactionManager{beginErr: errors.New("begin error")}
+	se := mocks.NewDataMockStorageEngine(nil, nil, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{BeginErr: errors.New("begin error")}
 	e := &Executor{se: se, tm: tm}
 
 	_, err := e.GetVertexesOnDepth(1, 0)
@@ -33,8 +35,8 @@ func TestGetVertexesOnDepth_TransactionBeginError(t *testing.T) {
 }
 
 func TestGetVertexesOnDepth_GetVertexRIDError(t *testing.T) {
-	se := newDataMockStorageEngine(nil, nil, nil, nil, nil, errors.New("rid error"))
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(nil, nil, nil, nil, nil, errors.New("rid error"))
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	_, err := e.GetVertexesOnDepth(1, 0)
@@ -45,8 +47,8 @@ func TestGetVertexesOnDepth_GetVertexRIDError(t *testing.T) {
 func TestGetVertexesOnDepth_Depth0(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	expected := []storage.VertexIDWithRID{{V: 1, R: common.RecordID{PageID: 100}}}
@@ -58,8 +60,8 @@ func TestGetVertexesOnDepth_Depth0(t *testing.T) {
 func TestGetVertexesOnDepth_Depth1(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 2}, {1, 3}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	expected := []storage.VertexIDWithRID{
@@ -74,8 +76,8 @@ func TestGetVertexesOnDepth_Depth1(t *testing.T) {
 func TestGetVertexesOnDepth_Depth2(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3, 4, 5}
 	edges := [][]storage.VertexID{{1, 2}, {1, 3}, {2, 4}, {3, 5}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	expected := []storage.VertexIDWithRID{
@@ -90,8 +92,8 @@ func TestGetVertexesOnDepth_Depth2(t *testing.T) {
 func TestGetVertexesOnDepth_WithCycle(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 2}, {2, 3}, {3, 1}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	expected := []storage.VertexIDWithRID{
@@ -106,8 +108,8 @@ func TestGetVertexesOnDepth_WithCycle(t *testing.T) {
 func TestGetVertexesOnDepth_CommitError(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1, commitErr: errors.New("commit error")}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1, CommitErr: errors.New("commit error")}
 	e := &Executor{se: se, tm: tm}
 
 	_, err := e.GetVertexesOnDepth(1, 0)
@@ -118,8 +120,8 @@ func TestGetVertexesOnDepth_CommitError(t *testing.T) {
 func TestGetVertexesOnDepth_RollbackOnError(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, errors.New("rid error"))
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, errors.New("rid error"))
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	_, err := e.GetVertexesOnDepth(1, 0)
@@ -130,8 +132,8 @@ func TestGetVertexesOnDepth_RollbackOnError(t *testing.T) {
 func TestGetVertexesOnDepth_DepthOverflow(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	res, err := e.GetVertexesOnDepth(1, ^uint32(0))
@@ -142,7 +144,7 @@ func TestGetVertexesOnDepth_DepthOverflow(t *testing.T) {
 func TestBFS_NewQueueError(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, errors.New("queue error"), nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, errors.New("queue error"), nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -154,7 +156,7 @@ func TestBFS_NewQueueError(t *testing.T) {
 func TestBFS_NewBitMapError(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, errors.New("bitmap error"), nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, errors.New("bitmap error"), nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -166,7 +168,7 @@ func TestBFS_NewBitMapError(t *testing.T) {
 func TestBFS_Depth0(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -178,7 +180,7 @@ func TestBFS_Depth0(t *testing.T) {
 func TestBFS_Depth1(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 2}, {1, 3}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -193,7 +195,7 @@ func TestBFS_Depth1(t *testing.T) {
 func TestBFS_Depth2(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3, 4, 5}
 	edges := [][]storage.VertexID{{1, 2}, {1, 3}, {2, 4}, {3, 5}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -208,7 +210,7 @@ func TestBFS_Depth2(t *testing.T) {
 func TestBFS_WithCycle(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 2}, {2, 3}, {3, 1}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -226,7 +228,7 @@ func TestBFS_WithCycle(t *testing.T) {
 func TestBFS_TraverseNeighborsError(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, errors.New("neighbors error"), nil, nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, errors.New("neighbors error"), nil, nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -238,7 +240,7 @@ func TestBFS_TraverseNeighborsError(t *testing.T) {
 func TestBFS_NoVerticesAtTargetDepth(t *testing.T) {
 	vertices := []storage.VertexID{1}
 	edges := [][]storage.VertexID{}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -250,7 +252,7 @@ func TestBFS_NoVerticesAtTargetDepth(t *testing.T) {
 func TestBFS_MultiplePathsToSameVertex(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3, 4}
 	edges := [][]storage.VertexID{{1, 2}, {1, 3}, {2, 4}, {3, 4}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
 	e := &Executor{se: se}
 	start := storage.VertexIDWithRID{V: 1, R: common.RecordID{PageID: 100}}
 
@@ -270,10 +272,10 @@ func TestGetAllVertexesWithFieldValue(t *testing.T) {
 	})
 
 	t.Run("begin tx fails", func(t *testing.T) {
-		tm := new(mockTxnManager)
+		tm := new(mocks.MockTxnManager)
 		tm.On("Begin").Return(common.TxnID(0), errors.New("begin failed"))
 
-		exec := &Executor{tm: tm, se: new(DataMockStorageEngine)}
+		exec := &Executor{tm: tm, se: new(mocks.DataMockStorageEngine)}
 
 		res, err := exec.GetAllVertexesWithFieldValue("f", []byte("v"))
 		assert.Nil(t, res)
@@ -281,13 +283,13 @@ func TestGetAllVertexesWithFieldValue(t *testing.T) {
 	})
 
 	t.Run("all vertices fails", func(t *testing.T) {
-		tm := new(mockTxnManager)
-		se := new(MockStorageEngine)
+		tm := new(mocks.MockTxnManager)
+		se := new(mocks.MockStorageEngine)
 
 		tm.On("Begin").Return(common.TxnID(1), nil)
 		tm.On("RollbackTx", common.TxnID(1)).Return(nil)
 		se.On("AllVerticesWithValue", common.TxnID(1), "f", []byte("v")).
-			Return(new(mockAllVerticesIter), errors.New("storage fail"))
+			Return(new(mocks.MockAllVerticesIter), errors.New("storage fail"))
 
 		exec := &Executor{tm: tm, se: se}
 
@@ -298,14 +300,14 @@ func TestGetAllVertexesWithFieldValue(t *testing.T) {
 	})
 
 	t.Run("iterator close fails", func(t *testing.T) {
-		tm := new(mockTxnManager)
-		se := new(MockStorageEngine)
-		iter := new(mockAllVerticesIter)
+		tm := new(mocks.MockTxnManager)
+		se := new(mocks.MockStorageEngine)
+		iter := new(mocks.MockAllVerticesIter)
 
-		iter.seq = func(yield func(*storage.Vertex) bool) {
+		iter.SeqF = func(yield func(*storage.Vertex) bool) {
 			yield(&storage.Vertex{ID: 1})
 		}
-		iter.close = errors.New("close fail")
+		iter.CloseF = errors.New("close fail")
 
 		tm.On("Begin").Return(common.TxnID(1), nil)
 		tm.On("RollbackTx", mock.Anything).Return(nil)
@@ -320,19 +322,19 @@ func TestGetAllVertexesWithFieldValue(t *testing.T) {
 	})
 
 	t.Run("commit fails", func(t *testing.T) {
-		tm := new(mockTxnManager)
-		se := new(MockStorageEngine)
-		iter := new(mockAllVerticesIter)
+		tm := new(mocks.MockTxnManager)
+		se := new(mocks.MockStorageEngine)
+		iter := new(mocks.MockAllVerticesIter)
 
 		tm.On("Begin").Return(common.TxnID(2), nil)
 		tm.On("CommitTx", common.TxnID(2)).Return(errors.New("commit fail"))
 		tm.On("RollbackTx", common.TxnID(2)).Return(nil)
 		se.On("AllVerticesWithValue", common.TxnID(2), "f", []byte("v")).Return(iter, nil)
 
-		iter.seq = func(yield func(*storage.Vertex) bool) {
+		iter.SeqF = func(yield func(*storage.Vertex) bool) {
 			yield(&storage.Vertex{ID: 2})
 		}
-		iter.close = nil
+		iter.CloseF = nil
 
 		exec := &Executor{tm: tm, se: se}
 		res, err := exec.GetAllVertexesWithFieldValue("f", []byte("v"))
@@ -341,9 +343,9 @@ func TestGetAllVertexesWithFieldValue(t *testing.T) {
 	})
 
 	t.Run("success", func(t *testing.T) {
-		tm := new(mockTxnManager)
-		se := new(MockStorageEngine)
-		iter := new(mockAllVerticesIter)
+		tm := new(mocks.MockTxnManager)
+		se := new(mocks.MockStorageEngine)
+		iter := new(mocks.MockAllVerticesIter)
 
 		tm.On("Begin").Return(common.TxnID(3), nil)
 		tm.On("CommitTx", common.TxnID(3)).Return(nil)
@@ -354,7 +356,7 @@ func TestGetAllVertexesWithFieldValue(t *testing.T) {
 			{ID: 2, Data: map[string]any{"f": "v"}},
 		}
 
-		iter.seq = func(yield func(*storage.Vertex) bool) {
+		iter.SeqF = func(yield func(*storage.Vertex) bool) {
 			for _, v := range expected {
 				yield(v)
 			}
@@ -378,10 +380,10 @@ func TestGetAllVertexesWithFieldValue2_StorageNil(t *testing.T) {
 }
 
 func TestGetAllVertexesWithFieldValue2_BeginFails(t *testing.T) {
-	tm := new(mockTxnManager)
+	tm := new(mocks.MockTxnManager)
 	tm.On("Begin").Return(common.TxnID(0), errors.New("begin failed"))
 
-	exec := &Executor{tm: tm, se: new(MockStorageEngine)}
+	exec := &Executor{tm: tm, se: new(mocks.MockStorageEngine)}
 	res, err := exec.GetAllVertexesWithFieldValue2("f", []byte("v"), nil, 1)
 
 	assert.Nil(t, res)
@@ -390,13 +392,13 @@ func TestGetAllVertexesWithFieldValue2_BeginFails(t *testing.T) {
 }
 
 func TestGetAllVertexesWithFieldValue2_AllVerticesFails(t *testing.T) {
-	tm := new(mockTxnManager)
+	tm := new(mocks.MockTxnManager)
 	tm.On("Begin").Return(common.TxnID(1), nil)
 	tm.On("RollbackTx", common.TxnID(1)).Return(nil)
 
-	se := new(MockStorageEngine)
+	se := new(mocks.MockStorageEngine)
 	se.On("AllVerticesWithValue", common.TxnID(1), "f", []byte("v")).
-		Return((*mockAllVerticesIter)(nil), errors.New("all vertices error"))
+		Return((*mocks.MockAllVerticesIter)(nil), errors.New("all vertices error"))
 
 	exec := &Executor{tm: tm, se: se}
 	res, err := exec.GetAllVertexesWithFieldValue2("f", []byte("v"), nil, 1)
@@ -408,17 +410,17 @@ func TestGetAllVertexesWithFieldValue2_AllVerticesFails(t *testing.T) {
 }
 
 func TestGetAllVertexesWithFieldValue2_CountEdgesFails(t *testing.T) {
-	tm := new(mockTxnManager)
+	tm := new(mocks.MockTxnManager)
 	tm.On("Begin").Return(common.TxnID(1), nil)
 	tm.On("RollbackTx", common.TxnID(1)).Return(nil)
 
-	iter := &mockAllVerticesIter{
-		seq: func(yield func(*storage.Vertex) bool) {
+	iter := &mocks.MockAllVerticesIter{
+		SeqF: func(yield func(*storage.Vertex) bool) {
 			yield(&storage.Vertex{ID: 42})
 		},
 	}
 
-	se := new(MockStorageEngine)
+	se := new(mocks.MockStorageEngine)
 	se.On("AllVerticesWithValue", common.TxnID(1), "f", []byte("v")).
 		Return(iter, nil)
 	se.On("CountOfFilteredEdges", common.TxnID(1), storage.VertexID(42), mock.Anything).
@@ -433,17 +435,17 @@ func TestGetAllVertexesWithFieldValue2_CountEdgesFails(t *testing.T) {
 }
 
 func TestGetAllVertexesWithFieldValue2_SuccessPass(t *testing.T) {
-	tm := new(mockTxnManager)
+	tm := new(mocks.MockTxnManager)
 	tm.On("Begin").Return(common.TxnID(1), nil)
 	tm.On("CommitTx", common.TxnID(1)).Return(nil)
 
-	iter := &mockAllVerticesIter{
-		seq: func(yield func(*storage.Vertex) bool) {
+	iter := &mocks.MockAllVerticesIter{
+		SeqF: func(yield func(*storage.Vertex) bool) {
 			yield(&storage.Vertex{ID: 1})
 		},
 	}
 
-	se := new(MockStorageEngine)
+	se := new(mocks.MockStorageEngine)
 	se.On("AllVerticesWithValue", common.TxnID(1), "f", []byte("v")).
 		Return(iter, nil)
 	se.On("CountOfFilteredEdges", common.TxnID(1), storage.VertexID(1), mock.Anything).
@@ -461,17 +463,17 @@ func TestGetAllVertexesWithFieldValue2_SuccessPass(t *testing.T) {
 }
 
 func TestGetAllVertexesWithFieldValue2_SuccessFiltered(t *testing.T) {
-	tm := new(mockTxnManager)
+	tm := new(mocks.MockTxnManager)
 	tm.On("Begin").Return(common.TxnID(1), nil)
 	tm.On("CommitTx", common.TxnID(1)).Return(nil)
 
-	iter := &mockAllVerticesIter{
-		seq: func(yield func(*storage.Vertex) bool) {
+	iter := &mocks.MockAllVerticesIter{
+		SeqF: func(yield func(*storage.Vertex) bool) {
 			yield(&storage.Vertex{ID: 2})
 		},
 	}
 
-	se := new(MockStorageEngine)
+	se := new(mocks.MockStorageEngine)
 	se.On("AllVerticesWithValue", common.TxnID(1), "f", []byte("v")).
 		Return(iter, nil)
 	se.On("CountOfFilteredEdges", common.TxnID(1), storage.VertexID(2), mock.Anything).
@@ -488,16 +490,16 @@ func TestGetAllVertexesWithFieldValue2_SuccessFiltered(t *testing.T) {
 }
 
 func TestGetAllVertexesWithFieldValue2_MultipleResults(t *testing.T) {
-	tm := new(mockTxnManager)
-	se := new(MockStorageEngine)
-	iter := new(mockAllVerticesIter)
+	tm := new(mocks.MockTxnManager)
+	se := new(mocks.MockStorageEngine)
+	iter := new(mocks.MockAllVerticesIter)
 
 	v1 := &storage.Vertex{ID: 1}
 	v2 := &storage.Vertex{ID: 2}
 	v3 := &storage.Vertex{ID: 3}
 	v4 := &storage.Vertex{ID: 4}
 
-	iter.seq = func(yield func(*storage.Vertex) bool) {
+	iter.SeqF = func(yield func(*storage.Vertex) bool) {
 		yield(v1)
 		yield(v2)
 		yield(v3)
@@ -526,8 +528,8 @@ func TestGetAllVertexesWithFieldValue2_MultipleResults(t *testing.T) {
 // SumNeighborAttributes
 
 func TestSumAttributeOverProperNeighbors_SumCorrectly(t *testing.T) {
-	se := new(MockStorageEngine)
-	tm := new(mockTransactionManager)
+	se := new(mocks.MockStorageEngine)
+	tm := new(mocks.MockTransactionManager)
 
 	ex := &Executor{se: se, tm: tm}
 
@@ -536,8 +538,8 @@ func TestSumAttributeOverProperNeighbors_SumCorrectly(t *testing.T) {
 		{ID: storage.VertexID(2), Data: map[string]interface{}{"val": 3.5}},
 	}
 
-	iter := new(mockAllVerticesIter)
-	iter.seq = func(yield func(*storage.Vertex) bool) {
+	iter := new(mocks.MockAllVerticesIter)
+	iter.SeqF = func(yield func(*storage.Vertex) bool) {
 		yield(neighbors[0])
 		yield(neighbors[1])
 	}
@@ -550,8 +552,8 @@ func TestSumAttributeOverProperNeighbors_SumCorrectly(t *testing.T) {
 }
 
 func TestSumAttributeOverProperNeighbors_FieldMissing(t *testing.T) {
-	se := new(MockStorageEngine)
-	tm := new(mockTransactionManager)
+	se := new(mocks.MockStorageEngine)
+	tm := new(mocks.MockTransactionManager)
 
 	ex := &Executor{se: se, tm: tm}
 
@@ -559,8 +561,8 @@ func TestSumAttributeOverProperNeighbors_FieldMissing(t *testing.T) {
 		{ID: storage.VertexID(1), Data: map[string]interface{}{}},
 	}
 
-	iter := new(mockAllVerticesIter)
-	iter.seq = func(yield func(*storage.Vertex) bool) {
+	iter := new(mocks.MockAllVerticesIter)
+	iter.SeqF = func(yield func(*storage.Vertex) bool) {
 		yield(neighbors[0])
 	}
 
@@ -572,7 +574,7 @@ func TestSumAttributeOverProperNeighbors_FieldMissing(t *testing.T) {
 }
 
 func TestSumAttributeOverProperNeighbors_TypeMismatch(t *testing.T) {
-	se := new(MockStorageEngine)
+	se := new(mocks.MockStorageEngine)
 
 	ex := &Executor{se: se}
 
@@ -580,8 +582,8 @@ func TestSumAttributeOverProperNeighbors_TypeMismatch(t *testing.T) {
 		{ID: storage.VertexID(1), Data: map[string]interface{}{"val": "notfloat"}},
 	}
 
-	iter := new(mockAllVerticesIter)
-	iter.seq = func(yield func(*storage.Vertex) bool) {
+	iter := new(mocks.MockAllVerticesIter)
+	iter.SeqF = func(yield func(*storage.Vertex) bool) {
 		yield(neighbors[0])
 	}
 
@@ -593,8 +595,8 @@ func TestSumAttributeOverProperNeighbors_TypeMismatch(t *testing.T) {
 }
 
 func TestSumNeighborAttributes_SumAllVertices(t *testing.T) {
-	se := new(MockStorageEngine)
-	tm := new(mockTxnManager)
+	se := new(mocks.MockStorageEngine)
+	tm := new(mocks.MockTxnManager)
 
 	ex := &Executor{se: se, tm: tm}
 
@@ -606,8 +608,8 @@ func TestSumNeighborAttributes_SumAllVertices(t *testing.T) {
 		{ID: storage.VertexID(2)},
 	}
 
-	verticesIter := new(mockAllVerticesIter)
-	verticesIter.seq = func(yield func(*storage.Vertex) bool) {
+	verticesIter := new(mocks.MockAllVerticesIter)
+	verticesIter.SeqF = func(yield func(*storage.Vertex) bool) {
 		for _, v := range vertices {
 			yield(v)
 		}
@@ -622,15 +624,15 @@ func TestSumNeighborAttributes_SumAllVertices(t *testing.T) {
 		{ID: storage.VertexID(12), Data: map[string]interface{}{"val": 1.0}},
 	}
 
-	iterV1 := new(mockAllVerticesIter)
-	iterV1.seq = func(yield func(*storage.Vertex) bool) {
+	iterV1 := new(mocks.MockAllVerticesIter)
+	iterV1.SeqF = func(yield func(*storage.Vertex) bool) {
 		for _, v := range neighborsV1 {
 			yield(v)
 		}
 	}
 
-	iterV2 := new(mockAllVerticesIter)
-	iterV2.seq = func(yield func(*storage.Vertex) bool) {
+	iterV2 := new(mocks.MockAllVerticesIter)
+	iterV2.SeqF = func(yield func(*storage.Vertex) bool) {
 		for _, v := range neighborsV2 {
 			yield(v)
 		}
@@ -638,7 +640,7 @@ func TestSumNeighborAttributes_SumAllVertices(t *testing.T) {
 
 	se.On("GetNeighborsWithEdgeFilter", common.TxnID(1), storage.VertexID(1), mock.Anything).Return(iterV1, nil)
 	se.On("GetNeighborsWithEdgeFilter", common.TxnID(1), storage.VertexID(2), mock.Anything).Return(iterV2, nil)
-	se.On("NewAggregationAssociativeArray", common.TxnID(1)).Return(NewInMemoryAssociativeArray[storage.VertexID, float64](), nil)
+	se.On("NewAggregationAssociativeArray", common.TxnID(1)).Return(inmemory.NewInMemoryAssociativeArray[storage.VertexID, float64](), nil)
 
 	resAA, err := ex.SumNeighborAttributes("val", nil, func(f float64) bool {
 		return true
@@ -660,8 +662,8 @@ func TestSumNeighborAttributes_SumAllVertices(t *testing.T) {
 // GetAllTriangles
 
 func TestGetAllTriangles_EmptyGraph(t *testing.T) {
-	se := newDataMockStorageEngine(nil, nil, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(nil, nil, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()
@@ -672,8 +674,8 @@ func TestGetAllTriangles_EmptyGraph(t *testing.T) {
 func TestGetAllTriangles_K3(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 2}, {2, 3}, {1, 3}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()
@@ -684,8 +686,8 @@ func TestGetAllTriangles_K3(t *testing.T) {
 func TestGetAllTriangles_K4(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3, 4}
 	edges := [][]storage.VertexID{{1, 2}, {1, 3}, {1, 4}, {2, 3}, {2, 4}, {3, 4}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()
@@ -696,8 +698,8 @@ func TestGetAllTriangles_K4(t *testing.T) {
 func TestGetAllTriangles_DisconnectedWithTriangle(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3, 4}
 	edges := [][]storage.VertexID{{1, 2}, {2, 3}, {1, 3}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()
@@ -708,8 +710,8 @@ func TestGetAllTriangles_DisconnectedWithTriangle(t *testing.T) {
 func TestGetAllTriangles_SelfLoop(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 1}, {1, 2}, {2, 3}, {1, 3}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()
@@ -718,8 +720,8 @@ func TestGetAllTriangles_SelfLoop(t *testing.T) {
 }
 
 func TestGetAllTriangles_TransactionBeginError(t *testing.T) {
-	se := newDataMockStorageEngine(nil, nil, nil, nil, nil, nil)
-	tm := &mockTransactionManager{beginErr: errors.New("failed to begin tx")}
+	se := mocks.NewDataMockStorageEngine(nil, nil, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{BeginErr: errors.New("failed to begin tx")}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()
@@ -731,8 +733,8 @@ func TestGetAllTriangles_TransactionBeginError(t *testing.T) {
 func TestGetAllTriangles_CommitError(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 2}, {2, 3}, {1, 3}}
-	se := newDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1, commitErr: errors.New("commit failed")}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, nil, nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1, CommitErr: errors.New("commit failed")}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()
@@ -744,8 +746,8 @@ func TestGetAllTriangles_CommitError(t *testing.T) {
 func TestGetAllTriangles_NeighborsError(t *testing.T) {
 	vertices := []storage.VertexID{1, 2, 3}
 	edges := [][]storage.VertexID{{1, 2}, {2, 3}, {1, 3}}
-	se := newDataMockStorageEngine(vertices, edges, errors.New("failed to get neighbors"), nil, nil, nil)
-	tm := &mockTransactionManager{nextTxnID: 1}
+	se := mocks.NewDataMockStorageEngine(vertices, edges, errors.New("failed to get neighbors"), nil, nil, nil)
+	tm := &mocks.MockTransactionManager{NextTxnID: 1}
 	e := &Executor{se: se, tm: tm}
 
 	count, err := e.GetAllTriangles()

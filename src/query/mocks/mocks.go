@@ -1,7 +1,8 @@
-package query
+package mocks
 
 import (
 	"fmt"
+	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"iter"
 
 	"github.com/Blackdeer1524/GraphDB/src/storage"
@@ -85,17 +86,17 @@ func (m *mockIterator) Close() error {
 	return nil
 }
 
-type mockAllVerticesIter struct {
-	seq   func(yield func(*storage.Vertex) bool)
-	close error
+type MockAllVerticesIter struct {
+	SeqF   func(yield func(*storage.Vertex) bool)
+	CloseF error
 }
 
-func (m *mockAllVerticesIter) Seq() iter.Seq[*storage.Vertex] {
-	return m.seq
+func (m *MockAllVerticesIter) Seq() iter.Seq[*storage.Vertex] {
+	return m.SeqF
 }
 
-func (m *mockAllVerticesIter) Close() error {
-	return m.close
+func (m *MockAllVerticesIter) Close() error {
+	return m.CloseF
 }
 
 type mockNeighborsIterator struct {
@@ -126,45 +127,45 @@ func (m *mockNeighborsIterator) Close() error {
 	return nil
 }
 
-// mockTransactionManager
-type mockTransactionManager struct {
-	beginErr    error
-	commitErr   error
+// MockTransactionManager
+type MockTransactionManager struct {
+	BeginErr    error
+	CommitErr   error
 	rollbackErr error
-	nextTxnID   common.TxnID
+	NextTxnID   common.TxnID
 }
 
-func (m *mockTransactionManager) Begin() (common.TxnID, error) {
-	if m.beginErr != nil {
-		return 0, m.beginErr
+func (m *MockTransactionManager) Begin() (common.TxnID, error) {
+	if m.BeginErr != nil {
+		return 0, m.BeginErr
 	}
-	m.nextTxnID++
-	return m.nextTxnID, nil
+	m.NextTxnID++
+	return m.NextTxnID, nil
 }
 
-func (m *mockTransactionManager) CommitTx(_ common.TxnID) error {
-	return m.commitErr
+func (m *MockTransactionManager) CommitTx(_ common.TxnID) error {
+	return m.CommitErr
 }
 
-func (m *mockTransactionManager) RollbackTx(_ common.TxnID) error {
+func (m *MockTransactionManager) RollbackTx(_ common.TxnID) error {
 	return m.rollbackErr
 }
 
-type mockTxnManager struct {
+type MockTxnManager struct {
 	mock.Mock
 }
 
-func (m *mockTxnManager) Begin() (common.TxnID, error) {
+func (m *MockTxnManager) Begin() (common.TxnID, error) {
 	args := m.Called()
 
 	return args.Get(0).(common.TxnID), args.Error(1)
 }
-func (m *mockTxnManager) CommitTx(tx common.TxnID) error {
+func (m *MockTxnManager) CommitTx(tx common.TxnID) error {
 	args := m.Called(tx)
 
 	return args.Error(0)
 }
-func (m *mockTxnManager) RollbackTx(tx common.TxnID) error {
+func (m *MockTxnManager) RollbackTx(tx common.TxnID) error {
 	args := m.Called(tx)
 	return args.Error(0)
 }
@@ -178,8 +179,8 @@ type DataMockStorageEngine struct {
 	neighborsErr error
 }
 
-// newDataMockStorageEngine создаёт DataMockStorageEngine с заданным графом.
-func newDataMockStorageEngine(vertices []storage.VertexID, edges [][]storage.VertexID, neighborsErr, queueErr, bitMapErr, getRIDErr error) *DataMockStorageEngine {
+// NewDataMockStorageEngine создаёт DataMockStorageEngine с заданным графом.
+func NewDataMockStorageEngine(vertices []storage.VertexID, edges [][]storage.VertexID, neighborsErr, queueErr, bitMapErr, getRIDErr error) *DataMockStorageEngine {
 	se := &DataMockStorageEngine{
 		vertices:     make(map[storage.VertexID]common.RecordID),
 		neighbors:    make(map[storage.VertexID][]storage.VertexIDWithRID),
@@ -203,11 +204,11 @@ func newDataMockStorageEngine(vertices []storage.VertexID, edges [][]storage.Ver
 }
 
 func (m *DataMockStorageEngine) NewAggregationAssociativeArray(common.TxnID) (storage.AssociativeArray[storage.VertexID, float64], error) {
-	return NewInMemoryAssociativeArray[storage.VertexID, float64](), nil
+	return inmemory.NewInMemoryAssociativeArray[storage.VertexID, float64](), nil
 }
 
 func (m *DataMockStorageEngine) GetNeighborsWithEdgeFilter(t common.TxnID, v storage.VertexID, filter storage.EdgeFilter) (storage.VerticesIter, error) {
-	return &mockAllVerticesIter{}, nil
+	return &MockAllVerticesIter{}, nil
 }
 
 func (m *DataMockStorageEngine) GetAllVertices(t common.TxnID) (storage.VerticesIter, error) {
@@ -216,9 +217,9 @@ func (m *DataMockStorageEngine) GetAllVertices(t common.TxnID) (storage.Vertices
 		vertices = append(vertices, &storage.Vertex{ID: v})
 	}
 
-	n := &mockAllVerticesIter{}
+	n := &MockAllVerticesIter{}
 
-	n.seq = func(yield func(*storage.Vertex) bool) {
+	n.SeqF = func(yield func(*storage.Vertex) bool) {
 		for _, v := range vertices {
 			if !yield(v) {
 				return
@@ -234,7 +235,7 @@ func (m *DataMockStorageEngine) CountOfFilteredEdges(t common.TxnID, v storage.V
 }
 
 func (m *DataMockStorageEngine) AllVerticesWithValue(t common.TxnID, field string, value []byte) (storage.VerticesIter, error) {
-	return &mockAllVerticesIter{}, nil
+	return &MockAllVerticesIter{}, nil
 }
 
 func (m *DataMockStorageEngine) NewQueue(_ common.TxnID) (storage.Queue, error) {

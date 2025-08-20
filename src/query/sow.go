@@ -3,6 +3,7 @@ package query
 import (
 	"errors"
 	"fmt"
+	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
 	"math"
 
 	"github.com/Blackdeer1524/GraphDB/src/storage"
@@ -423,7 +424,7 @@ func (e *Executor) getVertexTriangleCount(tx common.TxnID, v *storage.Vertex) (r
 		}
 	}()
 
-	leftNeighbors := NewInMemoryAssociativeArray[storage.VertexID, struct{}]()
+	leftNeighbors := inmemory.NewInMemoryAssociativeArray[storage.VertexID, struct{}]()
 
 	for l := range leftNeighborsIter.Seq() {
 		err = leftNeighbors.Set(l.V, struct{}{})
