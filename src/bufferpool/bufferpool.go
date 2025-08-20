@@ -161,7 +161,9 @@ func (m *Manager) GetPage(
 	if frameID != noFrame {
 		page, err := m.diskManager.ReadPage(pIdent)
 		if err != nil {
+			m.fastPath.Lock()
 			m.emptyFrames = append(m.emptyFrames, frameID)
+			m.fastPath.Unlock()
 			return nil, err
 		}
 
