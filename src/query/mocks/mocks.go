@@ -243,7 +243,7 @@ func (m *DataMockStorageEngine) NewQueue(_ common.TxnID) (storage.Queue, error) 
 	return &mockQueue{}, nil
 }
 
-func (m *DataMockStorageEngine) NewBitMap(_ common.TxnID) (storage.Visited, error) {
+func (m *DataMockStorageEngine) NewBitMap(_ common.TxnID) (storage.BitMap, error) {
 	if m.bitMapErr != nil {
 		return nil, m.bitMapErr
 	}
@@ -307,9 +307,9 @@ func (m *MockStorageEngine) NewQueue(t common.TxnID) (storage.Queue, error) {
 	return args.Get(0).(storage.Queue), args.Error(1)
 }
 
-func (m *MockStorageEngine) NewBitMap(t common.TxnID) (storage.Visited, error) {
+func (m *MockStorageEngine) NewBitMap(t common.TxnID) (storage.BitMap, error) {
 	args := m.Called(t)
-	return args.Get(0).(storage.Visited), args.Error(1)
+	return args.Get(0).(storage.BitMap), args.Error(1)
 }
 
 func (m *MockStorageEngine) GetVertexRID(t common.TxnID, v storage.VertexID) (storage.VertexIDWithRID, error) {

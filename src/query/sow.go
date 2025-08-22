@@ -13,7 +13,7 @@ import (
 
 // traverseNeighborsWithDepth enqueues unvisited neighbors at next depth if <= targetDepth.
 func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWithDepthAndRID,
-	targetDepth uint32, seen storage.Visited, q storage.Queue) (err error) {
+	targetDepth uint32, seen storage.BitMap, q storage.Queue) (err error) {
 	curDepth := v.D
 
 	it, err := e.se.Neighbors(t, v.V)

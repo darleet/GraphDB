@@ -50,7 +50,7 @@ type RawQueue interface {
 	Close() error
 }
 
-type Visited interface {
+type BitMap interface {
 	Get(v VertexID) (bool, error)
 	Set(v VertexID, b bool) error
 	Close() error

@@ -8,7 +8,7 @@ import (
 type StorageEngine interface {
 	NewQueue(common.TxnID) (storage.Queue, error)
 	NewAggregationAssociativeArray(common.TxnID) (storage.AssociativeArray[storage.VertexID, float64], error)
-	NewBitMap(common.TxnID) (storage.Visited, error)
+	NewBitMap(common.TxnID) (storage.BitMap, error)
 	Neighbors(t common.TxnID, v storage.VertexID) (storage.NeighborIter, error)
 	GetVertexRID(t common.TxnID, v storage.VertexID) (storage.VertexIDWithRID, error)
 	AllVerticesWithValue(t common.TxnID, field string, value []byte) (storage.VerticesIter, error)
