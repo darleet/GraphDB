@@ -16,7 +16,7 @@ func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWi
 	targetDepth uint32, seen storage.BitMap, q storage.Queue) (err error) {
 	curDepth := v.D
 
-	it, err := e.se.Neighbors(t, v.V)
+	it, err := e.se.Neighbours(t, v.V)
 	if err != nil {
 		return err
 	}
@@ -382,7 +382,7 @@ func (e *Executor) countCommonNeighbors(tx common.TxnID, left storage.VertexID,
 	leftNeighbors storage.AssociativeArray[storage.VertexID, struct{}]) (r uint64, err error) {
 	var rightNeighborsIter storage.NeighborIter
 
-	rightNeighborsIter, err = e.se.Neighbors(tx, left)
+	rightNeighborsIter, err = e.se.Neighbours(tx, left)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get neighbors of vertex %v: %w", left, err)
 	}
@@ -411,7 +411,7 @@ func (e *Executor) getVertexTriangleCount(tx common.TxnID, v *storage.Vertex) (r
 
 	var leftNeighborsIter storage.NeighborIter
 
-	leftNeighborsIter, err = e.se.Neighbors(tx, v.ID)
+	leftNeighborsIter, err = e.se.Neighbours(tx, v.ID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get neighbors of vertex %v: %w", v.ID, err)
 	}

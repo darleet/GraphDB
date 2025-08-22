@@ -261,7 +261,7 @@ func (m *DataMockStorageEngine) GetVertexRID(_ common.TxnID, v storage.VertexID)
 	return storage.VertexIDWithRID{V: v, R: rid}, nil
 }
 
-func (m *DataMockStorageEngine) Neighbors(_ common.TxnID, v storage.VertexID) (storage.NeighborIter, error) {
+func (m *DataMockStorageEngine) Neighbours(_ common.TxnID, v storage.VertexID) (storage.NeighborIter, error) {
 	if m.neighborsErr != nil {
 		return nil, m.neighborsErr
 	}
@@ -317,7 +317,7 @@ func (m *MockStorageEngine) GetVertexRID(t common.TxnID, v storage.VertexID) (st
 	return args.Get(0).(storage.VertexIDWithRID), args.Error(1)
 }
 
-func (m *MockStorageEngine) Neighbors(t common.TxnID, v storage.VertexID) (storage.NeighborIter, error) {
+func (m *MockStorageEngine) Neighbours(t common.TxnID, v storage.VertexID) (storage.NeighborIter, error) {
 	args := m.Called(t, v)
 	return args.Get(0).(storage.NeighborIter), args.Error(1)
 }
