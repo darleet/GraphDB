@@ -293,15 +293,15 @@ func (e *Executor) sumAttributeOverProperNeighbors(tx common.TxnID, v *storage.V
 		}
 	}()
 
-	for niger := range nIter.Seq() {
-		data, ok := niger.Data[field]
+	for nbIter := range nIter.Seq() {
+		data, ok := nbIter.Data[field]
 		if !ok {
 			continue
 		}
 
 		d, ok := data.(float64)
 		if !ok {
-			return 0, fmt.Errorf("failed to convert field %s of vertex %v to float64", field, niger.ID)
+			return 0, fmt.Errorf("failed to convert field %s of vertex %v to float64", field, nbIter.ID)
 		}
 
 		res += d
