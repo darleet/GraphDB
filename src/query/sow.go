@@ -5,21 +5,45 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/Blackdeer1524/GraphDB/src/pkg/assert"
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/storage"
 	"github.com/Blackdeer1524/GraphDB/src/storage/datastructures/inmemory"
+	"github.com/Blackdeer1524/GraphDB/src/storage/engine"
+	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
 // traverseNeighborsWithDepth enqueues unvisited neighbors at next depth if <= targetDepth.
-func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWithDepthAndRID,
-	targetDepth uint32, seen storage.BitMap, q storage.Queue) (err error) {
+func (e *Executor) traverseNeighborsWithDepth(
+	t common.TxnID,
+	v storage.VertexSystemIDWithDepthAndRID,
+	targetDepth uint32,
+	vertexFilter storage.VertexFilter,
+	seen storage.BitMap,
+	q storage.Queue,
+	cToken *txns.CatalogLockToken,
+	logger common.ITxnLoggerWithContext,
+) (err error) {
 	curDepth := v.D
 
-	it, err := e.se.Neighbours(t, v.V)
+	startFileToken := txns.NewNilFileLockToken(cToken, v.R.FileID)
+	vertIndex, err := e.se.GetVertexTableSystemIndex(t, v.R.FileID, cToken, logger)
+	if err != nil {
+		return fmt.Errorf("failed to get vertex table internal index: %w", err)
+	}
+	defer vertIndex.Close()
+
+	it, err := e.se.GetNeighborsWithEdgeFilter(
+		t,
+		v.V,
+		startFileToken,
+		vertIndex,
+		storage.AllowAllEdgesFilter,
+		logger,
+	)
 	if err != nil {
 		return err
 	}
+
 	defer func() {
 		err1 := it.Close()
 		if err1 != nil {
@@ -28,9 +52,19 @@ func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWi
 	}()
 
 	for u := range it.Seq() {
+		vRID, vert, err := u.Destruct()
+		if err != nil {
+			return err
+		}
+
+		if !vertexFilter(&vert) {
+			continue
+		}
+
 		var ok bool
 
-		ok, err = seen.Get(u.V)
+		vID := storage.VertexID{SystemID: vert.ID, TableID: vRID.FileID}
+		ok, err = seen.Get(vID)
 		if err != nil {
 			return fmt.Errorf("failed to get vertex visited status: %w", err)
 		}
@@ -40,7 +74,7 @@ func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWi
 			continue
 		}
 
-		err = seen.Set(u.V, true)
+		err = seen.Set(vID, true)
 		if err != nil {
 			return fmt.Errorf("failed to set vertex visited status: %w", err)
 		}
@@ -52,7 +86,13 @@ func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWi
 		nd := curDepth + 1
 
 		if nd <= targetDepth {
-			err = q.Enqueue(storage.VertexWithDepthAndRID{V: u.V, D: nd, R: u.R})
+			err = q.Enqueue(
+				storage.VertexSystemIDWithDepthAndRID{
+					V: vert.ID,
+					R: vRID,
+					D: nd,
+				},
+			)
 			if err != nil {
 				return fmt.Errorf("failed to enqueue vertex: %w", err)
 			}
@@ -63,10 +103,14 @@ func (e *Executor) traverseNeighborsWithDepth(t common.TxnID, v storage.VertexWi
 }
 
 func (e *Executor) bfsWithDepth(
-	tx common.TxnID, start storage.VertexIDWithRID,
+	tx common.TxnID,
+	start storage.VertexSystemIDWithRID,
 	targetDepth uint32,
-) (result []storage.VertexIDWithRID, err error) {
-	result = make([]storage.VertexIDWithRID, 0)
+	vertexFilter storage.VertexFilter,
+	cToken *txns.CatalogLockToken,
+	logger common.ITxnLoggerWithContext,
+) (result []storage.VertexSystemIDWithRID, err error) {
+	result = make([]storage.VertexSystemIDWithRID, 0)
 
 	q, err := e.se.NewQueue(tx)
 	if err != nil {
@@ -84,20 +128,19 @@ func (e *Executor) bfsWithDepth(
 		err = errors.Join(err, seen.Close())
 	}()
 
-	err = seen.Set(start.V, true)
+	vID := storage.VertexID{SystemID: start.V, TableID: start.R.FileID}
+	err = seen.Set(vID, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set start vertex: %w", err)
 	}
 
-	err = q.Enqueue(storage.VertexWithDepthAndRID{V: start.V, D: 0, R: start.R})
+	err = q.Enqueue(storage.VertexSystemIDWithDepthAndRID{V: start.V, D: 0, R: start.R})
 	if err != nil {
 		return nil, fmt.Errorf("failed to enqueue start vertex: %w", err)
 	}
 
 	for {
-		var v storage.VertexWithDepthAndRID
-
-		v, err = q.Dequeue()
+		v, err := q.Dequeue()
 		if err != nil {
 			if errors.Is(err, storage.ErrQueueEmpty) {
 				break
@@ -111,12 +154,21 @@ func (e *Executor) bfsWithDepth(
 		}
 
 		if v.D == targetDepth {
-			result = append(result, storage.VertexIDWithRID{V: v.V, R: v.R})
+			result = append(result, storage.VertexSystemIDWithRID{V: v.V, R: v.R})
 
 			continue
 		}
 
-		err = e.traverseNeighborsWithDepth(tx, v, targetDepth, seen, q)
+		err = e.traverseNeighborsWithDepth(
+			tx,
+			v,
+			targetDepth,
+			vertexFilter,
+			seen,
+			q,
+			cToken,
+			logger,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to traverse neighbors: %w", err)
 		}
@@ -128,44 +180,36 @@ func (e *Executor) bfsWithDepth(
 // GetVertexesOnDepth is the first query from SOW. It returns all vertexes on a given depth.
 // We will use BFS on graph because DFS cannot calculate right depth on graphs (except trees).
 func (e *Executor) GetVertexesOnDepth(
-	start storage.VertexID,
+	txnID common.TxnID,
+	vertTableName string,
+	start storage.VertexSystemID,
 	targetDepth uint32,
-) (r []storage.VertexIDWithRID, err error) {
-	if e.se == nil {
-		return nil, errors.New("storage engine is nil")
-	}
-
-	var tx common.TxnID
-
-	tx, err = e.tm.Begin()
+	vertexFilter storage.VertexFilter,
+	logger common.ITxnLoggerWithContext,
+) (r []storage.VertexSystemIDWithRID, err error) {
+	cToken := txns.NewNilCatalogLockToken(txnID)
+	vertTableMeta, err := e.se.GetVertexTableMeta(vertTableName, cToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, fmt.Errorf("failed to get vertex table meta: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			err1 := e.tm.RollbackTx(tx)
 
-			assert.NoError(err1)
-		}
-	}()
+	var st storage.VertexSystemIDWithRID
+	index, err := e.se.GetVertexTableSystemIndex(txnID, vertTableMeta.FileID, cToken, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vertex table internal index: %w", err)
+	}
+	defer index.Close()
 
-	var st storage.VertexIDWithRID
-
-	st, err = e.se.GetVertexRID(tx, start)
+	st, err = engine.GetVertexRID(txnID, start, index)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get start vertex: %w", err)
 	}
 
-	var res []storage.VertexIDWithRID
+	var res []storage.VertexSystemIDWithRID
 
-	res, err = e.bfsWithDepth(tx, st, targetDepth)
+	res, err = e.bfsWithDepth(txnID, st, targetDepth, vertexFilter, cToken, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bfsWithDepth: %w", err)
-	}
-
-	err = e.tm.CommitTx(tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return res, nil
@@ -174,30 +218,28 @@ func (e *Executor) GetVertexesOnDepth(
 // GetAllVertexesWithFieldValue is the second query from SOW.
 // It returns all vertexes with a given field value.
 func (e *Executor) GetAllVertexesWithFieldValue(
+	txnID common.TxnID,
+	vertTableName string,
 	field string,
 	value []byte,
-) (res []*storage.Vertex, err error) {
-	if e.se == nil {
-		return nil, errors.New("storage engine is nil")
-	}
-
-	var tx common.TxnID
-
-	tx, err = e.tm.Begin()
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			err1 := e.tm.RollbackTx(tx)
-
-			err = errors.Join(err, fmt.Errorf("rollback failed: %w", err1))
-		}
-	}()
-
+	logger common.ITxnLoggerWithContext,
+) (res []storage.Vertex, err error) {
 	var verticesIter storage.VerticesIter
 
-	verticesIter, err = e.se.AllVerticesWithValue(tx, field, value)
+	cToken := txns.NewNilCatalogLockToken(txnID)
+	tableMeta, err := e.se.GetVertexTableMeta(vertTableName, cToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vertex table meta: %w", err)
+	}
+
+	vertIndex, err := e.se.GetVertexTableSystemIndex(txnID, tableMeta.FileID, cToken, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vertex table internal index: %w", err)
+	}
+	defer vertIndex.Close()
+
+	vertToken := txns.NewNilFileLockToken(cToken, tableMeta.FileID)
+	verticesIter, err = e.se.AllVerticesWithValue(txnID, vertToken, vertIndex, logger, field, value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vertices iterator: %w", err)
 	}
@@ -205,15 +247,14 @@ func (e *Executor) GetAllVertexesWithFieldValue(
 		err = errors.Join(err, verticesIter.Close())
 	}()
 
-	res = make([]*storage.Vertex, 0, 1024)
+	res = make([]storage.Vertex, 0, 1024)
 
 	for v := range verticesIter.Seq() {
-		res = append(res, v)
-	}
-
-	err = e.tm.CommitTx(tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		_, vert, err := v.Destruct()
+		if err != nil {
+			return nil, fmt.Errorf("failed to destruct vertex: %w", err)
+		}
+		res = append(res, vert)
 	}
 
 	return res, nil
@@ -222,31 +263,31 @@ func (e *Executor) GetAllVertexesWithFieldValue(
 // GetAllVertexesWithFieldValue2 is the third query from SOW (extended second query).
 // It returns all vertexes with a given field value and uses filter on edges (degree of vertex
 // with condition on edge).
-func (e *Executor) GetAllVertexesWithFieldValue2(field string, value []byte,
-	filter storage.EdgeFilter, cutoffDegree uint64) (res []*storage.Vertex, err error) {
-	if e.se == nil {
-		return nil, errors.New("storage engine is nil")
-	}
-
-	var tx common.TxnID
-
-	tx, err = e.tm.Begin()
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			err1 := e.tm.RollbackTx(tx)
-
-			if err1 != nil {
-				err = errors.Join(err, fmt.Errorf("rollback failed: %w", err1))
-			}
-		}
-	}()
-
+func (e *Executor) GetAllVertexesWithFieldValue2(
+	txnID common.TxnID,
+	vertTableName string,
+	field string,
+	value []byte,
+	filter storage.EdgeFilter,
+	cutoffDegree uint64,
+	logger common.ITxnLoggerWithContext,
+) (res []storage.Vertex, err error) {
 	var verticesIter storage.VerticesIter
 
-	verticesIter, err = e.se.AllVerticesWithValue(tx, field, value)
+	cToken := txns.NewNilCatalogLockToken(txnID)
+	tableMeta, err := e.se.GetVertexTableMeta(vertTableName, cToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vertex table meta: %w", err)
+	}
+
+	vertIndex, err := e.se.GetVertexTableSystemIndex(txnID, tableMeta.FileID, cToken, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vertex table internal index: %w", err)
+	}
+	defer vertIndex.Close()
+
+	vertToken := txns.NewNilFileLockToken(cToken, tableMeta.FileID)
+	verticesIter, err = e.se.AllVerticesWithValue(txnID, vertToken, vertIndex, logger, field, value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vertices iterator: %w", err)
 	}
@@ -257,12 +298,16 @@ func (e *Executor) GetAllVertexesWithFieldValue2(field string, value []byte,
 		}
 	}()
 
-	res = make([]*storage.Vertex, 0, 1024)
+	res = make([]storage.Vertex, 0, 1024)
 
 	for v := range verticesIter.Seq() {
-		var cnt uint64
+		_, v, err := v.Destruct()
+		if err != nil {
+			return nil, fmt.Errorf("failed to destruct vertex: %w", err)
+		}
 
-		cnt, err = e.se.CountOfFilteredEdges(tx, v.ID, filter)
+		var cnt uint64
+		cnt, err = e.se.CountOfFilteredEdges(txnID, v.ID, vertToken, vertIndex, logger, filter)
 		if err != nil {
 			return nil, fmt.Errorf("failed to count edges: %w", err)
 		}
@@ -274,21 +319,28 @@ func (e *Executor) GetAllVertexesWithFieldValue2(field string, value []byte,
 		res = append(res, v)
 	}
 
-	err = e.tm.CommitTx(tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return res, nil
 }
 
-func (e *Executor) sumAttributeOverProperNeighbors(tx common.TxnID, v *storage.Vertex, field string,
-	filter storage.EdgeFilter) (r float64, err error) {
+func (e *Executor) sumAttributeOverProperNeighbors(
+	txnID common.TxnID,
+	v *storage.Vertex,
+	vertTableToken *txns.FileLockToken,
+	vertIndex storage.Index,
+	field string,
+	edgeFilter storage.EdgeFilter,
+	logger common.ITxnLoggerWithContext,
+) (r float64, err error) {
 	var res float64
 
-	var nIter storage.VerticesIter
-
-	nIter, err = e.se.GetNeighborsWithEdgeFilter(tx, v.ID, filter)
+	nIter, err := e.se.GetNeighborsWithEdgeFilter(
+		txnID,
+		v.ID,
+		vertTableToken,
+		vertIndex,
+		edgeFilter,
+		logger,
+	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get edges iterator: %w", err)
 	}
@@ -300,20 +352,26 @@ func (e *Executor) sumAttributeOverProperNeighbors(tx common.TxnID, v *storage.V
 	}()
 
 	for nbIter := range nIter.Seq() {
-		data, ok := nbIter.Data[field]
+		_, nVert, err := nbIter.Destruct()
+		if err != nil {
+			return 0, fmt.Errorf("failed to destruct neighbor: %w", err)
+		}
+
+		data, ok := nVert.Data[field]
 		if !ok {
 			continue
 		}
 
-		d, ok := data.(float64)
-		if !ok {
-			return 0, fmt.Errorf(
-				"failed to convert field %s of vertex %v to float64",
+		d, err := storage.ColumnToFloat(data)
+		if err != nil {
+			err = fmt.Errorf(
+				"failed to convert field %s of vertex %v to float64: %w",
 				field,
-				nbIter.ID,
+				nVert.ID,
+				err,
 			)
+			return 0, err
 		}
-
 		res += d
 	}
 
@@ -324,37 +382,28 @@ func (e *Executor) sumAttributeOverProperNeighbors(tx common.TxnID, v *storage.V
 // the sum of a given attribute over its neighboring vertices, subject to a constraint on the edge
 // or attribute value (e.g., only include neighbors whose attribute exceeds a given threshold).
 func (e *Executor) SumNeighborAttributes(
+	txnID common.TxnID,
+	vertTableName string,
 	field string,
 	filter storage.EdgeFilter,
 	pred storage.SumNeighborAttributesFilter,
+	logger common.ITxnLoggerWithContext,
 ) (r storage.AssociativeArray[storage.VertexID, float64], err error) {
-	if e.se == nil {
-		return nil, errors.New("storage engine is nil")
-	}
-
-	var tx common.TxnID
-
-	tx, err = e.tm.Begin()
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			err1 := e.tm.RollbackTx(tx)
-			if err1 != nil {
-				err = errors.Join(err, fmt.Errorf("rollback failed: %w", err1))
-			}
-		}
-	}()
-
-	r, err = e.se.NewAggregationAssociativeArray(tx)
+	r, err = e.se.NewAggregationAssociativeArray(txnID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create aggregation associative array: %w", err)
 	}
 
 	var verticesIter storage.VerticesIter
 
-	verticesIter, err = e.se.GetAllVertices(tx)
+	cToken := txns.NewNilCatalogLockToken(txnID)
+	tableMeta, err := e.se.GetVertexTableMeta(vertTableName, cToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vertex table meta: %w", err)
+	}
+
+	vertToken := txns.NewNilFileLockToken(cToken, tableMeta.FileID)
+	verticesIter, err = e.se.GetAllVertices(txnID, vertToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vertices iterator: %w", err)
 	}
@@ -365,14 +414,51 @@ func (e *Executor) SumNeighborAttributes(
 		}
 	}()
 
+	lastVertexTableID := common.NilFileID
+	var lastVertexToken *txns.FileLockToken
+	var lastVertexIndex storage.Index
+	defer func() {
+		if lastVertexIndex != nil {
+			lastVertexIndex.Close()
+		}
+	}()
 	for v := range verticesIter.Seq() {
-		var res float64
+		vRID, nVert, err := v.Destruct()
+		if err != nil {
+			return nil, fmt.Errorf("failed to destruct vertex: %w", err)
+		}
 
-		res, err = e.sumAttributeOverProperNeighbors(tx, v, field, filter)
+		if vRID.FileID != lastVertexTableID {
+			lastVertexTableID = vRID.FileID
+			lastVertexToken = txns.NewNilFileLockToken(cToken, vRID.FileID)
+			if lastVertexIndex != nil {
+				lastVertexIndex.Close()
+			}
+			lastVertexIndex, err = e.se.GetVertexTableSystemIndex(
+				txnID,
+				vRID.FileID,
+				cToken,
+				logger,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get vertex table internal index: %w", err)
+			}
+		}
+
+		var res float64
+		res, err = e.sumAttributeOverProperNeighbors(
+			txnID,
+			&nVert,
+			lastVertexToken,
+			lastVertexIndex,
+			field,
+			filter,
+			logger,
+		)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to sum attribute over neighbors of vertex %v: %w",
-				v.ID,
+				vRID,
 				err,
 			)
 		}
@@ -381,124 +467,165 @@ func (e *Executor) SumNeighborAttributes(
 			continue
 		}
 
-		err = r.Set(v.ID, res)
+		vertexID := storage.VertexID{
+			SystemID: nVert.ID,
+			TableID:  vRID.FileID,
+		}
+		err = r.Set(vertexID, res)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set value in aggregation associative array: %w", err)
 		}
 	}
 
-	err = e.tm.CommitTx(tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return r, nil
 }
 
-func (e *Executor) countCommonNeighbors(tx common.TxnID, left storage.VertexID,
-	leftNeighbors storage.AssociativeArray[storage.VertexID, struct{}]) (r uint64, err error) {
-	var rightNeighborsIter storage.NeighborIter
+func (e *Executor) countCommonNeighbors(
+	txnID common.TxnID,
+	left storage.VertexSystemID,
+	leftNeighbours storage.AssociativeArray[storage.VertexID, struct{}],
+	leftFileToken *txns.FileLockToken,
+	leftIndex storage.Index,
+	logger common.ITxnLoggerWithContext,
+) (r uint64, err error) {
+	var rightNeighboursIter storage.NeighborIDIter
 
-	rightNeighborsIter, err = e.se.Neighbours(tx, left)
+	rightNeighboursIter, err = e.se.Neighbours(txnID, left, leftFileToken, leftIndex, logger)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get neighbors of vertex %v: %w", left, err)
 	}
 	defer func() {
-		err1 := rightNeighborsIter.Close()
+		err1 := rightNeighboursIter.Close()
 		if err1 != nil {
 			err = errors.Join(err, fmt.Errorf("close failed: %w", err1))
 		}
 	}()
 
-	for right := range rightNeighborsIter.Seq() {
-		if left >= right.V {
+	for right := range rightNeighboursIter.Seq() {
+		rightRID, err := right.Destruct()
+		if err != nil {
+			return 0, fmt.Errorf("failed to destruct vertex: %w", err)
+		}
+
+		rightVertID := storage.VertexID{SystemID: rightRID.V, TableID: rightRID.R.FileID}
+		if rightVertID.SystemID == left && rightVertID.TableID == leftFileToken.GetFileID() {
 			continue
 		}
 
-		if _, ok := leftNeighbors.Get(right.V); ok {
-			r++
+		_, ok := leftNeighbours.Get(rightVertID)
+		if !ok {
+			continue
 		}
+		r++
 	}
 
 	return r, nil
 }
 
 func (e *Executor) getVertexTriangleCount(
-	tx common.TxnID,
-	v *storage.Vertex,
+	txnID common.TxnID,
+	vertSysID storage.VertexSystemID,
+	vertTableToken *txns.FileLockToken,
+	vertIndex storage.Index,
+	logger common.ITxnLoggerWithContext,
 ) (r uint64, err error) {
 	r = 0
-
-	var leftNeighborsIter storage.NeighborIter
-
-	leftNeighborsIter, err = e.se.Neighbours(tx, v.ID)
+	leftNeighboursIter, err := e.se.Neighbours(
+		txnID,
+		vertSysID,
+		vertTableToken,
+		vertIndex,
+		logger,
+	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get neighbors of vertex %v: %w", v.ID, err)
+		return 0, fmt.Errorf("failed to get neighbors of vertex %v: %w", vertSysID, err)
 	}
 	defer func() {
-		err1 := leftNeighborsIter.Close()
+		err1 := leftNeighboursIter.Close()
 		if err1 != nil {
 			err = errors.Join(err, fmt.Errorf("close failed: %w", err1))
 		}
 	}()
 
-	leftNeighbors := inmemory.NewInMemoryAssociativeArray[storage.VertexID, struct{}]()
-
-	for l := range leftNeighborsIter.Seq() {
-		err = leftNeighbors.Set(l.V, struct{}{})
+	leftNeighbours := inmemory.NewInMemoryAssociativeArray[storage.VertexID, struct{}]()
+	for l := range leftNeighboursIter.Seq() {
+		vSystemIDwithRID, err := l.Destruct()
 		if err != nil {
-			return 0, fmt.Errorf("failed to set value in left neighbors associative array: %w", err)
+			return 0, fmt.Errorf("failed to get neighbor vertex: %w", err)
+		}
+
+		nVertID := storage.VertexID{
+			SystemID: vSystemIDwithRID.V,
+			TableID:  vSystemIDwithRID.R.FileID,
+		}
+		if nVertID.SystemID == vertSysID && nVertID.TableID == vertTableToken.GetFileID() {
+			continue
+		}
+
+		err = leftNeighbours.Set(nVertID, struct{}{})
+		if err != nil {
+			err = fmt.Errorf("failed to set value in left neighbors associative array: %w", err)
+			return 0, err
 		}
 	}
 
-	leftNeighbors.Seq(func(id storage.VertexID, s struct{}) bool {
+	cToken := vertTableToken.GetCatalogLockToken()
+	leftNeighbours.Seq(func(left storage.VertexID, _ struct{}) bool {
 		var add uint64
+		var leftIndex storage.Index
 
-		add, err = e.countCommonNeighbors(tx, id, leftNeighbors)
+		leftFileToken := txns.NewNilFileLockToken(cToken, left.TableID)
+		leftIndex, err = e.se.GetVertexTableSystemIndex(txnID, left.TableID, cToken, logger)
 		if err != nil {
+			return false
+		}
+		defer leftIndex.Close()
+
+		add, err = e.countCommonNeighbors(
+			txnID,
+			left.SystemID,
+			leftNeighbours,
+			leftFileToken,
+			leftIndex,
+			logger,
+		)
+		if err != nil {
+			err = fmt.Errorf("failed to count common neighbors: %w", err)
 			return false
 		}
 
 		if math.MaxUint64-r < add {
 			err = errors.New("triangle count is bigger than uint64")
-
 			return false
 		}
 
 		r += add
-
 		return true
 	})
 
-	return r, nil
+	return
 }
 
 // GetAllTriangles is the fifth query from SOW.
 // It returns all triangles in the graph (ignoring edge orientation).
-func (e *Executor) GetAllTriangles() (r uint64, err error) {
-	if e.se == nil {
-		return 0, errors.New("storage engine is nil")
-	}
-
-	var tx common.TxnID
-
-	tx, err = e.tm.Begin()
+func (e *Executor) GetAllTriangles(
+	txnID common.TxnID,
+	vertTableName string,
+	logger common.ITxnLoggerWithContext,
+) (r uint64, err error) {
+	cToken := txns.NewNilCatalogLockToken(txnID)
+	tableMeta, err := e.se.GetVertexTableMeta(vertTableName, cToken)
 	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+		return 0, fmt.Errorf("failed to get vertex table meta: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			err1 := e.tm.RollbackTx(tx)
+	vertIndex, err := e.se.GetVertexTableSystemIndex(txnID, tableMeta.FileID, cToken, logger)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get vertex table internal index: %w", err)
+	}
+	defer vertIndex.Close()
 
-			if err1 != nil {
-				err = errors.Join(err, fmt.Errorf("rollback failed: %w", err1))
-			}
-		}
-	}()
-
-	var verticesIter storage.VerticesIter
-
-	verticesIter, err = e.se.GetAllVertices(tx)
+	vertToken := txns.NewNilFileLockToken(cToken, tableMeta.FileID)
+	verticesIter, err := e.se.GetAllVertices(txnID, vertToken)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get vertices iterator: %w", err)
 	}
@@ -510,13 +637,16 @@ func (e *Executor) GetAllTriangles() (r uint64, err error) {
 	}()
 
 	r = 0
-
 	for v := range verticesIter.Seq() {
+		_, vert, err := v.Destruct()
+		if err != nil {
+			return 0, fmt.Errorf("failed to destruct vertex: %w", err)
+		}
 		var add uint64
 
-		add, err = e.getVertexTriangleCount(tx, v)
+		add, err = e.getVertexTriangleCount(txnID, vert.ID, vertToken, vertIndex, logger)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get triangle count of vertex %v: %w", v.ID, err)
+			return 0, fmt.Errorf("failed to get triangle count of vertex %v: %w", vert.ID, err)
 		}
 
 		if math.MaxUint64-r < add {
@@ -526,10 +656,5 @@ func (e *Executor) GetAllTriangles() (r uint64, err error) {
 		r += add
 	}
 
-	err = e.tm.CommitTx(tx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return r / 3, nil
+	return r / 6, nil
 }

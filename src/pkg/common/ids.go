@@ -3,12 +3,14 @@ package common
 import (
 	"bytes"
 	"encoding/binary"
+	"unsafe"
 )
 
 type PageID uint64
 type FileID uint64
 type TableID uint64
 
+const NilFileID = FileID(^uint64(0))
 const CheckpointInfoPageID = PageID(0)
 
 // TxnID is a monotonically increasing counter. It is guaranteed to be unique between transactions
@@ -73,6 +75,39 @@ type RecordID struct {
 	FileID  FileID
 	PageID  PageID
 	SlotNum uint16
+}
+
+const SerializedRecordIDSize = int(unsafe.Sizeof(
+	uint64(0),
+) + unsafe.Sizeof(
+	uint64(0),
+) + unsafe.Sizeof(
+	uint16(0),
+))
+
+func (r RecordID) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.BigEndian, r.FileID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, r.PageID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, r.SlotNum); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (r *RecordID) UnmarshalBinary(data []byte) error {
+	rd := bytes.NewReader(data)
+	if err := binary.Read(rd, binary.BigEndian, &r.FileID); err != nil {
+		return err
+	}
+	if err := binary.Read(rd, binary.BigEndian, &r.PageID); err != nil {
+		return err
+	}
+	return binary.Read(rd, binary.BigEndian, &r.SlotNum)
 }
 
 func (r RecordID) PageIdentity() PageIdentity {

@@ -3,33 +3,22 @@ package query
 import (
 	"github.com/Blackdeer1524/GraphDB/src/pkg/common"
 	"github.com/Blackdeer1524/GraphDB/src/storage"
+	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
-type StorageEngine interface {
-	NewQueue(common.TxnID) (storage.Queue, error)
-	NewAggregationAssociativeArray(
-		common.TxnID,
-	) (storage.AssociativeArray[storage.VertexID, float64], error)
-	NewBitMap(common.TxnID) (storage.BitMap, error)
-	Neighbours(t common.TxnID, v storage.VertexID) (storage.NeighborIter, error)
-	GetVertexRID(t common.TxnID, v storage.VertexID) (storage.VertexIDWithRID, error)
-	AllVerticesWithValue(t common.TxnID, field string, value []byte) (storage.VerticesIter, error)
-	CountOfFilteredEdges(t common.TxnID, v storage.VertexID, f storage.EdgeFilter) (uint64, error)
-	GetAllVertices(t common.TxnID) (storage.VerticesIter, error)
-	GetNeighborsWithEdgeFilter(
-		t common.TxnID,
-		v storage.VertexID,
-		filter storage.EdgeFilter,
-	) (storage.VerticesIter, error)
-}
+type Task func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error)
 
 type Executor struct {
-	se StorageEngine
-	tm storage.TransactionManager
+	se     storage.Engine
+	locker txns.ILockManager
 }
 
-func New(se StorageEngine) *Executor {
+func New(
+	se storage.Engine,
+	locker txns.ILockManager,
+) *Executor {
 	return &Executor{
-		se: se,
+		se:     se,
+		locker: locker,
 	}
 }

@@ -7,6 +7,7 @@ require github.com/spf13/cobra v1.9.1
 require github.com/stretchr/testify v1.10.0
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/panjf2000/ants v1.3.0
 	github.com/spf13/afero v1.14.0
 	github.com/spf13/viper v1.20.1
