@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"unsafe"
 
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -171,8 +170,6 @@ func getMasterPageIdent(fileID common.FileID) common.PageIdentity {
 func (i *LinearProbingIndex) Get(key []byte) (common.RecordID, error) {
 	assert.Assert(len(key) == i.keySize, "key size mismatch")
 
-	log.Printf("txn=%d key=%x Get: starting lookup for key", i.logger.GetTxnID(), key)
-
 	pToken := i.locker.LockPage(i.indexFileToken, masterPageID, txns.PageLockShared)
 	if pToken == nil {
 		err := fmt.Errorf("failed to lock page %v: %w", masterPageID, txns.ErrDeadlockPrevention)
@@ -183,27 +180,10 @@ func (i *LinearProbingIndex) Get(key []byte) (common.RecordID, error) {
 	recordsLimit := utils.FromBytes[uint64](i.masterPage.LockedRead(hashmapTotalCapacitySlot))
 	startPageID := utils.FromBytes[common.PageID](i.masterPage.LockedRead(startPageIDSlot))
 
-	// log.Printf(
-	// 	"txn=%d key=%x Get: bucketCapacity=%d, recordsLimit=%d, startPageID=%d",
-	// 	i.logger.GetTxnID(),
-	// 	key,
-	// 	bucketCapacity,
-	// 	recordsLimit,
-	// 	startPageID,
-	// )
-	//
 	i.hasher.Reset()
 	i.hasher.Write(key)
 	startArrayIndex := i.hasher.Sum64() % recordsLimit
 	k := startArrayIndex
-
-	// log.Printf(
-	// 	"txn=%d key=%x Get: startArrayIndex=%d, starting probe from k=%d",
-	// 	i.logger.GetTxnID(),
-	// 	key,
-	// 	startArrayIndex,
-	// 	k,
-	// )
 
 	nProbesCount := 0
 	for {
@@ -213,16 +193,6 @@ func (i *LinearProbingIndex) Get(key []byte) (common.RecordID, error) {
 		slotNumber := uint16(k % bucketCapacity)
 
 		bucketItemPageID := startPageID + common.PageID(bucketIndex)
-
-		// log.Printf(
-		// 	"txn=%d key=%x Get: probing k=%d, bucketIndex=%d, slotNumber=%d, bucketItemPageID=%d",
-		// 	i.logger.GetTxnID(),
-		// 	key,
-		// 	k,
-		// 	bucketIndex,
-		// 	slotNumber,
-		// 	bucketItemPageID,
-		// )
 
 		pToken := i.locker.LockPage(i.indexFileToken, bucketItemPageID, txns.PageLockShared)
 		if pToken == nil {
@@ -250,59 +220,18 @@ func (i *LinearProbingIndex) Get(key []byte) (common.RecordID, error) {
 			return common.RecordID{}, fmt.Errorf("failed to unmarshal bucket item: %w", err)
 		}
 
-		// log.Printf(
-		// 	"txn=%d key=%x Get: slot status=%d, itemKey=%q at k=%d",
-		// 	i.logger.GetTxnID(),
-		// 	key,
-		// 	status,
-		// 	itemKey,
-		// 	k,
-		// )
-
 		switch status {
 		case bucketItemStatusInserted:
 			if itemKey == string(key) {
-				log.Printf(
-					"txn=%d key=%x Get: found matching key at k=%d, returning rid=%+v after %d probes",
-					i.logger.GetTxnID(),
-					key,
-					k,
-					rid,
-					nProbesCount,
-				)
 				return rid, nil
 			}
-			// log.Printf(
-			// 	"txn=%d key=%x Get: slot occupied by different key %q, continuing probe",
-			// 	i.logger.GetTxnID(),
-			// 	key,
-			// 	itemKey,
-			// )
+
 		case bucketItemStatusDeleted:
-			// log.Printf(
-			// 	"txn=%d key=%x Get: slot was deleted, continuing probe",
-			// 	i.logger.GetTxnID(),
-			// 	key,
-			// )
 		case bucketItemStatusFree:
-			log.Printf(
-				"txn=%d key=%x Get: found free slot at k=%d, key not found after %d probes",
-				i.logger.GetTxnID(),
-				key,
-				k,
-				nProbesCount,
-			)
 			return common.RecordID{}, storage.ErrKeyNotFound
 		}
 
 		k = (k + 1) % recordsLimit
-		// log.Printf(
-		// 	"txn=%d key=%x Get: incrementing k to %d (recordsLimit=%d)",
-		// 	i.logger.GetTxnID(),
-		// 	key,
-		// 	k,
-		// 	recordsLimit,
-		// )
 		assert.Assert(k != startArrayIndex, "k == startArrayIndex. Should have grown the index")
 	}
 }
@@ -427,34 +356,11 @@ func (i *LinearProbingIndex) Insert(key []byte, rid common.RecordID) error {
 	recordsLimit := utils.FromBytes[uint64](i.masterPage.UnsafeRead(hashmapTotalCapacitySlot))
 	i.masterPage.RUnlock()
 
-	log.Printf(
-		"txn=%d key=%x Insert: key=%x, rid=%+v, recordsCount=%d, recordsLimit=%d",
-		i.logger.GetTxnID(),
-		key,
-		key,
-		rid,
-		recordsCount,
-		recordsLimit,
-	)
-
 	if float64(recordsCount)/float64(recordsLimit) > hashmapLoadFactor {
-		log.Printf(
-			"txn=%d key=%x Insert: load factor exceeded, growing index (recordsCount=%d, recordsLimit=%d)",
-			i.logger.GetTxnID(),
-			key,
-			recordsCount,
-			recordsLimit,
-		)
 		if err := i.grow(); err != nil {
 			return err
 		}
 		recordsLimit = utils.FromBytes[uint64](i.masterPage.LockedRead(hashmapTotalCapacitySlot))
-		log.Printf(
-			"txn=%d key=%x Insert: after grow, new recordsLimit=%d",
-			i.logger.GetTxnID(),
-			key,
-			recordsLimit,
-		)
 	}
 	startPageID := utils.FromBytes[common.PageID](i.masterPage.LockedRead(startPageIDSlot))
 
@@ -462,14 +368,6 @@ func (i *LinearProbingIndex) Insert(key []byte, rid common.RecordID) error {
 	i.hasher.Write(key)
 	startArrayIndex := i.hasher.Sum64() % recordsLimit
 	k := startArrayIndex
-
-	// log.Printf(
-	// 	"txn=%d key=%x Insert: startArrayIndex=%d, startPageID=%d",
-	// 	i.logger.GetTxnID(),
-	// 	key,
-	// 	startArrayIndex,
-	// 	startPageID,
-	// )
 
 	nProbesCount := 0
 	for {
@@ -479,17 +377,6 @@ func (i *LinearProbingIndex) Insert(key []byte, rid common.RecordID) error {
 		slotNumber := uint16(k % bucketCapacity)
 
 		bucketItemPageID := startPageID + common.PageID(bucketIndex)
-
-		// log.Printf(
-		// 	"txn=%d key=%x Insert: probing k=%d, bucketIndex=%d, slotNumber=%d,
-		// bucketItemPageID=%d",
-		// 	i.logger.GetTxnID(),
-		// 	key,
-		// 	k,
-		// 	bucketIndex,
-		// 	slotNumber,
-		// 	bucketItemPageID,
-		// )
 
 		bucketToken := i.locker.LockPage(i.indexFileToken, bucketItemPageID, txns.PageLockShared)
 		if bucketToken == nil {
@@ -518,41 +405,14 @@ func (i *LinearProbingIndex) Insert(key []byte, rid common.RecordID) error {
 				return false, fmt.Errorf("failed to unmarshal bucket item: %w", err)
 			}
 
-			// log.Printf(
-			// 	"txn=%d key=%x Insert: slot status=%d, itemKey=%q at k=%d",
-			// 	i.logger.GetTxnID(),
-			// 	key,
-			// 	status,
-			// 	itemKey,
-			// 	k,
-			// )
-
 			switch status {
 			case bucketItemStatusInserted:
 				// enforcing a unique constraint
 				assert.Assert(itemKey != string(key), "unique constraint violation")
-				// log.Printf(
-				// 	"txn=%d key=%x Insert: slot occupied by different key %q, continuing probe",
-				// 	i.logger.GetTxnID(),
-				// 	key,
-				// 	itemKey,
-				// )
 				return false, nil
 			case bucketItemStatusDeleted:
-				// log.Printf(
-				// 	"txn=%d key=%x Insert: slot was deleted, continuing probe",
-				// 	i.logger.GetTxnID(),
-				// 	key,
-				// )
 				return false, nil
 			case bucketItemStatusFree:
-				// log.Printf(
-				// 	"txn=%d key=%x Insert: found free slot at k=%d, inserting key=%x",
-				// 	i.logger.GetTxnID(),
-				// 	key,
-				// 	k,
-				// 	key,
-				// )
 				insertedItemData, err := marshalBucketItem(
 					bucketItemStatusInserted,
 					string(key),
@@ -620,15 +480,6 @@ func (i *LinearProbingIndex) Insert(key []byte, rid common.RecordID) error {
 				if err != nil {
 					return false, err
 				}
-				log.Printf(
-					"txn=%d key=%x Insert: successfully inserted after %d probes at k=%d, pageID=%d, slotNum=%d",
-					i.logger.GetTxnID(),
-					key,
-					nProbesCount,
-					k,
-					bucketItemPageID,
-					slotNumber,
-				)
 				return true, err
 			}
 			return false, nil
@@ -665,25 +516,7 @@ func (i *LinearProbingIndex) grow() error {
 	bucketItemSize := utils.FromBytes[uint64](i.masterPage.UnsafeRead(bucketItemSizeSlot))
 	i.masterPage.RUnlock()
 
-	log.Printf(
-		"txn=%d Grow: starting; bucketsCount=%d, bucketCapacity=%d, bucketItemSize=%d, startPageID=%d",
-		i.logger.GetTxnID(),
-		bucketsCount,
-		bucketCapacity,
-		bucketItemSize,
-		startPageID,
-	)
-
 	dummyRecord := make([]byte, bucketItemSize)
-	firstNewPageID := (startPageID + common.PageID(bucketsCount))
-	lastNewPageID := firstNewPageID + common.PageID(bucketsCount*2) - 1
-	log.Printf(
-		"txn=%d Grow: initializing %d new buckets; new pages [%d..%d]",
-		i.logger.GetTxnID(),
-		2*bucketsCount,
-		firstNewPageID,
-		lastNewPageID,
-	)
 	for k := range bucketsCount * 2 {
 		newPageID := startPageID + common.PageID(bucketsCount) + common.PageID(k)
 
@@ -728,13 +561,6 @@ func (i *LinearProbingIndex) grow() error {
 		if err != nil {
 			return err
 		}
-
-		log.Printf(
-			"txn=%d Grow: initialized new bucket pageID=%d with %d slots",
-			i.logger.GetTxnID(),
-			newPageID,
-			bucketCapacity,
-		)
 	}
 
 	err := i.pool.WithMarkDirty(
@@ -783,25 +609,6 @@ func (i *LinearProbingIndex) grow() error {
 		return err
 	}
 
-	newBucketsCount := bucketsCount * 2
-	newStartPageID := common.PageID(uint64(startPageID) + bucketsCount)
-	newRecordsLimit := bucketCapacity * 2 * bucketsCount
-	log.Printf(
-		"txn=%d Grow: master updated; bucketsCount=%d->%d, startPageID=%d->%d, recordsLimit=%d",
-		i.logger.GetTxnID(),
-		bucketsCount,
-		newBucketsCount,
-		startPageID,
-		newStartPageID,
-		newRecordsLimit,
-	)
-	log.Printf(
-		"txn=%d Grow: rehashing existing entries from old bucket pages [%d..%d]",
-		i.logger.GetTxnID(),
-		startPageID,
-		startPageID+common.PageID(bucketsCount)-1,
-	)
-
 	for k := startPageID; k < startPageID+common.PageID(bucketsCount); k++ {
 		if i.debugAssertsEnabled {
 			prevGenBucketPageToken := i.locker.LockPage(i.indexFileToken, k, txns.PageLockShared)
@@ -822,8 +629,6 @@ func (i *LinearProbingIndex) grow() error {
 
 			prevGenBucket.RLock()
 			defer prevGenBucket.RUnlock()
-
-			log.Printf("txn=%d Grow: scanning old bucket pageID=%d", i.logger.GetTxnID(), k)
 
 			for slotIdx := range prevGenBucket.NumSlots() {
 				bucketItemData := prevGenBucket.UnsafeRead(slotIdx)
@@ -848,7 +653,6 @@ func (i *LinearProbingIndex) grow() error {
 			return err
 		}
 	}
-	log.Printf("txn=%d Grow: completed successfully", i.logger.GetTxnID())
 	return nil
 }
 

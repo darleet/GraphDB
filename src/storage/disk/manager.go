@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/spf13/afero"
 
@@ -20,9 +21,11 @@ var ErrNoSuchPage = errors.New("no such page")
 type Manager struct {
 	basePath    string
 	mu          sync.Mutex
-	newPageFunc func(fileID common.FileID, pageID common.PageID) *page.SlottedPage
+	newPageFunc func(fileID common.FileID, pageID common.PageID) page.SlottedPage
 
-	fs afero.Fs
+	fs        afero.Fs
+	fileCache map[common.FileID]afero.File
+	cacheMu   sync.RWMutex
 }
 
 var (
@@ -31,7 +34,7 @@ var (
 
 func New(
 	basePath string,
-	newPageFunc func(fileID common.FileID, pageID common.PageID) *page.SlottedPage,
+	newPageFunc func(fileID common.FileID, pageID common.PageID) page.SlottedPage,
 	fs afero.Fs,
 ) *Manager {
 	return &Manager{
@@ -39,6 +42,8 @@ func New(
 		newPageFunc: newPageFunc,
 		mu:          sync.Mutex{},
 		fs:          fs,
+		fileCache:   make(map[common.FileID]afero.File),
+		cacheMu:     sync.RWMutex{},
 	}
 }
 func (m *Manager) Lock() {
@@ -47,6 +52,37 @@ func (m *Manager) Lock() {
 
 func (m *Manager) Unlock() {
 	m.mu.Unlock()
+}
+
+// getOrOpenFile returns a cached file handle or opens a new one and caches it
+func (m *Manager) getOrOpenFile(fileID common.FileID) (afero.File, error) {
+	m.cacheMu.RLock()
+	if file, exists := m.fileCache[fileID]; exists {
+		m.cacheMu.RUnlock()
+		return file, nil
+	}
+	m.cacheMu.RUnlock()
+
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+
+	if file, exists := m.fileCache[fileID]; exists {
+		m.cacheMu.RUnlock()
+		return file, nil
+	}
+
+	path := utils.GetFilePath(m.basePath, fileID)
+	file, err := m.fs.OpenFile(
+		filepath.Clean(path),
+		os.O_RDWR|os.O_CREATE|syscall.O_DIRECT,
+		0o644,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.fileCache[fileID] = file
+	return file, nil
 }
 
 func (m *Manager) ReadPage(pg *page.SlottedPage, pageIdent common.PageIdentity) error {
@@ -60,13 +96,10 @@ func (m *Manager) ReadPageAssumeLocked(
 	pg *page.SlottedPage,
 	pageIdent common.PageIdentity,
 ) error {
-	path := utils.GetFilePath(m.basePath, pageIdent.FileID)
-
-	file, err := m.fs.OpenFile(filepath.Clean(path), os.O_RDWR|os.O_CREATE, 0o644)
+	file, err := m.getOrOpenFile(pageIdent.FileID)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
 	//nolint:gosec
 	offset := int64(pageIdent.PageID * page.PageSize)
@@ -75,13 +108,14 @@ func (m *Manager) ReadPageAssumeLocked(
 	_, err = file.ReadAt(data, offset)
 	if errors.Is(err, io.EOF) {
 		newPage := m.newPageFunc(pageIdent.FileID, pageIdent.PageID)
-		_, err := file.WriteAt(newPage.GetData(), offset)
+		_, err := file.WriteAt(newPage[:], offset)
 		if err != nil {
 			return err
 		}
 
 		err = file.Sync()
 		if err != nil {
+			path := utils.GetFilePath(m.basePath, pageIdent.FileID)
 			return fmt.Errorf("failed to sync file %s: %w", path, err)
 		}
 
@@ -107,13 +141,10 @@ func (m *Manager) GetPageNoNewAssumeLocked(
 	pg *page.SlottedPage,
 	pageIdent common.PageIdentity,
 ) error {
-	path := utils.GetFilePath(m.basePath, pageIdent.FileID)
-
-	file, err := m.fs.OpenFile(filepath.Clean(path), os.O_RDWR|os.O_CREATE, 0o644)
+	file, err := m.getOrOpenFile(pageIdent.FileID)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
 
 	//nolint:gosec
 	offset := int64(pageIdent.PageID * page.PageSize)
@@ -133,22 +164,13 @@ func (m *Manager) WritePageAssumeLocked(
 	lockedPage *page.SlottedPage,
 	pageIdent common.PageIdentity,
 ) error {
+	data := lockedPage[:]
 	path := utils.GetFilePath(m.basePath, pageIdent.FileID)
 
-	data := lockedPage.GetData()
-	if len(data) == 0 {
-		return errors.New("page data is empty")
-	}
-
-	file, err := m.fs.OpenFile(
-		filepath.Clean(path),
-		os.O_WRONLY|os.O_CREATE,
-		0600,
-	)
+	file, err := m.getOrOpenFile(pageIdent.FileID)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
-	defer file.Close()
 
 	//nolint:gosec
 	offset := int64(pageIdent.PageID * page.PageSize)
@@ -225,8 +247,9 @@ func (m *InMemoryManager) ReadPageAssumeLocked(
 ) error {
 	storedPage, ok := m.pages[pageIdent]
 	if !ok {
-		m.pages[pageIdent] = page.NewSlottedPage()
-		pg.SetData(m.pages[pageIdent].GetData())
+		newPage := page.NewSlottedPage()
+		m.pages[pageIdent] = &newPage
+		pg.SetData(newPage[:])
 		return nil
 	}
 
@@ -243,7 +266,7 @@ func (m *InMemoryManager) WritePageAssumeLocked(
 		return fmt.Errorf("page %+v not found", pgIdent)
 	}
 
-	m.pages[pgIdent].SetData(pg.GetData())
+	m.pages[pgIdent].SetData(pg[:])
 	return nil
 }
 
@@ -251,13 +274,10 @@ func (m *Manager) GetLastFilePage(fileID common.FileID) (common.PageID, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	path := utils.GetFilePath(m.basePath, fileID)
-
-	file, err := m.fs.OpenFile(filepath.Clean(path), os.O_RDWR, 0o644)
+	file, err := m.getOrOpenFile(fileID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -269,6 +289,7 @@ func (m *Manager) GetLastFilePage(fileID common.FileID) (common.PageID, error) {
 	if pagesCount == 0 {
 		return 0, ErrNoSuchPage
 	}
+	//nolint:gosec
 	return common.PageID(pagesCount - 1), nil
 }
 
@@ -276,13 +297,10 @@ func (m *Manager) GetEmptyPage(fileID common.FileID) (common.PageID, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	path := utils.GetFilePath(m.basePath, fileID)
-
-	file, err := m.fs.OpenFile(filepath.Clean(path), os.O_RDWR|os.O_CREATE, 0o644)
+	file, err := m.getOrOpenFile(fileID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -291,5 +309,68 @@ func (m *Manager) GetEmptyPage(fileID common.FileID) (common.PageID, error) {
 
 	filesize := info.Size()
 	pagesCount := filesize / page.PageSize
+	//nolint:gosec
 	return common.PageID(pagesCount), nil
+}
+
+// BulkWritePageAssumeLockedBegin returns two handles for batched page writes.
+// The first handle writes a page at the given pageID offset without flushing.
+// The second handle must be called by the caller to flush the file contents.
+func (m *Manager) BulkWritePageAssumeLockedBegin(
+	fileID common.FileID,
+) (func(lockedPage *page.SlottedPage, pageID common.PageID) error, func() error, error) {
+	file, err := m.getOrOpenFile(fileID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	path := utils.GetFilePath(m.basePath, fileID)
+
+	bulkWriter := func(lockedPage *page.SlottedPage, pageID common.PageID) error {
+		data := lockedPage[:]
+		//nolint:gosec
+		offset := int64(pageID * page.PageSize)
+
+		_, err := file.WriteAt(data, offset)
+		if err != nil {
+			return fmt.Errorf("failed to write at file %s: %w", path, err)
+		}
+		return nil
+	}
+
+	doneHandle := func() error {
+		if err := file.Sync(); err != nil {
+			return fmt.Errorf("failed to sync file %s: %w", path, err)
+		}
+		return nil
+	}
+
+	return bulkWriter, doneHandle, nil
+}
+
+func (m *InMemoryManager) BulkWritePageAssumeLockedBegin(
+	fileID common.FileID,
+) (func(lockedPage *page.SlottedPage, pageID common.PageID) error, func() error, error) {
+	bulkWriter := func(lockedPage *page.SlottedPage, pageID common.PageID) error {
+		pageIdent := common.PageIdentity{
+			FileID: fileID,
+			PageID: pageID,
+		}
+
+		if existingPage, exists := m.pages[pageIdent]; exists {
+			existingPage.SetData(lockedPage[:])
+		} else {
+			newPage := page.NewSlottedPage()
+			newPage.SetData(lockedPage[:])
+			m.pages[pageIdent] = &newPage
+		}
+
+		return nil
+	}
+
+	doneHandle := func() error {
+		return nil
+	}
+
+	return bulkWriter, doneHandle, nil
 }
