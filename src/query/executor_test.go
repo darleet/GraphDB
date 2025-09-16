@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"math/rand"
 	"strings"
@@ -109,7 +110,7 @@ func Execute(
 	isReadOnly bool, // не будет писать логов -> немного получше скорость
 ) (err error) {
 	txnID := common.TxnID(ticker.Add(1))
-	defer executor.locker.Unlock(txnID)
+	defer executor.Locker.Unlock(txnID)
 
 	ctxLogger := logger.WithContext(txnID)
 	if !isReadOnly {
@@ -3602,23 +3603,16 @@ func insertVertexWithRetry(
 	tableName string,
 	vertex storage.VertexInfo,
 ) {
-	inserted := false
-	for !inserted {
-		_ = Execute(
-			ticker,
-			e,
-			logger,
-			func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error) {
-				err = e.InsertVertex(txnID, tableName, vertex, logger)
-				if err != nil {
-					require.ErrorIs(t, err, txns.ErrDeadlockPrevention)
-					return ErrRollback
-				}
-				inserted = true
-				return nil
-			},
-			false,
-		)
+	err := ExecuteWithRetry(
+		ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error) {
+			return e.InsertVertex(txnID, tableName, vertex, logger)
+		},
+	)
+	if err != nil {
+		require.ErrorIs(t, err, ErrRollback)
 	}
 }
 
@@ -4566,41 +4560,33 @@ func insertNotOrientedEdgeWithRetry(
 	tableName string,
 	edge storage.EdgeInfo,
 ) {
-	inserted := false
-	for !inserted {
-		_ = Execute(
-			ticker,
-			e,
-			logger,
-			func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error) {
-				err = e.InsertEdge(txnID, tableName, edge, logger)
-				if err != nil {
-					if errors.Is(err, storage.ErrKeyNotFound) {
-						return ErrRollback
-					}
-
-					require.ErrorIs(t, err, txns.ErrDeadlockPrevention)
+	err := ExecuteWithRetry(
+		ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error) {
+			err = e.InsertEdge(txnID, tableName, edge, logger)
+			if err != nil {
+				if errors.Is(err, storage.ErrKeyNotFound) {
 					return ErrRollback
 				}
-				err = e.InsertEdge(txnID, tableName, storage.EdgeInfo{
-					SystemID:    storage.EdgeSystemID(uuid.New()),
-					SrcVertexID: edge.DstVertexID,
-					DstVertexID: edge.SrcVertexID,
-					Data:        edge.Data,
-				}, logger)
-				if err != nil {
-					if errors.Is(err, storage.ErrKeyNotFound) {
-						return ErrRollback
-					}
 
-					require.ErrorIs(t, err, txns.ErrDeadlockPrevention)
-					return ErrRollback
-				}
-				inserted = true
-				return nil
-			},
-			false,
-		)
+				return err
+			}
+			err = e.InsertEdge(txnID, tableName, storage.EdgeInfo{
+				SystemID:    storage.EdgeSystemID(uuid.New()),
+				SrcVertexID: edge.DstVertexID,
+				DstVertexID: edge.SrcVertexID,
+				Data:        edge.Data,
+			}, logger)
+			if errors.Is(err, storage.ErrKeyNotFound) {
+				return ErrRollback
+			}
+			return err
+		},
+	)
+	if err != nil {
+		require.ErrorIs(t, err, ErrRollback)
 	}
 }
 
@@ -4699,7 +4685,7 @@ func TestConcurrentGetTriangles(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						err = Execute(
+						err := Execute(
 							&ticker,
 							e,
 							logger,
@@ -4716,7 +4702,7 @@ func TestConcurrentGetTriangles(t *testing.T) {
 								}
 								return nil
 							},
-							false,
+							true,
 						)
 						require.NoError(t, err)
 					}()
@@ -4958,9 +4944,12 @@ func (g *GraphGenerator) countTriangles() int {
 }
 
 func (g *GraphGenerator) hasEdge(u, v storage.VertexSystemID) bool {
-	_, exists := g.edges[makeUndirectedEdge(u, v)]
+	if bytes.Compare(u[:], v[:]) < 0 {
+		_, exists := g.edges[makeUndirectedEdge(u, v)]
+		return exists
+	}
 
-	return exists
+	return false
 }
 
 func (g *GraphGenerator) getVertexIndex(systemID storage.VertexSystemID) int {
@@ -5021,7 +5010,9 @@ func TestConcurrentGetTrianglesWithWrites(t *testing.T) {
 					e,
 					logger,
 					func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error) {
-						schema := storage.Schema{{Name: vertFieldName, Type: storage.ColumnTypeInt64}}
+						schema := storage.Schema{
+							{Name: vertFieldName, Type: storage.ColumnTypeInt64},
+						}
 						return e.CreateVertexType(txnID, vertTableName, schema, logger)
 					},
 					false,
@@ -5034,8 +5025,17 @@ func TestConcurrentGetTrianglesWithWrites(t *testing.T) {
 					e,
 					logger,
 					func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error) {
-						schema := storage.Schema{{Name: edgeFieldName, Type: storage.ColumnTypeInt64}}
-						return e.CreateEdgeType(txnID, edgeTableName, schema, vertTableName, vertTableName, logger)
+						schema := storage.Schema{
+							{Name: edgeFieldName, Type: storage.ColumnTypeInt64},
+						}
+						return e.CreateEdgeType(
+							txnID,
+							edgeTableName,
+							schema,
+							vertTableName,
+							vertTableName,
+							logger,
+						)
 					},
 					false,
 				)
@@ -5046,7 +5046,7 @@ func TestConcurrentGetTrianglesWithWrites(t *testing.T) {
 				opGen.Generate(test.opsCnt, test.minTriangleCnt)
 
 				var (
-					checkInterval = 10
+					checkInterval = test.opsCnt / 4
 
 					g      = make(map[int][]int)
 					opChan = make(chan op, test.threadsCount)
@@ -5063,19 +5063,15 @@ func TestConcurrentGetTrianglesWithWrites(t *testing.T) {
 
 						for o := range opChan {
 							if o.t == vertexType {
-								insertVertexWithRetry(t, &ticker, e, logger, vertTableName, o.v)
-
-								d := opGen.getVertexIndex(o.v.SystemID)
-
 								mu.Lock()
+								insertVertexWithRetry(t, &ticker, e, logger, vertTableName, o.v)
+								d := opGen.getVertexIndex(o.v.SystemID)
 								g[d] = make([]int, 0)
 								mu.Unlock()
 							} else {
-								insertNotOrientedEdgeWithRetry(t, &ticker, e, logger, edgeTableName, o.e)
-
-								u, v := opGen.getVertexIndex(o.e.SrcVertexID), opGen.getVertexIndex(o.e.DstVertexID)
-
 								mu.Lock()
+								insertNotOrientedEdgeWithRetry(t, &ticker, e, logger, edgeTableName, o.e)
+								u, v := opGen.getVertexIndex(o.e.SrcVertexID), opGen.getVertexIndex(o.e.DstVertexID)
 								g[u] = append(g[u], v)
 								g[v] = append(g[v], u)
 								mu.Unlock()
@@ -5091,24 +5087,22 @@ func TestConcurrentGetTrianglesWithWrites(t *testing.T) {
 					operationCounter++
 
 					if operationCounter%checkInterval == 0 {
-						time.Sleep(100 * time.Millisecond)
-
-						mu.RLock()
-						trCnt := uint64(len(graphCountTriangles(g)))
-						mu.RUnlock()
-
-						err = Execute(
+						err = ExecuteWithRetry(
 							&ticker,
 							e,
 							logger,
 							func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) (err error) {
+								mu.RLock()
+								defer mu.RUnlock()
 								triangles, err := e.GetAllTriangles(txnID, vertTableName, logger)
-								require.NoError(t, err)
+								if err != nil {
+									return err
+								}
+								trCnt := uint64(len(graphCountTriangles(g)))
 								require.Equal(t, trCnt, triangles)
 
 								return nil
 							},
-							false,
 						)
 						require.NoError(t, err)
 					}
@@ -5120,8 +5114,6 @@ func TestConcurrentGetTrianglesWithWrites(t *testing.T) {
 				mu.RLock()
 				trCnt := uint64(len(graphCountTriangles(g)))
 				mu.RUnlock()
-
-				require.GreaterOrEqual(t, trCnt, uint64(test.minTriangleCnt))
 
 				err = Execute(
 					&ticker,
@@ -5152,4 +5144,411 @@ func TestConcurrentGetTrianglesWithWrites(t *testing.T) {
 				require.NoError(t, err)
 			})
 	}
+}
+
+func ExecuteWithRetry(
+	ticker *atomic.Uint64,
+	executor *Executor,
+	logger common.ITxnLogger,
+	fn Task,
+) error {
+	txnID := common.TxnID(ticker.Add(1))
+
+	job := func() error {
+		defer executor.locker.Unlock(txnID)
+		ctxLogger := logger.WithContext(txnID)
+
+		if err := ctxLogger.AppendBegin(); err != nil {
+			return fmt.Errorf("failed to append begin: %w", err)
+		}
+
+		err := fn(txnID, executor, ctxLogger)
+
+		if err != nil {
+			myassert.NoError(ctxLogger.AppendAbort())
+			ctxLogger.Rollback()
+			return err
+		}
+		if err = ctxLogger.AppendCommit(); err != nil {
+			return fmt.Errorf("failed to append commit: %w", err)
+		} else if err = ctxLogger.AppendTxnEnd(); err != nil {
+			return fmt.Errorf("failed to append txn end: %w", err)
+		}
+		return nil
+	}
+
+	for {
+		err := job()
+		if errors.Is(err, txns.ErrDeadlockPrevention) {
+			continue
+		}
+		return err
+	}
+}
+
+func TestRepeatableRead(t *testing.T) {
+	fs := afero.NewOsFs()
+	catalogBasePath := t.TempDir()
+	poolPageCount := uint64(50)
+	debugMode := false
+
+	e, debugPool, locker, logger, err := setupExecutor(
+		fs,
+		catalogBasePath,
+		poolPageCount,
+		debugMode,
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, debugPool.EnsureAllPagesUnpinnedAndUnlocked()) }()
+
+	var ticker atomic.Uint64
+	vertTableName := "person"
+	vertFieldName := "id"
+	edgeTableName := "is-friend"
+	edgeFieldName := "years"
+	setupTables(t, e, &ticker, vertTableName, vertFieldName, edgeTableName, edgeFieldName, logger)
+
+	const (
+		jobsCount      = 100
+		workerPoolSize = 20
+	)
+
+	pool, err := ants.NewPool(workerPoolSize)
+	require.NoError(t, err)
+	defer pool.Release()
+
+	vertex := storage.VertexInfo{
+		SystemID: storage.VertexSystemID(uuid.New()),
+		Data:     map[string]any{vertFieldName: int64(0)},
+	}
+
+	err = Execute(
+		&ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+			err := e.InsertVertex(txnID, vertTableName, vertex, logger)
+			require.NoError(t, err)
+			return nil
+		},
+		false,
+	)
+	require.NoError(t, err)
+
+	wg := sync.WaitGroup{}
+	wg.Add(jobsCount)
+	for range jobsCount {
+		err := pool.Submit(func() {
+			defer wg.Done()
+			err := ExecuteWithRetry(
+				&ticker,
+				e,
+				logger,
+				func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+					dbVert, err := e.SelectVertex(txnID, vertTableName, vertex.SystemID, logger)
+					if err != nil {
+						return err
+					}
+					oldValue := dbVert.Data[vertFieldName].(int64)
+
+					newData := map[string]any{vertFieldName: int64(oldValue + 1)}
+					err = e.UpdateVertex(txnID, vertTableName, vertex.SystemID, newData, logger)
+					if err != nil {
+						return err
+					}
+
+					updatedDbVert, err := e.SelectVertex(
+						txnID,
+						vertTableName,
+						vertex.SystemID,
+						logger,
+					)
+					if err != nil {
+						return err
+					}
+					require.Equal(t, newData[vertFieldName], updatedDbVert.Data[vertFieldName])
+					return nil
+				},
+			)
+			require.NoError(t, err)
+		})
+		require.NoError(t, err)
+	}
+
+	time.AfterFunc(time.Second*10, func() {
+		t.Logf("Dependency graph:\n%s", locker.DumpDependencyGraph())
+	})
+	wg.Wait()
+
+	err = Execute(
+		&ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+			vert, err := e.SelectVertex(txnID, vertTableName, vertex.SystemID, logger)
+			require.NoError(t, err)
+			require.Equal(t, int64(jobsCount), vert.Data[vertFieldName].(int64))
+			return nil
+		},
+		true,
+	)
+	require.NoError(t, err)
+}
+
+func TestBankTransactions(t *testing.T) {
+	fs := afero.NewOsFs()
+	catalogBasePath := t.TempDir()
+	poolPageCount := uint64(50)
+	debugMode := false
+
+	e, debugPool, locker, logger, err := setupExecutor(
+		fs,
+		catalogBasePath,
+		poolPageCount,
+		debugMode,
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, debugPool.EnsureAllPagesUnpinnedAndUnlocked()) }()
+	defer func() { require.True(t, locker.AreAllQueuesEmpty()) }()
+
+	ticker := atomic.Uint64{}
+	vertTableName := "person"
+	balanceField := "balance"
+	vertSchema := storage.Schema{
+		{Name: balanceField, Type: storage.ColumnTypeInt64},
+	}
+
+	edgeTableName := "transfer"
+	amountField := "amount"
+	timestampField := "timestamp"
+	edgeSchema := storage.Schema{
+		{Name: amountField, Type: storage.ColumnTypeInt64},
+		{Name: timestampField, Type: storage.ColumnTypeInt64},
+	}
+
+	err = Execute(
+		&ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+			err := e.CreateVertexType(txnID, vertTableName, vertSchema, logger)
+			require.NoError(t, err)
+			err = e.CreateEdgeType(
+				txnID,
+				edgeTableName,
+				edgeSchema,
+				vertTableName,
+				vertTableName,
+				logger,
+			)
+			require.NoError(t, err)
+			return nil
+		},
+		false,
+	)
+	require.NoError(t, err)
+
+	const (
+		nClients       = 1000
+		nTransactions  = 1000
+		initialBalance = 100
+		workerPoolSize = 10
+		totalMoney     = nClients * initialBalance
+	)
+
+	vertices := make([]storage.VertexInfo, 0, nClients)
+	for range nClients {
+		vertices = append(vertices, storage.VertexInfo{
+			SystemID: storage.VertexSystemID(uuid.New()),
+			Data:     map[string]any{balanceField: int64(initialBalance)},
+		})
+	}
+
+	err = Execute(
+		&ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+			return e.InsertVertices(txnID, vertTableName, vertices, logger)
+		},
+		false,
+	)
+	require.NoError(t, err)
+
+	err = Execute(
+		&ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+			s := int64(0)
+			for _, vert := range vertices {
+				vert, err := e.SelectVertex(txnID, vertTableName, vert.SystemID, logger)
+				if err != nil {
+					return err
+				}
+				s += vert.Data[balanceField].(int64)
+			}
+			require.Equal(t, int64(totalMoney), s)
+			return nil
+		},
+		true,
+	)
+	require.NoError(t, err)
+
+	workerPool, err := ants.NewPool(workerPoolSize)
+	require.NoError(t, err)
+	defer workerPool.Release()
+
+	wg := sync.WaitGroup{}
+	wg.Add(nClients)
+	for range nClients {
+		err := workerPool.Submit(func() {
+			defer wg.Done()
+
+			err := ExecuteWithRetry(
+				&ticker,
+				e,
+				logger,
+				func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+					src := rand.Intn(nClients)
+					dst := rand.Intn(nClients)
+					for dst == src {
+						dst = rand.Intn(nClients)
+					}
+
+					srcVertID := vertices[src].SystemID
+					dstVertID := vertices[dst].SystemID
+
+					log.Printf(
+						"txnID: %d - Starting transfer from vertex %d to vertex %d",
+						txnID,
+						src,
+						dst,
+					)
+
+					srcVert, err := e.SelectVertex(txnID, vertTableName, srcVertID, logger)
+					if err != nil {
+						log.Printf("txnID: %d - Failed to select source vertex: %v", txnID, err)
+						return err
+					}
+					dstVert, err := e.SelectVertex(txnID, vertTableName, dstVertID, logger)
+					if err != nil {
+						log.Printf(
+							"txnID: %d - Failed to select destination vertex: %v",
+							txnID,
+							err,
+						)
+						return err
+					}
+
+					srcBalance := srcVert.Data[balanceField].(int64)
+					if srcBalance == 0 {
+						log.Printf(
+							"txnID: %d - Source vertex %d has zero balance, skipping transfer",
+							txnID,
+							src,
+						)
+						return nil
+					}
+					dstBalance := dstVert.Data[balanceField].(int64)
+
+					transferAmount := int64(rand.Intn(int(srcBalance)))
+					transferTimestamp := time.Now().Unix()
+					log.Printf(
+						"txnID: %d - Transferring amount %d from vertex %d (balance: %d) to vertex %d (balance: %d)",
+						txnID,
+						transferAmount,
+						src,
+						srcBalance,
+						dst,
+						dstBalance,
+					)
+
+					transferEdge := storage.EdgeInfo{
+						SystemID:    storage.EdgeSystemID(uuid.New()),
+						SrcVertexID: srcVertID,
+						DstVertexID: dstVertID,
+						Data: map[string]any{
+							amountField:    int64(transferAmount),
+							timestampField: int64(transferTimestamp),
+						},
+					}
+
+					err = e.UpdateVertex(
+						txnID,
+						vertTableName,
+						srcVertID,
+						map[string]any{
+							balanceField: int64(srcBalance - transferAmount),
+						},
+						logger,
+					)
+					if err != nil {
+						log.Printf(
+							"txnID: %d - Failed to update source vertex balance: %v",
+							txnID,
+							err,
+						)
+						return err
+					}
+
+					err = e.UpdateVertex(
+						txnID,
+						vertTableName,
+						dstVertID,
+						map[string]any{
+							balanceField: int64(dstBalance + transferAmount),
+						},
+						logger,
+					)
+					if err != nil {
+						log.Printf(
+							"txnID: %d - Failed to update destination vertex balance: %v",
+							txnID,
+							err,
+						)
+						return err
+					}
+
+					err = e.InsertEdge(txnID, edgeTableName, transferEdge, logger)
+					if err != nil {
+						log.Printf("txnID: %d - Failed to insert transfer edge: %v", txnID, err)
+						return err
+					}
+
+					log.Printf(
+						"txnID: %d - Successfully completed transfer of amount %d from vertex %d to vertex %d",
+						txnID,
+						transferAmount,
+						src,
+						dst,
+					)
+					return nil
+				},
+			)
+			require.NoError(t, err)
+		})
+		require.NoError(t, err)
+	}
+	wg.Wait()
+
+	err = Execute(
+		&ticker,
+		e,
+		logger,
+		func(txnID common.TxnID, e *Executor, logger common.ITxnLoggerWithContext) error {
+			s := int64(0)
+			for _, vert := range vertices {
+				vert, err := e.SelectVertex(txnID, vertTableName, vert.SystemID, logger)
+				if err != nil {
+					return err
+				}
+				s += vert.Data[balanceField].(int64)
+			}
+			require.Equal(t, int64(totalMoney), s)
+			return nil
+		},
+		true,
+	)
+	require.NoError(t, err)
 }

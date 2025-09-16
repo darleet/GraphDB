@@ -149,7 +149,7 @@ func (s *StorageEngine) GetEdgeTableMetaByFileID(
 	edgeTableID common.FileID,
 	cToken *txns.CatalogLockToken,
 ) (storage.EdgeTableMeta, error) {
-	if !s.locker.UpgradeCatalogLock(cToken, txns.GranularLockIntentionShared) {
+	if !s.locker.UpgradeCatalogLock(cToken, txns.GranularLockShared) {
 		err := fmt.Errorf("couldn't upgrade catalog lock: %w", txns.ErrDeadlockPrevention)
 		return storage.EdgeTableMeta{}, err
 	}
@@ -175,7 +175,7 @@ func (s *StorageEngine) GetVertexTableMetaByFileID(
 	vertexTableID common.FileID,
 	cToken *txns.CatalogLockToken,
 ) (storage.VertexTableMeta, error) {
-	if !s.locker.UpgradeCatalogLock(cToken, txns.GranularLockIntentionShared) {
+	if !s.locker.UpgradeCatalogLock(cToken, txns.GranularLockShared) {
 		err := fmt.Errorf("couldn't upgrade catalog lock: %w", txns.ErrDeadlockPrevention)
 		return storage.VertexTableMeta{}, err
 	}

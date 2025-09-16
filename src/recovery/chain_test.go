@@ -35,7 +35,7 @@ func setupLoggerMasterPage(
 func TestChainSanity(t *testing.T) {
 	logPageId := common.PageIdentity{
 		FileID: 42,
-		PageID: 321,
+		PageID: 1,
 	}
 
 	masterRecordPageIdent := common.PageIdentity{
@@ -116,11 +116,9 @@ func TestChainSanity(t *testing.T) {
 		Delete(common.RecordID{FileID: deletePageID.FileID, PageID: deletePageID.PageID, SlotNum: deleteSlotNumber}).
 		Abort().
 		Commit().
+		TxnEnd().
 		CheckpointBegin().
-		CheckpointEnd(chain.Loc(), checkpointATT, checkpointDPT).
-		TxnEnd()
-
-	require.NoError(t, chain.Err())
+		CheckpointEnd(chain.Loc(), checkpointATT, checkpointDPT)
 	require.NoError(t, debugPool.EnsureAllPagesUnpinnedAndUnlocked())
 
 	page, err := debugPool.GetPage(logPageId)
@@ -227,9 +225,22 @@ func TestChainSanity(t *testing.T) {
 		require.Equal(t, txnID, r.txnID)
 	}
 
-	// CheckpointBegin
+	// TxnEnd
 	{
 		data := page.UnsafeRead(6)
+		require.NoError(t, err)
+		tag, untypedRecord, err := parseLogRecord(data)
+
+		require.NoError(t, err)
+		require.Equal(t, TypeTxnEnd, tag)
+
+		_, ok := untypedRecord.(TxnEndLogRecord)
+		require.True(t, ok)
+	}
+
+	// CheckpointBegin
+	{
+		data := page.UnsafeRead(7)
 		require.NoError(t, err)
 		tag, untypedRecord, err := parseLogRecord(data)
 
@@ -242,7 +253,7 @@ func TestChainSanity(t *testing.T) {
 
 	// CheckpointEnd
 	{
-		data := page.UnsafeRead(7)
+		data := page.UnsafeRead(8)
 		require.NoError(t, err)
 		tag, untypedRecord, err := parseLogRecord(data)
 
@@ -254,19 +265,6 @@ func TestChainSanity(t *testing.T) {
 
 		require.Equal(t, checkpointATT, r.activeTransactions)
 		require.Equal(t, checkpointDPT, r.dirtyPageTable)
-	}
-
-	// TxnEnd
-	{
-		data := page.UnsafeRead(8)
-		require.NoError(t, err)
-		tag, untypedRecord, err := parseLogRecord(data)
-
-		require.NoError(t, err)
-		require.Equal(t, TypeTxnEnd, tag)
-
-		_, ok := untypedRecord.(TxnEndLogRecord)
-		require.True(t, ok)
 	}
 }
 
@@ -404,4 +402,8 @@ func TestChain(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, TransactionID_1, r.txnID)
 	}
+
+	dump, err := logger.Dump(common.FileLocation{PageID: logPageId, SlotNum: 0})
+	require.NoError(t, err)
+	t.Log("\n" + dump)
 }

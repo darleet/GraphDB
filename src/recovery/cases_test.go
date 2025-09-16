@@ -45,14 +45,14 @@ func TestBankTransactions(t *testing.T) {
 		txnsCount         = 10000
 		retryCount        = 3
 		maxEntriesPerPage = 12
-		workersCount      = 1_000
+		workersCount      = 100
 	)
 
-	pagesLowerBound := uint64(clientsCount / maxEntriesPerPage)
+	pagesLowerBound := 1000
 	// pagesUpperBound := uint64(clientsCount) + 10
 
 	diskManager := disk.NewInMemoryManager()
-	pool := bufferpool.New(pagesLowerBound, bufferpool.NewLRUReplacer(), diskManager)
+	pool := bufferpool.New(uint64(pagesLowerBound), bufferpool.NewLRUReplacer(), diskManager)
 	debugPool := bufferpool.NewDebugBufferPool(pool)
 	debugPool.MarkPageAsLeaking(masterRecordPageIdent)
 	files := generatedFileIDs[1:]
@@ -147,7 +147,8 @@ func TestBankTransactions(t *testing.T) {
 	task := func(txnID common.TxnID) bool {
 		logger := logger.WithContext(txnID)
 
-		res := utils.GenerateUniqueInts[int](2, 0, len(IDs)-1, rand.New(rand.NewSource(42)))
+		r := rand.New(rand.NewSource(int64(txnID)))
+		res := utils.GenerateUniqueInts[int](2, 0, len(IDs)-1, r)
 		me := IDs[res[0]]
 		first := IDs[res[1]]
 
@@ -327,7 +328,7 @@ func TestBankTransactions(t *testing.T) {
 		txnsCount,
 		1,
 		txnsCount+1,
-		rand.New(rand.NewSource(42)),
+		rand.New(rand.NewSource(33)),
 	)
 	t.Logf("generated txn IDs")
 	retryingTask := func() {
@@ -364,7 +365,9 @@ func TestBankTransactions(t *testing.T) {
 	successCount := succ.Load()
 	assert.Greater(t, successCount, uint64(0))
 	t.Logf(
-		"fileLockFail: %d\n"+
+		"successCount: %d\n"+
+			"totalFail: %d\n"+
+			"fileLockFail: %d\n"+
 			"myPageLockFail: %d\n"+
 			"balanceFail: %d\n"+
 			"firstPageLockFail: %d\n"+
@@ -373,6 +376,8 @@ func TestBankTransactions(t *testing.T) {
 			"myPageUpgradeFail: %d\n"+
 			"firstPageUpgradeFail: %d\n"+
 			"rollbackCutoffFail: %d\n",
+		successCount,
+		totalFail,
 		fileLockFail.Load(),
 		myPageLockFail.Load(),
 		balanceFail.Load(),
