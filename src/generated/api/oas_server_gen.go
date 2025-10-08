@@ -8,6 +8,12 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// RaftGetVertex implements raftGetVertex operation.
+	//
+	// Получает вершину из указанной таблицы.
+	//
+	// GET /raft/vertices
+	RaftGetVertex(ctx context.Context, params RaftGetVertexParams) (RaftGetVertexRes, error)
 	// RaftInsertEdge implements raftInsertEdge operation.
 	//
 	// Создаёт ребро в указанной таблице. from/to —

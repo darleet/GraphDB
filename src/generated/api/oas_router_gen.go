@@ -111,10 +111,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				if len(elem) == 0 {
 					switch r.Method {
+					case "GET":
+						s.handleRaftGetVertexRequest([0]string{}, elemIsEscaped, w, r)
 					case "POST":
 						s.handleRaftInsertVertexRequest([0]string{}, elemIsEscaped, w, r)
 					default:
-						s.notAllowed(w, r, "POST")
+						s.notAllowed(w, r, "GET,POST")
 					}
 
 					return
@@ -295,6 +297,14 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 
 				if len(elem) == 0 {
 					switch method {
+					case "GET":
+						r.name = RaftGetVertexOperation
+						r.summary = "Вставить одну вершину"
+						r.operationID = "raftGetVertex"
+						r.pathPattern = "/raft/vertices"
+						r.args = args
+						r.count = 0
+						return r, true
 					case "POST":
 						r.name = RaftInsertVertexOperation
 						r.summary = "Вставить одну вершину"

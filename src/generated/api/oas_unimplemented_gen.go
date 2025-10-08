@@ -13,6 +13,15 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// RaftGetVertex implements raftGetVertex operation.
+//
+// Получает вершину из указанной таблицы.
+//
+// GET /raft/vertices
+func (UnimplementedHandler) RaftGetVertex(ctx context.Context, params RaftGetVertexParams) (r RaftGetVertexRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // RaftInsertEdge implements raftInsertEdge operation.
 //
 // Создаёт ребро в указанной таблице. from/to —

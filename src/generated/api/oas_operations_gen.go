@@ -6,6 +6,7 @@ package api
 type OperationName = string
 
 const (
+	RaftGetVertexOperation      OperationName = "RaftGetVertex"
 	RaftInsertEdgeOperation     OperationName = "RaftInsertEdge"
 	RaftInsertEdgesOperation    OperationName = "RaftInsertEdges"
 	RaftInsertVertexOperation   OperationName = "RaftInsertVertex"

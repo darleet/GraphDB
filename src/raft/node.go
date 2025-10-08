@@ -7,12 +7,15 @@ import (
 	"github.com/spf13/afero"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"net"
 	"sync/atomic"
 
 	"github.com/Jille/raft-grpc-leader-rpc/leaderhealth"
 	transport "github.com/Jille/raft-grpc-transport"
+	grpcrec "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 
 	"github.com/Blackdeer1524/GraphDB/src"
 	"github.com/Blackdeer1524/GraphDB/src/bufferpool"
@@ -34,11 +37,6 @@ type Node struct {
 	raft   *hraft.Raft
 	grpc   *grpc.Server
 	logger src.Logger
-
-	executor    *query.Executor
-	txnLogger   *recovery.TxnLogger
-	debugPool   *bufferpool.DebugBufferPool
-	lockManager *txns.LockManager
 }
 
 func StartNode(id, addr string, logger src.Logger, peers []hraft.Server) (*Node, error) {
@@ -107,7 +105,7 @@ func StartNode(id, addr string, logger src.Logger, peers []hraft.Server) (*Node,
 	fsmInstance := &fsm{
 		nodeID:    id,
 		log:       logger,
-		executor:  exec,
+		exec:      exec,
 		txnLogger: txnLogger,
 	}
 
@@ -124,27 +122,29 @@ func StartNode(id, addr string, logger src.Logger, peers []hraft.Server) (*Node,
 
 	//TODO remove when we have DDL open api support
 	ticker := atomic.Uint64{}
-	err = addMoneyNodeType(&ticker, exec, txnLogger)
+
+	err = addMoneyNodeType(&ticker, exec, txnLogger, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create money node type: %w", err)
 	}
 
-	s := grpc.NewServer()
+	opts := []grpcrec.Option{
+		grpcrec.WithRecoveryHandler(func(p any) (err error) {
+			return status.Errorf(codes.Internal, "panic recovery: %v", p)
+		}),
+	}
+	s := grpc.NewServer(grpc.UnaryInterceptor(grpcrec.UnaryServerInterceptor(opts...)))
 
-	proto.RegisterRaftServiceServer(s, New(r, &ticker, logger))
+	proto.RegisterRaftServiceServer(s, New(exec, r, &ticker, txnLogger, logger))
 	tr.Register(s)
 	leaderhealth.Setup(r, s, []string{"graphdb"})
 
 	node := &Node{
-		id:          id,
-		addr:        addr,
-		raft:        r,
-		grpc:        s,
-		logger:      logger,
-		executor:    exec,
-		txnLogger:   txnLogger,
-		debugPool:   debugPool,
-		lockManager: locker,
+		id:     id,
+		addr:   addr,
+		raft:   r,
+		grpc:   s,
+		logger: logger,
 	}
 
 	go func() {
@@ -157,12 +157,12 @@ func StartNode(id, addr string, logger src.Logger, peers []hraft.Server) (*Node,
 }
 
 func execute(
-	ticker *atomic.Uint64,
+	txnID common.TxnID,
 	executor *query.Executor,
 	logger common.ITxnLogger,
+	stdLog src.Logger,
 	fn query.Task,
 ) (err error) {
-	txnID := common.TxnID(ticker.Add(1))
 	defer executor.Locker.Unlock(txnID)
 
 	ctxLogger := logger.WithContext(txnID)
@@ -172,7 +172,14 @@ func execute(
 
 	defer func() {
 		if err != nil {
-			ctxLogger.Rollback()
+			stdLog.Errorw("critical error while executing", zap.Error(err), zap.Uint64("txn_id", uint64(txnID)))
+			stdLog.Info(executor.Locker.DumpDependencyGraph())
+			err = ctxLogger.AppendAbort()
+			if err != nil {
+				stdLog.Errorw("failed to append abort", zap.Error(err))
+			} else {
+				ctxLogger.Rollback()
+			}
 			return
 		}
 		if err = ctxLogger.AppendCommit(); err != nil {
@@ -189,11 +196,14 @@ func addMoneyNodeType(
 	ticker *atomic.Uint64,
 	e *query.Executor,
 	logger common.ITxnLogger,
+	stdLog src.Logger,
 ) error {
+	txnID := common.TxnID(ticker.Add(1))
 	return execute(
-		ticker,
+		txnID,
 		e,
 		logger,
+		stdLog,
 		func(txnID common.TxnID, e *query.Executor, logger common.ITxnLoggerWithContext) (err error) {
 			tableName := "main"
 			schema := storage.Schema{

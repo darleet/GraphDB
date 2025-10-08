@@ -35,6 +35,9 @@ build:
 	@mkdir -p bin
 	@go build -mod=mod -o bin/$(NAME) $(MAIN)
 
+gen-oapi:
+	@go generate ./...
+
 gen: ## Generate gRPC + Protobuf code
 	@command -v $(PROTOC) >/dev/null || (echo "protoc not found. Install protobuf compiler." && exit 1)
 	@command -v $(PROTOC_GEN_GO) >/dev/null || (echo "protoc-gen-go not found. Run 'make tools'." && exit 1)

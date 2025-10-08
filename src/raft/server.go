@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/Blackdeer1524/GraphDB/src"
 	"github.com/Blackdeer1524/GraphDB/src/generated/proto"
+	"github.com/Blackdeer1524/GraphDB/src/pkg/utils"
+	"github.com/Blackdeer1524/GraphDB/src/query"
 	"github.com/google/uuid"
 	hraft "github.com/hashicorp/raft"
 	"go.uber.org/zap"
@@ -23,18 +25,63 @@ import (
 type Server struct {
 	proto.UnimplementedRaftServiceServer
 
-	raft   *hraft.Raft
-	ticker *atomic.Uint64
+	exec *query.Executor
+
+	raft      *hraft.Raft
+	ticker    *atomic.Uint64
+	txnLogger common.ITxnLogger
 
 	log src.Logger
 }
 
-func New(raft *hraft.Raft, ticker *atomic.Uint64, log src.Logger) *Server {
+func New(exec *query.Executor, raft *hraft.Raft, ticker *atomic.Uint64, txnLogger common.ITxnLogger, log src.Logger) *Server {
 	return &Server{
-		raft:   raft,
-		ticker: ticker,
-		log:    log,
+		exec:      exec,
+		raft:      raft,
+		ticker:    ticker,
+		txnLogger: txnLogger,
+		log:       log,
 	}
+}
+
+// GetVertex returns a single vertex from the graph
+func (s *Server) GetVertex(ctx context.Context, req *proto.GetVertexRequest) (*proto.GetVertexResponse, error) {
+	id, err := uuid.Parse(req.GetVertexId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse vertex id: %s", err)
+	}
+
+	txnID := common.TxnID(s.ticker.Add(1))
+
+	var v storage.Vertex
+	err = execute(
+		txnID,
+		s.exec,
+		s.txnLogger,
+		s.log,
+		func(txnID common.TxnID, e *query.Executor, logger common.ITxnLoggerWithContext) error {
+			var selectErr error
+			v, selectErr = s.exec.SelectVertex(txnID, req.GetTableName(), storage.VertexSystemID(id), s.txnLogger.WithContext(txnID))
+			if selectErr != nil {
+				return selectErr
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to select vertex: %s", err)
+	}
+
+	props, err := utils.GoAnyMapToStringMap(v.Data)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to convert properties: %s", err)
+	}
+
+	return &proto.GetVertexResponse{
+		VertexId:   v.ID.String(),
+		TableId:    uuid.UUID(v.DirItemID).String(),
+		Properties: props,
+	}, nil
 }
 
 // InsertVertex inserts a single vertex into the graph

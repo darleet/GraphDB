@@ -5,6 +5,15 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/storage"
 )
 
+type Getter interface {
+	SelectVertex(
+		txnID common.TxnID,
+		tableName string,
+		vertexID storage.VertexSystemID,
+		logger common.ITxnLoggerWithContext,
+	) (v storage.Vertex, err error)
+}
+
 type Inserter interface {
 	InsertVertex(
 		txnID common.TxnID,

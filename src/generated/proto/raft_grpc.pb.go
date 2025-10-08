@@ -19,6 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	RaftService_GetVertex_FullMethodName      = "/RaftService/GetVertex"
 	RaftService_InsertVertex_FullMethodName   = "/RaftService/InsertVertex"
 	RaftService_InsertVertices_FullMethodName = "/RaftService/InsertVertices"
 	RaftService_InsertEdge_FullMethodName     = "/RaftService/InsertEdge"
@@ -29,6 +30,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RaftServiceClient interface {
+	GetVertex(ctx context.Context, in *GetVertexRequest, opts ...grpc.CallOption) (*GetVertexResponse, error)
 	InsertVertex(ctx context.Context, in *InsertVertexRequest, opts ...grpc.CallOption) (*InsertVertexResponse, error)
 	InsertVertices(ctx context.Context, in *InsertVerticesRequest, opts ...grpc.CallOption) (*InsertVerticesResponse, error)
 	InsertEdge(ctx context.Context, in *InsertEdgeRequest, opts ...grpc.CallOption) (*InsertEdgeResponse, error)
@@ -41,6 +43,16 @@ type raftServiceClient struct {
 
 func NewRaftServiceClient(cc grpc.ClientConnInterface) RaftServiceClient {
 	return &raftServiceClient{cc}
+}
+
+func (c *raftServiceClient) GetVertex(ctx context.Context, in *GetVertexRequest, opts ...grpc.CallOption) (*GetVertexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetVertexResponse)
+	err := c.cc.Invoke(ctx, RaftService_GetVertex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *raftServiceClient) InsertVertex(ctx context.Context, in *InsertVertexRequest, opts ...grpc.CallOption) (*InsertVertexResponse, error) {
@@ -87,6 +99,7 @@ func (c *raftServiceClient) InsertEdges(ctx context.Context, in *InsertEdgesRequ
 // All implementations must embed UnimplementedRaftServiceServer
 // for forward compatibility.
 type RaftServiceServer interface {
+	GetVertex(context.Context, *GetVertexRequest) (*GetVertexResponse, error)
 	InsertVertex(context.Context, *InsertVertexRequest) (*InsertVertexResponse, error)
 	InsertVertices(context.Context, *InsertVerticesRequest) (*InsertVerticesResponse, error)
 	InsertEdge(context.Context, *InsertEdgeRequest) (*InsertEdgeResponse, error)
@@ -101,6 +114,9 @@ type RaftServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRaftServiceServer struct{}
 
+func (UnimplementedRaftServiceServer) GetVertex(context.Context, *GetVertexRequest) (*GetVertexResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetVertex not implemented")
+}
 func (UnimplementedRaftServiceServer) InsertVertex(context.Context, *InsertVertexRequest) (*InsertVertexResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method InsertVertex not implemented")
 }
@@ -132,6 +148,24 @@ func RegisterRaftServiceServer(s grpc.ServiceRegistrar, srv RaftServiceServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&RaftService_ServiceDesc, srv)
+}
+
+func _RaftService_GetVertex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVertexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RaftServiceServer).GetVertex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RaftService_GetVertex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RaftServiceServer).GetVertex(ctx, req.(*GetVertexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _RaftService_InsertVertex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -213,6 +247,10 @@ var RaftService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "RaftService",
 	HandlerType: (*RaftServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetVertex",
+			Handler:    _RaftService_GetVertex_Handler,
+		},
 		{
 			MethodName: "InsertVertex",
 			Handler:    _RaftService_InsertVertex_Handler,

@@ -118,6 +118,118 @@ func (x *VertexInfo) GetProperties() *Properties {
 	return nil
 }
 
+type GetVertexRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TableName     string                 `protobuf:"bytes,1,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
+	VertexId      string                 `protobuf:"bytes,2,opt,name=vertex_id,json=vertexId,proto3" json:"vertex_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVertexRequest) Reset() {
+	*x = GetVertexRequest{}
+	mi := &file_raft_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVertexRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVertexRequest) ProtoMessage() {}
+
+func (x *GetVertexRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVertexRequest.ProtoReflect.Descriptor instead.
+func (*GetVertexRequest) Descriptor() ([]byte, []int) {
+	return file_raft_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetVertexRequest) GetTableName() string {
+	if x != nil {
+		return x.TableName
+	}
+	return ""
+}
+
+func (x *GetVertexRequest) GetVertexId() string {
+	if x != nil {
+		return x.VertexId
+	}
+	return ""
+}
+
+type GetVertexResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VertexId      string                 `protobuf:"bytes,1,opt,name=vertex_id,json=vertexId,proto3" json:"vertex_id,omitempty"`
+	TableId       string                 `protobuf:"bytes,2,opt,name=table_id,json=tableId,proto3" json:"table_id,omitempty"`
+	Properties    map[string]string      `protobuf:"bytes,3,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVertexResponse) Reset() {
+	*x = GetVertexResponse{}
+	mi := &file_raft_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVertexResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVertexResponse) ProtoMessage() {}
+
+func (x *GetVertexResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_raft_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVertexResponse.ProtoReflect.Descriptor instead.
+func (*GetVertexResponse) Descriptor() ([]byte, []int) {
+	return file_raft_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GetVertexResponse) GetVertexId() string {
+	if x != nil {
+		return x.VertexId
+	}
+	return ""
+}
+
+func (x *GetVertexResponse) GetTableId() string {
+	if x != nil {
+		return x.TableId
+	}
+	return ""
+}
+
+func (x *GetVertexResponse) GetProperties() map[string]string {
+	if x != nil {
+		return x.Properties
+	}
+	return nil
+}
+
 type InsertVertexRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TableName     string                 `protobuf:"bytes,1,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
@@ -128,7 +240,7 @@ type InsertVertexRequest struct {
 
 func (x *InsertVertexRequest) Reset() {
 	*x = InsertVertexRequest{}
-	mi := &file_raft_proto_msgTypes[2]
+	mi := &file_raft_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -140,7 +252,7 @@ func (x *InsertVertexRequest) String() string {
 func (*InsertVertexRequest) ProtoMessage() {}
 
 func (x *InsertVertexRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[2]
+	mi := &file_raft_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -153,7 +265,7 @@ func (x *InsertVertexRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertVertexRequest.ProtoReflect.Descriptor instead.
 func (*InsertVertexRequest) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{2}
+	return file_raft_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *InsertVertexRequest) GetTableName() string {
@@ -179,7 +291,7 @@ type InsertVertexResponse struct {
 
 func (x *InsertVertexResponse) Reset() {
 	*x = InsertVertexResponse{}
-	mi := &file_raft_proto_msgTypes[3]
+	mi := &file_raft_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -191,7 +303,7 @@ func (x *InsertVertexResponse) String() string {
 func (*InsertVertexResponse) ProtoMessage() {}
 
 func (x *InsertVertexResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[3]
+	mi := &file_raft_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -204,7 +316,7 @@ func (x *InsertVertexResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertVertexResponse.ProtoReflect.Descriptor instead.
 func (*InsertVertexResponse) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{3}
+	return file_raft_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *InsertVertexResponse) GetVertexId() string {
@@ -224,7 +336,7 @@ type InsertVerticesRequest struct {
 
 func (x *InsertVerticesRequest) Reset() {
 	*x = InsertVerticesRequest{}
-	mi := &file_raft_proto_msgTypes[4]
+	mi := &file_raft_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -236,7 +348,7 @@ func (x *InsertVerticesRequest) String() string {
 func (*InsertVerticesRequest) ProtoMessage() {}
 
 func (x *InsertVerticesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[4]
+	mi := &file_raft_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -249,7 +361,7 @@ func (x *InsertVerticesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertVerticesRequest.ProtoReflect.Descriptor instead.
 func (*InsertVerticesRequest) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{4}
+	return file_raft_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *InsertVerticesRequest) GetTableName() string {
@@ -275,7 +387,7 @@ type InsertVerticesResponse struct {
 
 func (x *InsertVerticesResponse) Reset() {
 	*x = InsertVerticesResponse{}
-	mi := &file_raft_proto_msgTypes[5]
+	mi := &file_raft_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -287,7 +399,7 @@ func (x *InsertVerticesResponse) String() string {
 func (*InsertVerticesResponse) ProtoMessage() {}
 
 func (x *InsertVerticesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[5]
+	mi := &file_raft_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -300,7 +412,7 @@ func (x *InsertVerticesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertVerticesResponse.ProtoReflect.Descriptor instead.
 func (*InsertVerticesResponse) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{5}
+	return file_raft_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *InsertVerticesResponse) GetVertexIds() []string {
@@ -321,7 +433,7 @@ type EdgeInfo struct {
 
 func (x *EdgeInfo) Reset() {
 	*x = EdgeInfo{}
-	mi := &file_raft_proto_msgTypes[6]
+	mi := &file_raft_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -333,7 +445,7 @@ func (x *EdgeInfo) String() string {
 func (*EdgeInfo) ProtoMessage() {}
 
 func (x *EdgeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[6]
+	mi := &file_raft_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -346,7 +458,7 @@ func (x *EdgeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EdgeInfo.ProtoReflect.Descriptor instead.
 func (*EdgeInfo) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{6}
+	return file_raft_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *EdgeInfo) GetSourceVertexId() string {
@@ -380,7 +492,7 @@ type InsertEdgeRequest struct {
 
 func (x *InsertEdgeRequest) Reset() {
 	*x = InsertEdgeRequest{}
-	mi := &file_raft_proto_msgTypes[7]
+	mi := &file_raft_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -392,7 +504,7 @@ func (x *InsertEdgeRequest) String() string {
 func (*InsertEdgeRequest) ProtoMessage() {}
 
 func (x *InsertEdgeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[7]
+	mi := &file_raft_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -405,7 +517,7 @@ func (x *InsertEdgeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertEdgeRequest.ProtoReflect.Descriptor instead.
 func (*InsertEdgeRequest) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{7}
+	return file_raft_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *InsertEdgeRequest) GetTableName() string {
@@ -431,7 +543,7 @@ type InsertEdgeResponse struct {
 
 func (x *InsertEdgeResponse) Reset() {
 	*x = InsertEdgeResponse{}
-	mi := &file_raft_proto_msgTypes[8]
+	mi := &file_raft_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -443,7 +555,7 @@ func (x *InsertEdgeResponse) String() string {
 func (*InsertEdgeResponse) ProtoMessage() {}
 
 func (x *InsertEdgeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[8]
+	mi := &file_raft_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -456,7 +568,7 @@ func (x *InsertEdgeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertEdgeResponse.ProtoReflect.Descriptor instead.
 func (*InsertEdgeResponse) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{8}
+	return file_raft_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *InsertEdgeResponse) GetEdgeId() string {
@@ -476,7 +588,7 @@ type InsertEdgesRequest struct {
 
 func (x *InsertEdgesRequest) Reset() {
 	*x = InsertEdgesRequest{}
-	mi := &file_raft_proto_msgTypes[9]
+	mi := &file_raft_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -488,7 +600,7 @@ func (x *InsertEdgesRequest) String() string {
 func (*InsertEdgesRequest) ProtoMessage() {}
 
 func (x *InsertEdgesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[9]
+	mi := &file_raft_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -501,7 +613,7 @@ func (x *InsertEdgesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertEdgesRequest.ProtoReflect.Descriptor instead.
 func (*InsertEdgesRequest) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{9}
+	return file_raft_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *InsertEdgesRequest) GetTableName() string {
@@ -527,7 +639,7 @@ type InsertEdgesResponse struct {
 
 func (x *InsertEdgesResponse) Reset() {
 	*x = InsertEdgesResponse{}
-	mi := &file_raft_proto_msgTypes[10]
+	mi := &file_raft_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -539,7 +651,7 @@ func (x *InsertEdgesResponse) String() string {
 func (*InsertEdgesResponse) ProtoMessage() {}
 
 func (x *InsertEdgesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[10]
+	mi := &file_raft_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -552,7 +664,7 @@ func (x *InsertEdgesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertEdgesResponse.ProtoReflect.Descriptor instead.
 func (*InsertEdgesResponse) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{10}
+	return file_raft_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *InsertEdgesResponse) GetEdgeIds() []string {
@@ -581,7 +693,20 @@ const file_raft_proto_rawDesc = "" +
 	"properties\x18\x02 \x01(\v2\v.PropertiesH\x01R\n" +
 	"properties\x88\x01\x01B\b\n" +
 	"\x06_labelB\r\n" +
-	"\v_properties\"Y\n" +
+	"\v_properties\"N\n" +
+	"\x10GetVertexRequest\x12\x1d\n" +
+	"\n" +
+	"table_name\x18\x01 \x01(\tR\ttableName\x12\x1b\n" +
+	"\tvertex_id\x18\x02 \x01(\tR\bvertexId\"\xce\x01\n" +
+	"\x11GetVertexResponse\x12\x1b\n" +
+	"\tvertex_id\x18\x01 \x01(\tR\bvertexId\x12\x19\n" +
+	"\btable_id\x18\x02 \x01(\tR\atableId\x12B\n" +
+	"\n" +
+	"properties\x18\x03 \x03(\v2\".GetVertexResponse.PropertiesEntryR\n" +
+	"properties\x1a=\n" +
+	"\x0fPropertiesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"Y\n" +
 	"\x13InsertVertexRequest\x12\x1d\n" +
 	"\n" +
 	"table_name\x18\x01 \x01(\tR\ttableName\x12#\n" +
@@ -613,8 +738,9 @@ const file_raft_proto_rawDesc = "" +
 	"table_name\x18\x01 \x01(\tR\ttableName\x12\x1f\n" +
 	"\x05edges\x18\x02 \x03(\v2\t.EdgeInfoR\x05edges\"0\n" +
 	"\x13InsertEdgesResponse\x12\x19\n" +
-	"\bedge_ids\x18\x01 \x03(\tR\aedgeIds2\x86\x02\n" +
-	"\vRaftService\x12=\n" +
+	"\bedge_ids\x18\x01 \x03(\tR\aedgeIds2\xbc\x02\n" +
+	"\vRaftService\x124\n" +
+	"\tGetVertex\x12\x11.GetVertexRequest\x1a\x12.GetVertexResponse\"\x00\x12=\n" +
 	"\fInsertVertex\x12\x14.InsertVertexRequest\x1a\x15.InsertVertexResponse\"\x00\x12C\n" +
 	"\x0eInsertVertices\x12\x16.InsertVerticesRequest\x1a\x17.InsertVerticesResponse\"\x00\x127\n" +
 	"\n" +
@@ -633,44 +759,50 @@ func file_raft_proto_rawDescGZIP() []byte {
 	return file_raft_proto_rawDescData
 }
 
-var file_raft_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_raft_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_raft_proto_goTypes = []any{
 	(*Properties)(nil),             // 0: Properties
 	(*VertexInfo)(nil),             // 1: VertexInfo
-	(*InsertVertexRequest)(nil),    // 2: InsertVertexRequest
-	(*InsertVertexResponse)(nil),   // 3: InsertVertexResponse
-	(*InsertVerticesRequest)(nil),  // 4: InsertVerticesRequest
-	(*InsertVerticesResponse)(nil), // 5: InsertVerticesResponse
-	(*EdgeInfo)(nil),               // 6: EdgeInfo
-	(*InsertEdgeRequest)(nil),      // 7: InsertEdgeRequest
-	(*InsertEdgeResponse)(nil),     // 8: InsertEdgeResponse
-	(*InsertEdgesRequest)(nil),     // 9: InsertEdgesRequest
-	(*InsertEdgesResponse)(nil),    // 10: InsertEdgesResponse
-	nil,                            // 11: Properties.DataEntry
-	(*anypb.Any)(nil),              // 12: google.protobuf.Any
+	(*GetVertexRequest)(nil),       // 2: GetVertexRequest
+	(*GetVertexResponse)(nil),      // 3: GetVertexResponse
+	(*InsertVertexRequest)(nil),    // 4: InsertVertexRequest
+	(*InsertVertexResponse)(nil),   // 5: InsertVertexResponse
+	(*InsertVerticesRequest)(nil),  // 6: InsertVerticesRequest
+	(*InsertVerticesResponse)(nil), // 7: InsertVerticesResponse
+	(*EdgeInfo)(nil),               // 8: EdgeInfo
+	(*InsertEdgeRequest)(nil),      // 9: InsertEdgeRequest
+	(*InsertEdgeResponse)(nil),     // 10: InsertEdgeResponse
+	(*InsertEdgesRequest)(nil),     // 11: InsertEdgesRequest
+	(*InsertEdgesResponse)(nil),    // 12: InsertEdgesResponse
+	nil,                            // 13: Properties.DataEntry
+	nil,                            // 14: GetVertexResponse.PropertiesEntry
+	(*anypb.Any)(nil),              // 15: google.protobuf.Any
 }
 var file_raft_proto_depIdxs = []int32{
-	11, // 0: Properties.data:type_name -> Properties.DataEntry
+	13, // 0: Properties.data:type_name -> Properties.DataEntry
 	0,  // 1: VertexInfo.properties:type_name -> Properties
-	1,  // 2: InsertVertexRequest.vertex:type_name -> VertexInfo
-	1,  // 3: InsertVerticesRequest.vertices:type_name -> VertexInfo
-	0,  // 4: EdgeInfo.properties:type_name -> Properties
-	6,  // 5: InsertEdgeRequest.edge:type_name -> EdgeInfo
-	6,  // 6: InsertEdgesRequest.edges:type_name -> EdgeInfo
-	12, // 7: Properties.DataEntry.value:type_name -> google.protobuf.Any
-	2,  // 8: RaftService.InsertVertex:input_type -> InsertVertexRequest
-	4,  // 9: RaftService.InsertVertices:input_type -> InsertVerticesRequest
-	7,  // 10: RaftService.InsertEdge:input_type -> InsertEdgeRequest
-	9,  // 11: RaftService.InsertEdges:input_type -> InsertEdgesRequest
-	3,  // 12: RaftService.InsertVertex:output_type -> InsertVertexResponse
-	5,  // 13: RaftService.InsertVertices:output_type -> InsertVerticesResponse
-	8,  // 14: RaftService.InsertEdge:output_type -> InsertEdgeResponse
-	10, // 15: RaftService.InsertEdges:output_type -> InsertEdgesResponse
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	14, // 2: GetVertexResponse.properties:type_name -> GetVertexResponse.PropertiesEntry
+	1,  // 3: InsertVertexRequest.vertex:type_name -> VertexInfo
+	1,  // 4: InsertVerticesRequest.vertices:type_name -> VertexInfo
+	0,  // 5: EdgeInfo.properties:type_name -> Properties
+	8,  // 6: InsertEdgeRequest.edge:type_name -> EdgeInfo
+	8,  // 7: InsertEdgesRequest.edges:type_name -> EdgeInfo
+	15, // 8: Properties.DataEntry.value:type_name -> google.protobuf.Any
+	2,  // 9: RaftService.GetVertex:input_type -> GetVertexRequest
+	4,  // 10: RaftService.InsertVertex:input_type -> InsertVertexRequest
+	6,  // 11: RaftService.InsertVertices:input_type -> InsertVerticesRequest
+	9,  // 12: RaftService.InsertEdge:input_type -> InsertEdgeRequest
+	11, // 13: RaftService.InsertEdges:input_type -> InsertEdgesRequest
+	3,  // 14: RaftService.GetVertex:output_type -> GetVertexResponse
+	5,  // 15: RaftService.InsertVertex:output_type -> InsertVertexResponse
+	7,  // 16: RaftService.InsertVertices:output_type -> InsertVerticesResponse
+	10, // 17: RaftService.InsertEdge:output_type -> InsertEdgeResponse
+	12, // 18: RaftService.InsertEdges:output_type -> InsertEdgesResponse
+	14, // [14:19] is the sub-list for method output_type
+	9,  // [9:14] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_raft_proto_init() }
@@ -679,14 +811,14 @@ func file_raft_proto_init() {
 		return
 	}
 	file_raft_proto_msgTypes[1].OneofWrappers = []any{}
-	file_raft_proto_msgTypes[6].OneofWrappers = []any{}
+	file_raft_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_raft_proto_rawDesc), len(file_raft_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
