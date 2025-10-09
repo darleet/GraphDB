@@ -25,15 +25,18 @@ mockery:
 	@find . -type f -name 'mock_*' | xargs rm
 	@mockery
 
-.PHONY: build
-build: init mockery
+.PHONY: build-all
+build-all: init mockery
 	@mkdir -p bin
 	@go build -mod=mod -o bin/$(NAME) $(MAIN)
 
-.PHONY: build-fast
-build-fast:
+.PHONY: build
+build:
 	@mkdir -p bin
 	@go build -mod=mod -o bin/$(NAME) $(MAIN)
+
+gen-oapi:
+	@go generate ./...
 
 gen: ## Generate gRPC + Protobuf code
 	@command -v $(PROTOC) >/dev/null || (echo "protoc not found. Install protobuf compiler." && exit 1)

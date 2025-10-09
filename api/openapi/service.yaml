@@ -70,6 +70,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+    get:
+      tags: [ raft ]
+      operationId: raftGetVertex
+      summary: Вставить одну вершину
+      description: >
+        Получает вершину из указанной таблицы
+      parameters:
+        - name: table
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Вершина успешно получена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VertexResponse"
+        "400":
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /raft/vertices/batch:
     post:
       tags: [raft]
@@ -328,8 +371,19 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/UUID"
+          type: string
       required: [id]
+
+    VertexResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            type: string
+      required: [id, tableId, data]
 
     VertexIDsResponse:
       type: object
@@ -337,14 +391,14 @@ components:
         ids:
           type: array
           items:
-            $ref: "#/components/schemas/UUID"
+            type: string
       required: [ids]
 
     EdgeIDResponse:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/UUID"
+          type: string
       required: [id]
 
     EdgeIDsResponse:
@@ -353,7 +407,7 @@ components:
         ids:
           type: array
           items:
-            $ref: "#/components/schemas/UUID"
+            type: string
       required: [ids]
 
     Error:

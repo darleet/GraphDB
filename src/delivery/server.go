@@ -18,6 +18,11 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 )
 
+type APIHandler struct {
+	Client proto.RaftServiceClient
+	Logger src.Logger
+}
+
 type Server struct {
 	Host string
 	Port int

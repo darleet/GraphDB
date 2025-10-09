@@ -15,16 +15,16 @@ func (s *ErrorStatusCode) Error() string {
 
 // Ref: #/components/schemas/EdgeIDResponse
 type EdgeIDResponse struct {
-	ID UUID `json:"id"`
+	ID string `json:"id"`
 }
 
 // GetID returns the value of ID.
-func (s *EdgeIDResponse) GetID() UUID {
+func (s *EdgeIDResponse) GetID() string {
 	return s.ID
 }
 
 // SetID sets the value of ID.
-func (s *EdgeIDResponse) SetID(val UUID) {
+func (s *EdgeIDResponse) SetID(val string) {
 	s.ID = val
 }
 
@@ -32,16 +32,16 @@ func (*EdgeIDResponse) raftInsertEdgeRes() {}
 
 // Ref: #/components/schemas/EdgeIDsResponse
 type EdgeIDsResponse struct {
-	Ids []UUID `json:"ids"`
+	Ids []string `json:"ids"`
 }
 
 // GetIds returns the value of Ids.
-func (s *EdgeIDsResponse) GetIds() []UUID {
+func (s *EdgeIDsResponse) GetIds() []string {
 	return s.Ids
 }
 
 // SetIds sets the value of Ids.
-func (s *EdgeIDsResponse) SetIds(val []UUID) {
+func (s *EdgeIDsResponse) SetIds(val []string) {
 	s.Ids = val
 }
 
@@ -463,6 +463,14 @@ func (o OptVertexInfoProperties) Or(d VertexInfoProperties) VertexInfoProperties
 	return d
 }
 
+type RaftGetVertexBadRequest Error
+
+func (*RaftGetVertexBadRequest) raftGetVertexRes() {}
+
+type RaftGetVertexInternalServerError Error
+
+func (*RaftGetVertexInternalServerError) raftGetVertexRes() {}
+
 type RaftInsertEdgeBadRequest Error
 
 func (*RaftInsertEdgeBadRequest) raftInsertEdgeRes() {}
@@ -515,16 +523,16 @@ type UUID uuid.UUID
 
 // Ref: #/components/schemas/VertexIDResponse
 type VertexIDResponse struct {
-	ID UUID `json:"id"`
+	ID string `json:"id"`
 }
 
 // GetID returns the value of ID.
-func (s *VertexIDResponse) GetID() UUID {
+func (s *VertexIDResponse) GetID() string {
 	return s.ID
 }
 
 // SetID sets the value of ID.
-func (s *VertexIDResponse) SetID(val UUID) {
+func (s *VertexIDResponse) SetID(val string) {
 	s.ID = val
 }
 
@@ -532,16 +540,16 @@ func (*VertexIDResponse) raftInsertVertexRes() {}
 
 // Ref: #/components/schemas/VertexIDsResponse
 type VertexIDsResponse struct {
-	Ids []UUID `json:"ids"`
+	Ids []string `json:"ids"`
 }
 
 // GetIds returns the value of Ids.
-func (s *VertexIDsResponse) GetIds() []UUID {
+func (s *VertexIDsResponse) GetIds() []string {
 	return s.Ids
 }
 
 // SetIds sets the value of Ids.
-func (s *VertexIDsResponse) SetIds(val []UUID) {
+func (s *VertexIDsResponse) SetIds(val []string) {
 	s.Ids = val
 }
 
@@ -580,6 +588,45 @@ func (s *VertexInfoProperties) init() VertexInfoProperties {
 	m := *s
 	if m == nil {
 		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/VertexResponse
+type VertexResponse struct {
+	ID   string             `json:"id"`
+	Data VertexResponseData `json:"data"`
+}
+
+// GetID returns the value of ID.
+func (s *VertexResponse) GetID() string {
+	return s.ID
+}
+
+// GetData returns the value of Data.
+func (s *VertexResponse) GetData() VertexResponseData {
+	return s.Data
+}
+
+// SetID sets the value of ID.
+func (s *VertexResponse) SetID(val string) {
+	s.ID = val
+}
+
+// SetData sets the value of Data.
+func (s *VertexResponse) SetData(val VertexResponseData) {
+	s.Data = val
+}
+
+func (*VertexResponse) raftGetVertexRes() {}
+
+type VertexResponseData map[string]string
+
+func (s *VertexResponseData) init() VertexResponseData {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
 		*s = m
 	}
 	return m

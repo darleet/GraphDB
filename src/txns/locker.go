@@ -13,6 +13,7 @@ import (
 var ErrDeadlockPrevention = errors.New("deadlock prevention")
 
 type ILockManager interface {
+	DumpDependencyGraph() string
 	LockCatalog(txnID common.TxnID, lockMode GranularLockMode) *CatalogLockToken
 	LockFile(t *CatalogLockToken, fileID common.FileID, lockMode GranularLockMode) *FileLockToken
 	LockPage(ft *FileLockToken, pageID common.PageID, lockMode PageLockMode) *PageLockToken

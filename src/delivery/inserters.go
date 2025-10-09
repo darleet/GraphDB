@@ -2,16 +2,10 @@ package delivery
 
 import (
 	"context"
-	"github.com/Blackdeer1524/GraphDB/src"
 	"github.com/Blackdeer1524/GraphDB/src/generated/api"
 	"github.com/Blackdeer1524/GraphDB/src/generated/proto"
 	"go.uber.org/zap"
 )
-
-type APIHandler struct {
-	Client proto.RaftServiceClient
-	Logger src.Logger
-}
 
 func (h *APIHandler) RaftInsertVertex(ctx context.Context, req *api.InsertVertexRequest) (api.RaftInsertVertexRes, error) {
 	body := &proto.InsertVertexRequest{
@@ -29,7 +23,7 @@ func (h *APIHandler) RaftInsertVertex(ctx context.Context, req *api.InsertVertex
 	}
 
 	return &api.VertexIDResponse{
-		ID: api.UUID([]byte(resp.GetVertexId())),
+		ID: resp.GetVertexId(),
 	}, nil
 }
 
@@ -48,13 +42,8 @@ func (h *APIHandler) RaftInsertVertices(ctx context.Context, req *api.InsertVert
 		}, nil
 	}
 
-	out := make([]api.UUID, 0, len(resp.GetVertexIds()))
-	for _, id := range resp.GetVertexIds() {
-		out = append(out, api.UUID([]byte(id)))
-	}
-
 	return &api.VertexIDsResponse{
-		Ids: out,
+		Ids: resp.GetVertexIds(),
 	}, nil
 }
 
@@ -74,7 +63,7 @@ func (h *APIHandler) RaftInsertEdge(ctx context.Context, req *api.InsertEdgeRequ
 	}
 
 	return &api.EdgeIDResponse{
-		ID: api.UUID([]byte(resp.GetEdgeId())),
+		ID: resp.GetEdgeId(),
 	}, nil
 }
 
@@ -93,13 +82,8 @@ func (h *APIHandler) RaftInsertEdges(ctx context.Context, req *api.InsertEdgesRe
 		}, nil
 	}
 
-	out := make([]api.UUID, 0, len(resp.GetEdgeIds()))
-	for _, id := range resp.GetEdgeIds() {
-		out = append(out, api.UUID([]byte(id)))
-	}
-
 	return &api.EdgeIDsResponse{
-		Ids: out,
+		Ids: resp.GetEdgeIds(),
 	}, nil
 }
 
