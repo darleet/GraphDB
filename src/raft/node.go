@@ -31,6 +31,11 @@ import (
 	"github.com/Blackdeer1524/GraphDB/src/txns"
 )
 
+const (
+	serviceName = "graphdb"
+	dataPath    = "/tmp/graphdb_%s"
+)
+
 type Node struct {
 	id     string
 	addr   string
@@ -53,7 +58,7 @@ func StartNode(id, addr string, logger src.Logger, peers []hraft.Server) (*Node,
 	})
 
 	fs := afero.NewOsFs()
-	basePath := fmt.Sprintf("/tmp/graphdb_%s", id)
+	basePath := fmt.Sprintf(dataPath, id)
 	if err := systemcatalog.InitSystemCatalog(basePath, fs); err != nil {
 		return nil, fmt.Errorf("init system catalog failed: %w", err)
 	}
@@ -137,7 +142,7 @@ func StartNode(id, addr string, logger src.Logger, peers []hraft.Server) (*Node,
 
 	proto.RegisterRaftServiceServer(s, New(exec, r, &ticker, txnLogger, logger))
 	tr.Register(s)
-	leaderhealth.Setup(r, s, []string{"graphdb"})
+	leaderhealth.Setup(r, s, []string{serviceName})
 
 	node := &Node{
 		id:     id,
